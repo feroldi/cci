@@ -16,5 +16,5 @@ set(CMAKE_RANLIB  "/usr/bin/llvm-ranlib")
 #add_library(ccompiler STATIC src/main.cpp)
 add_executable(ccompiler src/main.cpp)
 
-add_compile_options(-std=c++1z -stdlib=libc++ -Wall -Wextra -pedantic-errors -Wno-c++98-compat -fno-rtti -flto)
+add_compile_options(-std=c++1z -stdlib=libc++ -Wall -Wextra -pedantic-errors -Wno-c++98-compat -flto)
 
