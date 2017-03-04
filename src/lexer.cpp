@@ -4,20 +4,30 @@
 #include <algorithm>
 #include <cassert>
 #include <experimental/string_view>
+#include <fmt/format.h>
+#include <fmt/format.cc>
 #include "cpp/contracts.hpp"
+#include "cpp/optional.hpp"
 
 using std::experimental::string_view;
 
-// NOTE: following bitwise operators prevent clang from generating branching code.
+// Whites are used to tell apart from different tokens.
+constexpr auto is_white(char c) -> bool
+{
+  return c == ' '  ||
+         c == '\t' ||
+         c == '('  ||
+         c == ')'  ||
+         c == '{'  ||
+         c == '}'  ||
+         c == ','  ||
+         c == ':'  ||
+         c == '?';
+}
 
 constexpr auto is_space(char c) -> bool
 {
-  return c == ' ' | c == '\t';
-}
-
-constexpr auto is_newline(char c) -> bool
-{
-  return c == '\n' | c == '\r';
+  return c == ' ' || c == '\t';
 }
 
 constexpr auto is_digit(char c) -> bool
@@ -27,7 +37,7 @@ constexpr auto is_digit(char c) -> bool
 
 constexpr auto is_hexdigit(char c) -> bool
 {
-  return is_digit(c) & ((c >= 'A' & c <= 'F') | (c >= 'a' & c <= 'f'));
+  return is_digit(c) || (c >= 'A' & c <= 'F') || (c >= 'a' & c <= 'f');
 }
 
 constexpr auto is_octdigit(char c) -> bool
@@ -37,54 +47,142 @@ constexpr auto is_octdigit(char c) -> bool
 
 constexpr auto is_alpha(char c) -> bool
 {
-  return (c >= 'A' & c <= 'Z') | (c >= 'a' & c <= 'z');
+  return (c >= 'A' & c <= 'Z') || (c >= 'a' & c <= 'z');
 }
 
 constexpr auto is_alphanum(char c) -> bool
 {
-  return is_alpha(c) & is_digit(c);
+  return is_alpha(c) || is_digit(c);
+}
+
+auto is_token(const char* begin, const char* end, string_view tok) -> bool
+{
+  return string_view(begin, static_cast<size_t>(std::distance(begin, end))) == tok;
+}
+
+// TODO it deserves an elaborated code.
+struct SourceLocation
+{
+  const char* begin;
+  const char* end;
+
+  constexpr explicit SourceLocation(const char* begin, const char* end) noexcept :
+    begin(begin), end(end)
+  {}
+};
+
+auto find_token_between_whites(const char* begin, const char* end) -> optional<SourceLocation>
+{
+  auto first = std::find_if_not(begin, end, is_white);
+  auto last = std::find_if(first, end, is_white);
+
+  if (first != end)
+  {
+    return SourceLocation(first, last);
+  }
+
+  return nullopt;
 }
 
 enum class TokenType
 {
-  IDENT,
-  PLUS,
-  MINUS,
-  TIMES,
-  DIVIDE,
-  DIGIT,
+  Identifier,
+  Plus,
+  Minus,
+  Times,
+  Divide,
+  Integer,
 };
 
-struct TokenSource
+struct TokenData
 {
   TokenType type;
-  char const* begin;
-  size_t length;
+  string_view data;
 
-  explicit TokenSource() = default;
-  explicit TokenSource(TokenType type, char const* first, char const* last) noexcept :
-    type{type},
-    begin{first},
-    length{static_cast<size_t>(std::distance(first, last))}
+  constexpr explicit TokenData(TokenType type, const char* begin, const char* end) noexcept :
+    type(type),
+    data(begin, static_cast<size_t>(end - begin))
   {}
 };
 
-// Precondition: begin != end
-auto lexer_parse_digit(char const* begin, char const* end) -> std::pair<TokenSource, char const*>
+struct LexerContext
 {
-  Expects(begin != end);
+  std::vector<TokenData> tokens;
 
-  auto it = begin;
-
-  for (; it != end; ++it)
+  void add_token(TokenType type, const char* begin, const char* end)
   {
-    if (!is_digit(*it))
-    {
-      break;
-    }
+    tokens.emplace_back(type, begin, end);
   }
 
-  return std::make_pair(TokenSource(TokenType::DIGIT, begin, it), it);
+  void add_token(TokenType type, const SourceLocation& local)
+  {
+    tokens.emplace_back(type, local.begin, local.end);
+  }
+
+  // TODO
+  template <typename... FormatArgs>
+  void error(const SourceLocation& local, const char* msg, FormatArgs&&... args)
+  {
+    Unreachable();
+  }
+
+  // TODO
+  template <typename... FormatArgs>
+  void error(const char* local, const char* msg, FormatArgs&&... args)
+  {
+    fmt::print(stderr, msg, std::forward<FormatArgs>(args)...);
+  }
+};
+
+auto lexer_parse_integer(LexerContext& lexer, const char* begin, const char* end) -> const char*
+{
+  if (begin == end)
+  {
+    return end;
+  }
+
+  auto is_integer = [] (const char* it, const char* end) -> bool
+  {
+    const bool has_hex_prefix = std::distance(it, end) > 2 && it[0] == '0' && (it[1] == 'x' || it[1] == 'X');
+    
+    // skip 0x
+    if (has_hex_prefix)
+    {
+      it = std::next(it, 2);
+    }
+
+    for (; it != end; ++it)
+    {
+      if (has_hex_prefix? is_hexdigit(*it) : is_digit(*it))
+      {
+        continue;
+      }
+
+      return false;
+    }
+
+    return true;
+  };
+
+  auto is_float = [] (const char* it, const char* end) -> bool
+  {
+    // TODO implement is_float.
+    Unreachable();
+  };
+
+  auto token = find_token_between_whites(begin, end).value();
+
+  if (is_integer(token.begin, token.end))
+  {
+    lexer.add_token(TokenType::Integer, token);
+  }
+  else
+  {
+    // temporary test.
+    lexer.error(token.begin, "invalid token: {}\n", std::string(token.begin, size_t(token.end - token.begin)));
+  }
+
+  return token.end;
 }
 
 namespace test
@@ -92,15 +190,20 @@ namespace test
 
 void test_lexer_parse_digit()
 {
-  string_view input = "213 aa";
+  string_view input = "42 314()";
+  LexerContext lexer{};
 
-  TokenSource token;
-  char const* it;
-  std::tie(token, it) = lexer_parse_digit(input.begin(), input.end());
+  auto it1 = lexer_parse_integer(lexer, input.begin(), input.end());
+  auto it2 = lexer_parse_integer(lexer, it1, input.end());
 
-  assert(token.type == TokenType::DIGIT);
-  assert(string_view(token.begin, token.length) == "213");
-  assert(it == input.begin() + 3);
+  auto token1 = lexer.tokens[0];
+  auto token2 = lexer.tokens[1];
+
+  assert(token1.type == TokenType::Integer);
+  assert(token1.data == "42");
+
+  assert(token2.type == TokenType::Integer);
+  assert(token2.data == "314");
 }
 
 }
