@@ -13,21 +13,69 @@ using std::experimental::string_view;
 
 enum class TokenType
 {
-  Identifier,
+  // Symbols
   Plus,
   Minus,
   Times,
   Divide,
-  Integer,
-  Float,
+  Assign,
+  LeftParen,
+  RightParen,
+  LeftBraces,
+  RightBraces,
+  LeftCurlyBraces,
+  RightCurlyBraces,
+  StringMark,
+  CharMark,
+
+  // Constants
+  IntegerConstant,
+  FloatConstant,
+
+  // Qualified ids
+  Identifier,
+
+  // Reserved names
+  If,
+  Else,
+  For,
+  While,
+  Do,
+
+  // Types
+  IntType,
+  FloatType,
 };
 
-const auto TOKENS_STR = std::vector<std::pair<TokenType, string_view>>
+const auto TOKEN_SYMBOLS = std::vector<std::pair<TokenType, string_view>>
 {
-  {TokenType::Plus, "+"},
-  {TokenType::Minus, "-"},
-  {TokenType::Times, "*"},
-  {TokenType::Divide, "/"},
+  // Operators
+  {TokenType::Plus,             "+"},
+  {TokenType::Minus,            "-"},
+  {TokenType::Times,            "*"},
+  {TokenType::Divide,           "/"},
+  {TokenType::Assign,           "="},
+
+  // Matches
+  {TokenType::LeftParen,        "("},
+  {TokenType::RightParen,       ")"},
+  {TokenType::LeftBraces,       "["},
+  {TokenType::RightBraces,      "]"},
+  {TokenType::LeftCurlyBraces,  "{"},
+  {TokenType::RightCurlyBraces, "}"},
+  {TokenType::StringMark,       "\""},
+  {TokenType::CharMark,         "'"},
+};
+
+const auto TOKEN_RESERVED_NAMES = std::vector<std::pair<TokenType, string_view>>
+{
+  {TokenType::If,        "if"},
+  {TokenType::Else,      "else"},
+  {TokenType::For,       "for"},
+  {TokenType::While,     "while"},
+  {TokenType::Do,        "do"},
+  {TokenType::IntType,   "int"},
+  {TokenType::FloatType, "float"},
 };
 
 
@@ -80,25 +128,14 @@ auto is_token(const char* begin, const char* end, string_view tok) -> bool
   return string_view(begin, static_cast<size_t>(std::distance(begin, end))) == tok;
 }
 
-// TODO it deserves an elaborated code.
-struct SourceLocation
-{
-  const char* begin;
-  const char* end;
-
-  constexpr explicit SourceLocation(const char* begin, const char* end) noexcept :
-    begin(begin), end(end)
-  {}
-};
-
-auto find_token_between_whites(const char* begin, const char* end) -> optional<SourceLocation>
+auto find_token_between_whites(const char* begin, const char* end) -> optional<string_view>
 {
   auto first = std::find_if_not(begin, end, is_white);
   auto last = std::find_if(first, end, is_white);
 
   if (first != end)
   {
-    return SourceLocation(first, last);
+    return string_view(first, static_cast<size_t>(std::distance(first, last)));
   }
 
   return nullopt;
@@ -114,6 +151,11 @@ struct TokenData
     type(type),
     data(begin, static_cast<size_t>(end - begin))
   {}
+
+  constexpr explicit TokenData(TokenType type, string_view source) noexcept :
+    type(type),
+    data(source.begin(), static_cast<size_t>(source.end() - source.begin()))
+  {}
 };
 
 struct LexerContext
@@ -125,14 +167,14 @@ struct LexerContext
     tokens.emplace_back(type, begin, end);
   }
 
-  void add_token(TokenType type, const SourceLocation& local)
+  void add_token(TokenType type, string_view source)
   {
-    tokens.emplace_back(type, local.begin, local.end);
+    tokens.emplace_back(type, source);
   }
 
   // TODO
   template <typename... FormatArgs>
-  void error(const SourceLocation& local, const char* msg, FormatArgs&&... args)
+  void error(string_view local, const char* msg, FormatArgs&&... args)
   {
     Unreachable();
   }
@@ -209,16 +251,16 @@ auto lexer_parse_constant(LexerContext& lexer, const char* begin, const char* en
 
   auto token = find_token_between_whites(begin, end).value();
 
-  if (is_integer(token.begin, token.end))
+  if (is_integer(token.begin(), token.end()))
   {
-    lexer.add_token(TokenType::Integer, token);
+    lexer.add_token(TokenType::IntegerConstant, token);
   }
-  else if (is_float(token.begin, token.end))
+  else if (is_float(token.begin(), token.end()))
   {
-    lexer.add_token(TokenType::Float, token);
+    lexer.add_token(TokenType::FloatConstant, token);
   }
 
-  return token.end;
+  return token.end();
 }
 
 auto lexer_parse_identifier(LexerContext& lexer, const char* begin, const char* end) -> const char*
@@ -252,12 +294,26 @@ auto lexer_parse_identifier(LexerContext& lexer, const char* begin, const char* 
 
   auto token = find_token_between_whites(begin, end).value();
 
-  if (is_identifier(token.begin, token.end))
+  if (is_identifier(token.begin(), token.end()))
   {
-    lexer.add_token(TokenType::Identifier, token);
+    bool is_reserved = false;
+
+    for (const auto& name : TOKEN_RESERVED_NAMES) //< vector<pair<TokenType, string_view>>
+    {
+      if (name.second == token)
+      {
+        lexer.add_token(name.first, token);
+        is_reserved = true;
+      }
+    }
+
+    if (!is_reserved)
+    {
+      lexer.add_token(TokenType::Identifier, token);
+    }
   }
 
-  return token.end;
+  return token.end();
 }
 
 namespace test
@@ -285,55 +341,55 @@ void test_lexer_parse_constant()
 {
   fmt::print(stderr, "Testing lexer_parse_constant ... ");
 
-  // Integers.
+  // IntegerConstants.
   {
     LexerState lexer{"42 0x22fx"};
 
     auto t1 = lexer(lexer_parse_constant);
 
-    assert(t1.type == TokenType::Integer);
+    assert(t1.type == TokenType::IntegerConstant);
     assert(t1.data == "42");
 
     // Should fail
     auto t2 = lexer(lexer_parse_constant);
 
     assert(lexer.context.tokens.size() == 1);
-    assert(t2.type == TokenType::Integer);
+    assert(t2.type == TokenType::IntegerConstant);
     assert(t2.data == "42");
   }
 
-  // Floats.
+  // FloatConstants.
   {
     LexerState lexer{"123.f 0.2 1. (1.f) 0.ff .0f"};
 
     {
       auto t = lexer(lexer_parse_constant);
-      assert(t.type == TokenType::Float);
+      assert(t.type == TokenType::FloatConstant);
       assert(t.data == "123.f");
     }
 
     {
       auto t = lexer(lexer_parse_constant);
-      assert(t.type == TokenType::Float);
+      assert(t.type == TokenType::FloatConstant);
       assert(t.data == "0.2");
     }
 
     {
       auto t = lexer(lexer_parse_constant);
-      assert(t.type == TokenType::Float);
+      assert(t.type == TokenType::FloatConstant);
       assert(t.data == "1.");
     }
 
     {
       auto t = lexer(lexer_parse_constant);
-      assert(t.type == TokenType::Float);
+      assert(t.type == TokenType::FloatConstant);
       assert(t.data == "1.f");
     }
 
     {
       // Should fail; nothing gets pushed into context.
       auto t = lexer(lexer_parse_constant);
-      assert(t.type == TokenType::Float);
+      assert(t.type == TokenType::FloatConstant);
       assert(t.data == "1.f");
 
       // Should also skip ill-formed constant.
@@ -341,7 +397,7 @@ void test_lexer_parse_constant()
 
     {
       auto t= lexer(lexer_parse_constant);
-      assert(t.type == TokenType::Float);
+      assert(t.type == TokenType::FloatConstant);
       assert(t.data == ".0f");
     }
   }
@@ -353,7 +409,7 @@ void test_lexer_parse_identifier()
 {
   fmt::print(stderr, "Testing lexer_parse_identifier ... ");
 
-  LexerState lexer{"abc42() _KeepMoving_Forward 42fail{}success_1"};
+  LexerState lexer{"abc42() _KeepMoving_Forward 42fail{}success_1 if"};
 
   {
     auto t = lexer(lexer_parse_identifier);
@@ -380,6 +436,12 @@ void test_lexer_parse_identifier()
     auto t = lexer(lexer_parse_identifier);
     assert(t.type == TokenType::Identifier);
     assert(t.data == "success_1");
+  }
+
+  {
+    auto t = lexer(lexer_parse_identifier);
+    assert(t.type == TokenType::If);
+    assert(t.data == "if");
   }
 
   fmt::print(stderr, "Success.\n");
