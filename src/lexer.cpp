@@ -67,7 +67,7 @@ constexpr auto is_octdigit(char c) -> bool
 
 constexpr auto is_alpha(char c) -> bool
 {
-  return (c >= 'A' & c <= 'Z') || (c >= 'a' & c <= 'z');
+  return (c >= 'A' & c <= 'Z') || (c >= 'a' & c <= 'z') || c == '_';
 }
 
 constexpr auto is_alphanum(char c) -> bool
@@ -221,75 +221,168 @@ auto lexer_parse_constant(LexerContext& lexer, const char* begin, const char* en
   return token.end;
 }
 
+auto lexer_parse_identifier(LexerContext& lexer, const char* begin, const char* end) -> const char*
+{
+  if (begin == end)
+  {
+    return end;
+  }
+
+  auto is_identifier = [] (const char* it, const char* end) -> bool
+  {
+    if (!is_alpha(it[0]))
+    {
+      // TODO signal message error
+      return false;
+    }
+
+    for (it = std::next(it); it != end; ++it)
+    {
+      if (is_alphanum(*it))
+      {
+        continue;
+      }
+
+      // TODO signal error message.
+      return false;
+    }
+
+    return true;
+  };
+
+  auto token = find_token_between_whites(begin, end).value();
+
+  if (is_identifier(token.begin, token.end))
+  {
+    lexer.add_token(TokenType::Identifier, token);
+  }
+
+  return token.end;
+}
+
 namespace test
 {
 
+struct LexerState
+{
+  string_view input;
+  LexerContext context;
+  const char* it;
+
+  explicit LexerState(string_view input) noexcept :
+    input{input}, context{}, it{input.begin()}
+  {}
+
+  template <typename F>
+  auto operator() (F&& f) noexcept -> const TokenData&
+  {
+    it = std::forward<F>(f)(context, it, input.end());
+    return context.tokens.back();
+  }
+};
+
 void test_lexer_parse_constant()
 {
+  fmt::print(stderr, "Testing lexer_parse_constant ... ");
+
   // Integers.
   {
-    string_view input = "42 314 0x22fx";
-    LexerContext lexer{};
+    LexerState lexer{"42 0x22fx"};
 
-    auto it1 = lexer_parse_constant(lexer, input.begin(), input.end());
-    auto it2 = lexer_parse_constant(lexer, it1, input.end());
-    lexer_parse_constant(lexer, it2, input.end());
+    auto t1 = lexer(lexer_parse_constant);
 
-    auto token1 = lexer.tokens[0];
-    auto token2 = lexer.tokens[1];
+    assert(t1.type == TokenType::Integer);
+    assert(t1.data == "42");
 
-    assert(token1.type == TokenType::Integer);
-    assert(token1.data == "42");
+    // Should fail
+    auto t2 = lexer(lexer_parse_constant);
 
-    assert(token2.type == TokenType::Integer);
-    assert(token2.data == "314");
+    assert(lexer.context.tokens.size() == 1);
+    assert(t2.type == TokenType::Integer);
+    assert(t2.data == "42");
   }
 
   // Floats.
   {
-    string_view input = "123.f 0.2 1. (1.f) 0.ff .0f ";
-    LexerContext lexer{};
+    LexerState lexer{"123.f 0.2 1. (1.f) 0.ff .0f"};
 
-    auto parse = [&] (const char* it)
     {
-      return lexer_parse_constant(lexer, it, input.end());
-    };
+      auto t = lexer(lexer_parse_constant);
+      assert(t.type == TokenType::Float);
+      assert(t.data == "123.f");
+    }
 
-    // 123.f
-    auto it1 = parse(input.begin());
-    
-    // 0.2
-    auto it2 = parse(it1);
+    {
+      auto t = lexer(lexer_parse_constant);
+      assert(t.type == TokenType::Float);
+      assert(t.data == "0.2");
+    }
 
-    // 1.
-    auto it3 = parse(it2);
+    {
+      auto t = lexer(lexer_parse_constant);
+      assert(t.type == TokenType::Float);
+      assert(t.data == "1.");
+    }
 
-    // 1.f
-    auto it4 = parse(it3);
+    {
+      auto t = lexer(lexer_parse_constant);
+      assert(t.type == TokenType::Float);
+      assert(t.data == "1.f");
+    }
 
-    // 0.ff (failure)
-    auto it5 = parse(it4);
+    {
+      // Should fail; nothing gets pushed into context.
+      auto t = lexer(lexer_parse_constant);
+      assert(t.type == TokenType::Float);
+      assert(t.data == "1.f");
 
-    assert(lexer.tokens.size() == 4);
+      // Should also skip ill-formed constant.
+    }
 
-    // .0f
-    parse(it5);
-
-    assert(lexer.tokens[0].type == TokenType::Float);
-    assert(lexer.tokens[0].data == "123.f");
-
-    assert(lexer.tokens[1].type == TokenType::Float);
-    assert(lexer.tokens[1].data == "0.2");
-
-    assert(lexer.tokens[2].type == TokenType::Float);
-    assert(lexer.tokens[2].data == "1.");
-
-    assert(lexer.tokens[3].type == TokenType::Float);
-    assert(lexer.tokens[3].data == "1.f");
-
-    assert(lexer.tokens[4].type == TokenType::Float);
-    assert(lexer.tokens[4].data == ".0f");
+    {
+      auto t= lexer(lexer_parse_constant);
+      assert(t.type == TokenType::Float);
+      assert(t.data == ".0f");
+    }
   }
+
+  fmt::print(stderr, "Success.\n");
+}
+
+void test_lexer_parse_identifier()
+{
+  fmt::print(stderr, "Testing lexer_parse_identifier ... ");
+
+  LexerState lexer{"abc42() _KeepMoving_Forward 42fail{}success_1"};
+
+  {
+    auto t = lexer(lexer_parse_identifier);
+    assert(t.type == TokenType::Identifier);
+    assert(t.data == "abc42");
+  }
+
+  {
+    auto t = lexer(lexer_parse_identifier);
+    assert(t.type == TokenType::Identifier);
+    assert(t.data == "_KeepMoving_Forward");
+  }
+
+  {
+    // Should fail; nothing gets pushed into context.
+    auto t = lexer(lexer_parse_identifier);
+    assert(t.type == TokenType::Identifier);
+    assert(t.data == "_KeepMoving_Forward");
+
+    // Should also skip ill-formed identifier.
+  }
+
+  {
+    auto t = lexer(lexer_parse_identifier);
+    assert(t.type == TokenType::Identifier);
+    assert(t.data == "success_1");
+  }
+
+  fmt::print(stderr, "Success.\n");
 }
 
 }
@@ -297,5 +390,6 @@ void test_lexer_parse_constant()
 int main()
 {
   test::test_lexer_parse_constant();
+  test::test_lexer_parse_identifier();
 }
 
