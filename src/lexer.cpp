@@ -11,6 +11,26 @@
 
 using std::experimental::string_view;
 
+enum class TokenType
+{
+  Identifier,
+  Plus,
+  Minus,
+  Times,
+  Divide,
+  Integer,
+  Float,
+};
+
+const auto TOKENS_STR = std::vector<std::pair<TokenType, string_view>>
+{
+  {TokenType::Plus, "+"},
+  {TokenType::Minus, "-"},
+  {TokenType::Times, "*"},
+  {TokenType::Divide, "/"},
+};
+
+
 // Whites are used to tell apart from different tokens.
 constexpr auto is_white(char c) -> bool
 {
@@ -84,15 +104,6 @@ auto find_token_between_whites(const char* begin, const char* end) -> optional<S
   return nullopt;
 }
 
-enum class TokenType
-{
-  Identifier,
-  Plus,
-  Minus,
-  Times,
-  Divide,
-  Integer,
-};
 
 struct TokenData
 {
@@ -130,11 +141,11 @@ struct LexerContext
   template <typename... FormatArgs>
   void error(const char* local, const char* msg, FormatArgs&&... args)
   {
-    fmt::print(stderr, msg, std::forward<FormatArgs>(args)...);
+    Unreachable();
   }
 };
 
-auto lexer_parse_integer(LexerContext& lexer, const char* begin, const char* end) -> const char*
+auto lexer_parse_constant(LexerContext& lexer, const char* begin, const char* end) -> const char*
 {
   if (begin == end)
   {
@@ -157,6 +168,8 @@ auto lexer_parse_integer(LexerContext& lexer, const char* begin, const char* end
       {
         continue;
       }
+      
+      // TODO signal error message.
 
       return false;
     }
@@ -166,8 +179,32 @@ auto lexer_parse_integer(LexerContext& lexer, const char* begin, const char* end
 
   auto is_float = [] (const char* it, const char* end) -> bool
   {
-    // TODO implement is_float.
-    Unreachable();
+    const auto dot_it = std::find_if(it, end, [] (char c) { return c == '.'; });
+    const auto f_suffix_it = std::find_if(dot_it, end, [] (char c) { return c == 'f' || c == 'F'; });
+
+    if (f_suffix_it != end && std::next(f_suffix_it) != end)
+    {
+      return false;
+    }
+
+    for (; it != end; ++it)
+    {
+      if (it == dot_it || it == f_suffix_it)
+      {
+        continue;
+      }
+
+      if (is_digit(*it))
+      {
+        continue;
+      }
+
+      // TODO signal error message.
+
+      return false;
+    }
+
+    return true;
   };
 
   auto token = find_token_between_whites(begin, end).value();
@@ -176,10 +213,9 @@ auto lexer_parse_integer(LexerContext& lexer, const char* begin, const char* end
   {
     lexer.add_token(TokenType::Integer, token);
   }
-  else
+  else if (is_float(token.begin, token.end))
   {
-    // temporary test.
-    lexer.error(token.begin, "invalid token: {}\n", std::string(token.begin, size_t(token.end - token.begin)));
+    lexer.add_token(TokenType::Float, token);
   }
 
   return token.end;
@@ -188,30 +224,78 @@ auto lexer_parse_integer(LexerContext& lexer, const char* begin, const char* end
 namespace test
 {
 
-void test_lexer_parse_digit()
+void test_lexer_parse_constant()
 {
-  string_view input = "42 314()";
-  LexerContext lexer{};
+  // Integers.
+  {
+    string_view input = "42 314 0x22fx";
+    LexerContext lexer{};
 
-  auto it1 = lexer_parse_integer(lexer, input.begin(), input.end());
-  auto it2 = lexer_parse_integer(lexer, it1, input.end());
+    auto it1 = lexer_parse_constant(lexer, input.begin(), input.end());
+    auto it2 = lexer_parse_constant(lexer, it1, input.end());
+    lexer_parse_constant(lexer, it2, input.end());
 
-  auto token1 = lexer.tokens[0];
-  auto token2 = lexer.tokens[1];
+    auto token1 = lexer.tokens[0];
+    auto token2 = lexer.tokens[1];
 
-  assert(token1.type == TokenType::Integer);
-  assert(token1.data == "42");
+    assert(token1.type == TokenType::Integer);
+    assert(token1.data == "42");
 
-  assert(token2.type == TokenType::Integer);
-  assert(token2.data == "314");
+    assert(token2.type == TokenType::Integer);
+    assert(token2.data == "314");
+  }
+
+  // Floats.
+  {
+    string_view input = "123.f 0.2 1. (1.f) 0.ff .0f ";
+    LexerContext lexer{};
+
+    auto parse = [&] (const char* it)
+    {
+      return lexer_parse_constant(lexer, it, input.end());
+    };
+
+    // 123.f
+    auto it1 = parse(input.begin());
+    
+    // 0.2
+    auto it2 = parse(it1);
+
+    // 1.
+    auto it3 = parse(it2);
+
+    // 1.f
+    auto it4 = parse(it3);
+
+    // 0.ff (failure)
+    auto it5 = parse(it4);
+
+    assert(lexer.tokens.size() == 4);
+
+    // .0f
+    parse(it5);
+
+    assert(lexer.tokens[0].type == TokenType::Float);
+    assert(lexer.tokens[0].data == "123.f");
+
+    assert(lexer.tokens[1].type == TokenType::Float);
+    assert(lexer.tokens[1].data == "0.2");
+
+    assert(lexer.tokens[2].type == TokenType::Float);
+    assert(lexer.tokens[2].data == "1.");
+
+    assert(lexer.tokens[3].type == TokenType::Float);
+    assert(lexer.tokens[3].data == "1.f");
+
+    assert(lexer.tokens[4].type == TokenType::Float);
+    assert(lexer.tokens[4].data == ".0f");
+  }
 }
 
 }
 
 int main()
 {
-  using namespace test;
-
-  test_lexer_parse_digit();
+  test::test_lexer_parse_constant();
 }
 
