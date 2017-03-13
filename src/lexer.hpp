@@ -8,12 +8,47 @@ using std::experimental::string_view;
 
 enum class TokenType
 {
-  // Symbols
+  // Operators
+  Increment,
+  Decrement,
+  RightArrow,
+  Assign,
   Plus,
   Minus,
   Times,
   Divide,
-  Assign,
+  Percent,
+  GreaterThan,
+  LessThan,
+  GreaterEqual,
+  LessEqual,
+  EqualsTo,
+  NotEqualTo,
+  PlusAssign,
+  MinusAssign,
+  TimesAssign,
+  DivideAssign,
+  ModuloAssign,
+
+  // Logical operators
+  LogicalNot,
+  LogicalAnd,
+  LogicalOr,
+
+  // Bitwise operators
+  BitwiseNot,
+  BitwiseAnd,
+  BitwiseOr,
+  BitwiseXor,
+  BitwiseAndAssign,
+  BitwiseOrAssign,
+  BitwiseXorAssign,
+  BitwiseRightShift,
+  BitwiseLeftShift,
+  BitwiseRightShiftAssign,
+  BitwiseLeftShiftAssign,
+
+  // Matches
   LeftParen,
   RightParen,
   LeftBraces,
@@ -22,27 +57,70 @@ enum class TokenType
   RightCurlyBraces,
   StringMark,
   CharMark,
+
+  // Symbols
+  Dot,
   Comma,
   Colon,
   Semicolon,
+  Backslash,
+  QuestionMark,
 
   // Constants
   IntegerConstant,
   FloatConstant,
+  CharConstant,
 
   // Qualified ids
   Identifier,
 
-  // Reserved names
+  // Reserved identifiers
   If,
   Else,
   For,
   While,
   Do,
+  Typedef,
+  Break,
+  Case,
+  Continue,
+  Default,
+  Enum,
+  Extern,
+  Goto,
+  Inline,
+  Register,
+  Restrict,
+  Return,
+  Sizeof,
+  Static,
+  Auto,
+  Struct,
+  Switch,
+  Union,
+  // Alignas,
+  // Alignof,
+  // Atomic,
+  // Bool,
+  // Complex,
+  // Generic,
+  // Imaginary,
+  // Noreturn,
+  // StaticAssert,
+  // ThreadLocal,
 
   // Types
+  CharType,
+  ShortType,
   IntType,
+  LongType,
   FloatType,
+  DoubleType,
+  VoidType,
+  Signed,
+  Unsigned,
+  Volatile,
+  Const,
 };
 
 struct TokenData

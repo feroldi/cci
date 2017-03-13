@@ -11,14 +11,45 @@
 namespace
 {
 
-const auto TOKEN_SYMBOLS = std::vector<std::pair<TokenType, string_view>>
+constexpr const std::pair<TokenType, string_view> TOKEN_SYMBOLS[] = 
 {
   // Operators
+  {TokenType::Increment,        "++"},
+  {TokenType::Decrement,        "--"},
+  {TokenType::RightArrow,       "->"},
+  {TokenType::Assign,           "="},
   {TokenType::Plus,             "+"},
   {TokenType::Minus,            "-"},
   {TokenType::Times,            "*"},
   {TokenType::Divide,           "/"},
-  {TokenType::Assign,           "="},
+  {TokenType::Percent,          "%"},
+  {TokenType::PlusAssign,       "+="},
+  {TokenType::MinusAssign,      "-="},
+  {TokenType::TimesAssign,      "*="},
+  {TokenType::DivideAssign,     "/="},
+  {TokenType::ModuloAssign,     "%="},
+  {TokenType::GreaterThan,      ">"},
+  {TokenType::LessThan,         "<"},
+  {TokenType::GreaterEqual,     ">="},
+  {TokenType::LessEqual,        "<="},
+  {TokenType::EqualsTo,         "=="},
+  {TokenType::NotEqualTo,       "!="},
+  {TokenType::LogicalNot,       "!"},
+  {TokenType::LogicalAnd,       "&&"},
+  {TokenType::LogicalOr,        "||"},
+
+  // Bitwise operators
+  {TokenType::BitwiseNot,              "~"},
+  {TokenType::BitwiseAnd,              "&"},
+  {TokenType::BitwiseOr,               "|"},
+  {TokenType::BitwiseXor,              "^"},
+  {TokenType::BitwiseAndAssign,        "&="},
+  {TokenType::BitwiseOrAssign,         "|="},
+  {TokenType::BitwiseXorAssign,        "^="},
+  {TokenType::BitwiseRightShift,       ">>"},
+  {TokenType::BitwiseLeftShift,        "<<"},
+  {TokenType::BitwiseRightShiftAssign, ">>="},
+  {TokenType::BitwiseLeftShiftAssign,  "<<="},
 
   // Matches
   {TokenType::LeftParen,        "("},
@@ -29,20 +60,53 @@ const auto TOKEN_SYMBOLS = std::vector<std::pair<TokenType, string_view>>
   {TokenType::RightCurlyBraces, "}"},
   {TokenType::StringMark,       "\""},
   {TokenType::CharMark,         "'"},
+  {TokenType::Dot,              "."},
   {TokenType::Comma,            ","},
   {TokenType::Colon,            ":"},
   {TokenType::Semicolon,        ";"},
+  {TokenType::Backslash,        "\\"},
+  {TokenType::QuestionMark,     "?"},
 };
 
-const auto TOKEN_RESERVED_NAMES = std::vector<std::pair<TokenType, string_view>>
+constexpr const std::pair<TokenType, string_view> TOKEN_RESERVED_NAMES[] =
 {
-  {TokenType::If,        "if"},
-  {TokenType::Else,      "else"},
-  {TokenType::For,       "for"},
-  {TokenType::While,     "while"},
-  {TokenType::Do,        "do"},
-  {TokenType::IntType,   "int"},
-  {TokenType::FloatType, "float"},
+  // Common keywords.
+  {TokenType::If,             "if"},
+  {TokenType::Else,           "else"},
+  {TokenType::For,            "for"},
+  {TokenType::While,          "while"},
+  {TokenType::Do,             "do"},
+  {TokenType::Typedef,        "typedef"},
+  {TokenType::Break,          "break"},
+  {TokenType::Case,           "case"},
+  {TokenType::Continue,       "continue"},
+  {TokenType::Default,        "default"},
+  {TokenType::Enum,           "enum"},
+  {TokenType::Extern,         "extern"},
+  {TokenType::Goto,           "goto"},
+  {TokenType::Inline,         "inline"},
+  {TokenType::Register,       "register"},
+  {TokenType::Restrict,       "restrict"},
+  {TokenType::Return,         "return"},
+  {TokenType::Sizeof,         "sizeof"},
+  {TokenType::Static,         "static"},
+  {TokenType::Auto,           "auto"},
+  {TokenType::Struct,         "struct"},
+  {TokenType::Switch,         "switch"},
+  {TokenType::Union,          "union"},
+
+  // Types.
+  {TokenType::CharType,       "char"},
+  {TokenType::ShortType,      "short"},
+  {TokenType::IntType,        "int"},
+  {TokenType::LongType,       "long"},
+  {TokenType::FloatType,      "float"},
+  {TokenType::DoubleType,     "double"},
+  {TokenType::VoidType,       "void"},
+  {TokenType::Signed,         "signed"},
+  {TokenType::Unsigned,       "unsigned"},
+  {TokenType::Volatile,       "volatile"},
+  {TokenType::Const,          "const"},
 };
 
 // Whites are used to tell apart from different tokens.
@@ -107,7 +171,6 @@ auto find_token_between_whites(const char* begin, const char* end) -> optional<s
 
   return nullopt;
 }
-
 
 struct LexerContext
 {
@@ -249,7 +312,7 @@ auto lexer_parse_identifier(LexerContext& lexer, const char* begin, const char* 
   {
     bool is_reserved = false;
 
-    for (const auto& name : TOKEN_RESERVED_NAMES) //< vector<pair<TokenType, string_view>>
+    for (const auto& name : TOKEN_RESERVED_NAMES) //< pair<TokenType, string_view>[]
     {
       if (name.second == token)
       {
