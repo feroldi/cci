@@ -64,7 +64,6 @@ constexpr const std::pair<TokenType, string_view> TOKEN_SYMBOLS[] =
   {TokenType::Comma,            ","},
   {TokenType::Colon,            ":"},
   {TokenType::Semicolon,        ";"},
-  {TokenType::Backslash,        "\\"},
   {TokenType::QuestionMark,     "?"},
 };
 
@@ -109,19 +108,42 @@ constexpr const std::pair<TokenType, string_view> TOKEN_RESERVED_NAMES[] =
   {TokenType::Const,          "const"},
 };
 
+constexpr auto is_special(char c) -> bool
+{
+  return c == '='  ||
+         c == '+'  ||
+         c == '-'  ||
+         c == '*'  ||
+         c == '/'  ||
+         c == '%'  ||
+         c == '>'  ||
+         c == '<'  ||
+         c == '!'  ||
+         c == '&'  ||
+         c == '|'  ||
+         c == '~'  ||
+         c == '^'  ||
+         c == '('  ||
+         c == ')'  ||
+         c == '['  ||
+         c == ']'  ||
+         c == '{'  ||
+         c == '}'  ||
+         c == '"'  ||
+         c == '\'' ||
+         c == '.'  ||
+         c == ','  ||
+         c == ':'  ||
+         c == ';'  ||
+         c == '?';
+}
+
 // Whites are used to tell apart from different tokens.
 constexpr auto is_white(char c) -> bool
 {
   return c == ' '  ||
          c == '\t' ||
-         c == '('  ||
-         c == ')'  ||
-         c == '{'  ||
-         c == '}'  ||
-         c == ','  ||
-         c == ':'  ||
-         c == '?'  ||
-         c == ';';
+         is_special(c);
 }
 
 constexpr auto is_space(char c) -> bool
@@ -159,7 +181,7 @@ auto is_token(const char* begin, const char* end, string_view tok) -> bool
   return string_view(begin, static_cast<size_t>(std::distance(begin, end))) == tok;
 }
 
-auto find_token_between_whites(const char* begin, const char* end) -> optional<string_view>
+auto find_next_token(const char* begin, const char* end) -> optional<string_view>
 {
   auto first = std::find_if_not(begin, end, is_white);
   auto last = std::find_if(first, end, is_white);
@@ -200,6 +222,100 @@ struct LexerContext
     Unreachable();
   }
 };
+
+// TODO parse escape characters.
+auto lexer_parse_char_literal(LexerContext& lexer, const char* begin, const char* end) -> const char*
+{
+  if (begin == end)
+  {
+    return end;
+  }
+
+  const string_view token = [&]
+  {
+    auto first = std::find_if(it, end, [] (char c) { return c == '\''; });
+    auto last = std::find_if(std::next(first), end, [] (char c) { return c == '\''; });
+
+    assert(first != last);
+
+    return string_view(first, static_cast<size_t>(std::distance(first, last)));
+  }();
+
+  if (token.end() == end)
+  {
+    // TODO signal error /missing terminating ' character.
+    return std::find_if(token.begin(), end, is_white);
+  }
+
+  if (token.size() == 2)
+  {
+    // TODO signal error /char literal is empty.
+    return token.end();
+  }
+
+  const size_t char_size_in_bytes = [&]
+  {
+    size_t count{};
+
+    for (const auto& c : token)
+    {
+      if (c == '\'' || c == '\\')
+      {
+        continue;
+      }
+
+      ++count;
+    }
+
+    return count;
+  }();
+
+  // FIXME generate warnings only when pedantic errors are enabled.
+  if (char_size_in_bytes > 1)
+  {
+    // TODO signal warning /multibyte character literal.
+    assert(true);
+  }
+
+  lexer.add_token(TokenType::CharConstant, token);
+
+  return token.end();
+}
+
+// TODO parse escape characters.
+auto lexer_parse_string_literal(LexerContext& lexer, const char* begin, const char* end) -> const char*
+{
+  if (begin == end)
+  {
+    return end;
+  }
+
+  const string_view token = [&]
+  {
+    auto first = std::find_if(it, end, [] (char c) { return c == '"'; });
+    auto last = std::find_if(std::next(first), end, [] (char c) { return c == '"'; });
+
+    assert(first != last);
+
+    return string_view(first, static_cast<size_t>(std::distance(first, last)));
+  }();
+
+  if (token.end() == end)
+  {
+    // TODO signal error /missing terminating " string literal.
+    return std::find_if(token.begin(), end, is_white);
+  }
+
+  if (token.size() == 2)
+  {
+    // TODO signal error /string literal is empty.
+    return token.end();
+  }
+
+  lexer.add_token(TokenType::StringConstant, token);
+
+  return token.end();
+}
 
 auto lexer_parse_constant(LexerContext& lexer, const char* begin, const char* end) -> const char*
 {
@@ -263,7 +379,17 @@ auto lexer_parse_constant(LexerContext& lexer, const char* begin, const char* en
     return true;
   };
 
-  auto token = find_token_between_whites(begin, end).value();
+  auto token = find_next_token(begin, end).value();
+
+  if (token[0] == '\'')
+  {
+    return lexer_parse_char_literal(lexer, begin, end);
+  }
+
+  if (token[0] == '"')
+  {
+    return lexer_parse_string_literal(lexer, begin, end);
+  }
 
   if (is_integer(token.begin(), token.end()))
   {
@@ -306,7 +432,7 @@ auto lexer_parse_identifier(LexerContext& lexer, const char* begin, const char* 
     return true;
   };
 
-  auto token = find_token_between_whites(begin, end).value();
+  auto token = find_next_token(begin, end).value();
 
   if (is_identifier(token.begin(), token.end()))
   {

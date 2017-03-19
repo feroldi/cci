@@ -63,13 +63,13 @@ enum class TokenType
   Comma,
   Colon,
   Semicolon,
-  Backslash,
   QuestionMark,
 
   // Constants
+  CharConstant,
   IntegerConstant,
   FloatConstant,
-  CharConstant,
+  StringConstant,
 
   // Qualified ids
   Identifier,
