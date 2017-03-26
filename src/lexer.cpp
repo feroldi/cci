@@ -11,7 +11,7 @@
 namespace
 {
 
-constexpr const std::pair<TokenType, string_view> TOKEN_SYMBOLS[] = 
+static const std::pair<TokenType, string_view> TOKEN_SYMBOLS[] = 
 {
   // Operators
   {TokenType::Increment,        "++"},
@@ -67,7 +67,7 @@ constexpr const std::pair<TokenType, string_view> TOKEN_SYMBOLS[] =
   {TokenType::QuestionMark,     "?"},
 };
 
-constexpr const std::pair<TokenType, string_view> TOKEN_RESERVED_NAMES[] =
+static const std::pair<TokenType, string_view> TOKEN_RESERVED_NAMES[] =
 {
   // Common keywords.
   {TokenType::If,             "if"},
@@ -129,26 +129,24 @@ constexpr auto is_special(char c) -> bool
          c == ']'  ||
          c == '{'  ||
          c == '}'  ||
-         c == '"'  ||
-         c == '\'' ||
-         c == '.'  ||
+         //c == '.'  ||
+         //c == '"'  ||
+         //c == '\'' ||
          c == ','  ||
          c == ':'  ||
          c == ';'  ||
          c == '?';
 }
 
-// Whites are used to tell apart from different tokens.
-constexpr auto is_white(char c) -> bool
-{
-  return c == ' '  ||
-         c == '\t' ||
-         is_special(c);
-}
-
 constexpr auto is_space(char c) -> bool
 {
   return c == ' ' || c == '\t';
+}
+
+// Whites are used to tell apart from different tokens.
+constexpr auto is_white(char c) -> bool
+{
+  return is_space(c) || is_special(c);
 }
 
 constexpr auto is_digit(char c) -> bool
@@ -176,15 +174,21 @@ constexpr auto is_alphanum(char c) -> bool
   return is_alpha(c) || is_digit(c);
 }
 
+constexpr auto is_constant(char c) -> bool
+{
+  return is_digit(c) || c == '\'' || c == '"';
+}
+
 auto is_token(const char* begin, const char* end, string_view tok) -> bool
 {
   return string_view(begin, static_cast<size_t>(std::distance(begin, end))) == tok;
 }
 
-auto find_next_token(const char* begin, const char* end) -> optional<string_view>
+template <typename Predicate>
+auto find_next_token(const char* begin, const char* end, const Predicate& pred) -> optional<string_view>
 {
-  auto first = std::find_if_not(begin, end, is_white);
-  auto last = std::find_if(first, end, is_white);
+  auto first = std::find_if(begin, end, pred);
+  auto last = std::find_if_not(first, end, pred);
 
   if (first != end)
   {
@@ -192,6 +196,11 @@ auto find_next_token(const char* begin, const char* end) -> optional<string_view
   }
 
   return nullopt;
+}
+
+auto find_next_token(const char* begin, const char* end) -> optional<string_view>
+{
+  return find_next_token(begin, end, [] (char c) noexcept { return !is_white(c); });
 }
 
 struct LexerContext
@@ -233,23 +242,24 @@ auto lexer_parse_char_literal(LexerContext& lexer, const char* begin, const char
 
   const string_view token = [&]
   {
-    auto first = std::find_if(it, end, [] (char c) { return c == '\''; });
+    auto first = std::find_if(begin, end, [] (char c) { return c == '\''; });
+
+    assert(first != end);
+
     auto last = std::find_if(std::next(first), end, [] (char c) { return c == '\''; });
 
-    assert(first != last);
-
-    return string_view(first, static_cast<size_t>(std::distance(first, last)));
+    return string_view(first, static_cast<size_t>(std::distance(first, std::next(last))));
   }();
 
   if (token.end() == end)
   {
-    // TODO signal error /missing terminating ' character.
+    // TODO report error /missing terminating ' character.
     return std::find_if(token.begin(), end, is_white);
   }
 
   if (token.size() == 2)
   {
-    // TODO signal error /char literal is empty.
+    // TODO report error /char literal is empty.
     return token.end();
   }
 
@@ -257,9 +267,9 @@ auto lexer_parse_char_literal(LexerContext& lexer, const char* begin, const char
   {
     size_t count{};
 
-    for (const auto& c : token)
+    for (const auto& c : token.substr(1, token.size() - 1))
     {
-      if (c == '\'' || c == '\\')
+      if (c == '\\')
       {
         continue;
       }
@@ -270,10 +280,10 @@ auto lexer_parse_char_literal(LexerContext& lexer, const char* begin, const char
     return count;
   }();
 
-  // FIXME generate warnings only when pedantic errors are enabled.
+  // TODO generate warnings only when pedantic errors are enabled.
   if (char_size_in_bytes > 1)
   {
-    // TODO signal warning /multibyte character literal.
+    // TODO report warning /multibyte character literal.
     assert(true);
   }
 
@@ -292,23 +302,24 @@ auto lexer_parse_string_literal(LexerContext& lexer, const char* begin, const ch
 
   const string_view token = [&]
   {
-    auto first = std::find_if(it, end, [] (char c) { return c == '"'; });
+    auto first = std::find_if(begin, end, [] (char c) { return c == '"'; });
+
+    assert(first != end);
+
     auto last = std::find_if(std::next(first), end, [] (char c) { return c == '"'; });
 
-    assert(first != last);
-
-    return string_view(first, static_cast<size_t>(std::distance(first, last)));
+    return string_view(first, static_cast<size_t>(std::distance(first, std::next(last))));
   }();
 
   if (token.end() == end)
   {
-    // TODO signal error /missing terminating " string literal.
+    // TODO report error /missing terminating " string literal.
     return std::find_if(token.begin(), end, is_white);
   }
 
   if (token.size() == 2)
   {
-    // TODO signal error /string literal is empty.
+    // TODO report error /string literal is empty.
     return token.end();
   }
 
@@ -340,8 +351,14 @@ auto lexer_parse_constant(LexerContext& lexer, const char* begin, const char* en
       {
         continue;
       }
+
+      // It might be a float constant, so stop and don't report anything.
+      if (*it == '.')
+      {
+        return false;
+      }
       
-      // TODO signal error message.
+      // TODO report error message.
 
       return false;
     }
@@ -371,7 +388,7 @@ auto lexer_parse_constant(LexerContext& lexer, const char* begin, const char* en
         continue;
       }
 
-      // TODO signal error message.
+      // TODO report error message.
 
       return false;
     }
@@ -414,7 +431,7 @@ auto lexer_parse_identifier(LexerContext& lexer, const char* begin, const char* 
   {
     if (!is_alpha(it[0]))
     {
-      // TODO signal message error
+      // TODO report message error
       return false;
     }
 
@@ -425,24 +442,28 @@ auto lexer_parse_identifier(LexerContext& lexer, const char* begin, const char* 
         continue;
       }
 
-      // TODO signal error message.
+      // TODO report error message.
       return false;
     }
 
     return true;
   };
 
-  auto token = find_next_token(begin, end).value();
+  auto token = find_next_token(begin, end, is_alphanum).value();
 
   if (is_identifier(token.begin(), token.end()))
   {
     bool is_reserved = false;
 
+    // TODO for (const auto& [name_token, name_str] : TOKEN_RESERVED_NAMES)
     for (const auto& name : TOKEN_RESERVED_NAMES) //< pair<TokenType, string_view>[]
     {
-      if (name.second == token)
+      const auto name_token = name.first;
+      const auto name_str = name.second;
+
+      if (token == name_str)
       {
-        lexer.add_token(name.first, token);
+        lexer.add_token(name_token, token);
         is_reserved = true;
       }
     }
@@ -456,11 +477,35 @@ auto lexer_parse_identifier(LexerContext& lexer, const char* begin, const char* 
   return token.end();
 }
 
-
 } // namespace
 
-auto lexer_parse(const std::string& data) -> std::vector<TokenData>
+auto lexer_tokenize_text(string_view text) -> std::vector<TokenData>
 {
-  return {};
+  auto lexer = LexerContext{};
+  auto it = text.begin();
+  const auto end = text.end();
+
+  while (it != end)
+  {
+    if (is_constant(*it))
+    {
+      it = lexer_parse_constant(lexer, it, end);
+    }
+    else if (is_alphanum(*it))
+    {
+      it = lexer_parse_identifier(lexer, it, end);
+    }
+    else if (auto opt_token = find_next_token(it, end); opt_token.has_value())
+    {
+      it = opt_token->begin();
+    }
+    else
+    {
+      // TODO Unknown token.
+      break;
+    }
+  }
+
+  return lexer.tokens;
 }
 

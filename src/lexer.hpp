@@ -139,6 +139,6 @@ struct TokenData
   {}
 };
 
-auto lexer_parse(const std::string& data) -> std::vector<TokenData>;
+auto lexer_tokenize_text(string_view text) -> std::vector<TokenData>;
 
 
