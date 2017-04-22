@@ -123,19 +123,27 @@ enum class TokenType
   Const,
 };
 
+using LexerIterator = const char*;
+
+struct SourceLocation
+{
+  LexerIterator begin;
+  LexerIterator end;
+
+  operator string_view() const
+  {
+    return string_view{begin, static_cast<size_t>(std::distance(begin, end))};
+  }
+};
+
 struct TokenData
 {
   TokenType type;
-  string_view data;
+  SourceLocation data;
 
-  constexpr explicit TokenData(TokenType type, const char* begin, const char* end) noexcept :
-    type(type),
-    data(begin, static_cast<size_t>(end - begin))
-  {}
-
-  constexpr explicit TokenData(TokenType type, string_view source) noexcept :
-    type(type),
-    data(source.begin(), static_cast<size_t>(source.end() - source.begin()))
+  explicit TokenData(TokenType type, SourceLocation source) noexcept :
+    type{type},
+    data{source}
   {}
 };
 
