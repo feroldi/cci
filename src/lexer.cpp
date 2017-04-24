@@ -1,3 +1,4 @@
+#include <cstdio>
 #include <string>
 #include <tuple>
 #include <algorithm>
@@ -235,8 +236,11 @@ auto lexer_parse_char_literal(LexerContext& lexer, LexerIterator begin, LexerIte
     return end;
   });
 
-  // TODO emit error message missing matching char symbol.
-  assert(match_it != end);
+  if (match_it == end && !is_char_literal_match(*std::prev(match_it)))
+  {
+    // TODO emit error message missing matching char symbol.
+    assert(false);
+  }
 
   const auto token = SourceLocation{begin, match_it};
 
@@ -279,8 +283,11 @@ auto lexer_parse_string_literal(LexerContext& lexer, LexerIterator begin, LexerI
     return end;
   });
 
-  // TODO emit error message missing matching string literal symbol.
-  assert(match_it != end);
+  if (match_it == end && !is_string_literal_match(*std::prev(match_it)))
+  {
+    // TODO emit error message missing matching string literal symbol.
+    assert(false);
+  }
 
   const auto token = SourceLocation{begin, match_it};
   lexer.add_token(TokenType::StringConstant, token);
@@ -293,16 +300,10 @@ auto lexer_parse_operator(LexerContext& lexer, LexerIterator begin, LexerIterato
   Expects(is_operator(begin[0]));
 
   auto it = std::find_if_not(begin, end, is_operator);
-
-  if (it == end)
-  {
-    // TODO emit error.
-    return end;
-  }
-
   auto token = SourceLocation{begin, it};
   auto best_match = optional<std::pair<TokenType, string_view>>{};
 
+  // Find the longest symbol that matches a token.
   for (const auto& [type, str] : TOKEN_SYMBOLS)
   {
     if (string_view(token).substr(0, str.size()) == str)
@@ -332,11 +333,6 @@ auto lexer_parse_integer(LexerContext& lexer, LexerIterator begin, LexerIterator
   const auto it = has_hex_prefix ?
     std::find_if_not(std::next(begin, 2), end, is_hexdigit) :
     std::find_if_not(begin, end, is_digit);
-
-  if (it == end)
-  {
-    return end;
-  }
 
   if (is_alpha(*it))
   {
@@ -455,8 +451,6 @@ auto lexer_tokenize_text(string_view text) -> std::vector<TokenData>
 
   while (it != end)
   {
-    it = std::find_if_not(it, end, is_space);
-
     if (is_char_literal_match(*it) || is_string_literal_match(*it) || is_digit(*it))
     {
       it = lexer_parse_constant(context, it, end);
@@ -471,8 +465,11 @@ auto lexer_tokenize_text(string_view text) -> std::vector<TokenData>
     }
     else
     {
-      break;
+      // TODO emit unknown symbol.
+      ++it;
     }
+
+    it = std::find_if_not(it, end, is_space);
   }
 
   return context.tokens;

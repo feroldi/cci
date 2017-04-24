@@ -4,6 +4,7 @@
 #include <cstdint>
 #include <string>
 #include <experimental/string_view>
+#include <fmt/format.h>
 
 using std::experimental::string_view;
 
@@ -13,9 +14,9 @@ class Program
   std::uint64_t warns_count{0};
   std::FILE* log;
 
-  void output_msg(std::string const& msg)
+  void output_message(const std::string& msg)
   {
-    std::fprintf(log, "%s\n", msg.c_str());
+    fmt::print(log, "{}\n", msg);
   }
 
 public:
