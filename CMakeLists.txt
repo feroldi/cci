@@ -1,29 +1,29 @@
 cmake_minimum_required(VERSION 3.7)
+
 project(ccompiler)
 
-set(CMAKE_CXX_COMPILER             "/usr/bin/clang++")
 set(CMAKE_CXX_FLAGS_DEBUG          "-g")
 set(CMAKE_CXX_FLAGS_MINSIZEREL     "-Os -DNDEBUG")
-set(CMAKE_CXX_FLAGS_RELEASE        "-O4 -DNDEBUG")
+set(CMAKE_CXX_FLAGS_RELEASE        "-O3 -DNDEBUG")
 set(CMAKE_CXX_FLAGS_RELWITHDEBINFO "-O2 -g")
 
-add_executable(ccompiler src/main.cpp)
+add_executable(${PROJECT_NAME} src/main.cpp)
 
-target_sources(ccompiler
+target_sources(${PROJECT_NAME}
   PRIVATE
     src/lexer.cpp
   PUBLIC
     src/lexer.hpp
 )
 
-target_link_libraries(ccompiler
+target_link_libraries(${PROJECT_NAME}
   PUBLIC
     c++
     c++abi
 )
 
-target_compile_options(ccompiler
+target_compile_options(${PROJECT_NAME}
   PUBLIC
-    -std=c++1z -Wall -Wextra -pedantic-errors -Wno-c++98-compat
+    -std=c++1z -stdlib=libc++ -Wall -Wextra -pedantic-errors -Wno-c++98-compat
 )
 
