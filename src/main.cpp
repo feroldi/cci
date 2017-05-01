@@ -6,11 +6,15 @@
 
 int main(int argc, char** argv)
 {
-  auto tokens = lexer_tokenize_text(argv[1]);
+  TextStream stream(argv[1]);
+  fmt::print("{}\n", stream.text);
 
-  for (auto token : tokens)
+  auto tokens = lexer_tokenize_text(stream.text);
+
+  for (const auto& token : tokens)
   {
-    fmt::print("{}\n", std::string(string_view(token.data)));
+    auto [lineno, colno] = stream.linecol_from_source_location(token.data);
+    fmt::print("{}:{}:\t{}\n", lineno, colno, std::string(string_view(token.data)));
   }
 }
 
