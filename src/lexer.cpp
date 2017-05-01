@@ -138,11 +138,6 @@ constexpr auto is_operator(char c) -> bool
          c == '?';
 }
 
-constexpr auto is_special(char c) -> bool
-{
-  return is_operator(c)  || c == '"'  || c == '\'';
-}
-
 constexpr auto is_newline(char c) -> bool
 {
   return c == '\n' || c == '\r';
@@ -151,12 +146,6 @@ constexpr auto is_newline(char c) -> bool
 constexpr auto is_space(char c) -> bool
 {
   return c == ' ' || c == '\t' || is_newline(c);
-}
-
-// Whites are used to tell apart from different tokens.
-constexpr auto is_white(char c) -> bool
-{
-  return is_space(c) || is_special(c);
 }
 
 constexpr auto is_char_literal_match(char c) -> bool
@@ -193,8 +182,6 @@ constexpr auto is_alphanum(char c) -> bool
 {
   return is_alpha(c) || is_digit(c);
 }
-
-////////////////
 
 struct LexerContext
 {
@@ -328,15 +315,56 @@ auto lexer_parse_integer(LexerContext& lexer, LexerIterator begin, LexerIterator
 {
   Expects(is_digit(begin[0]));
 
-  const bool has_hex_prefix = std::distance(begin, end) > 2 && begin[0] == '0' && (begin[1] == 'x' || begin[1] == 'X');
-  const auto it = has_hex_prefix ?
-    std::find_if_not(std::next(begin, 2), end, is_hexdigit) :
-    std::find_if_not(begin, end, is_digit);
+  enum class IntegerBase
+  {
+    Decimal,
+    Octal,
+    Hexadecimal,
+  };
 
-  if (is_alpha(*it))
+  const auto base = [&] {
+    if (std::distance(begin, end) > 2 && begin[0] == '0')
+    {
+      if (begin[1] == 'x' || begin[1] == 'X')
+      {
+        return IntegerBase::Hexadecimal;
+      }
+
+      return IntegerBase::Octal;
+    }
+
+    return IntegerBase::Decimal;
+  }();
+
+  auto it = [&] {
+    switch (base)
+    {
+      case IntegerBase::Decimal:
+        return std::find_if_not(begin, end, is_digit);
+
+      case IntegerBase::Octal:
+        return std::find_if_not(std::next(begin), end, is_octdigit);
+
+      case IntegerBase::Hexadecimal:
+        return std::find_if_not(std::next(begin, 2), end, is_hexdigit);
+
+      default:
+        Unreachable();
+    }
+  }();
+
+  if (base == IntegerBase::Octal)
+  {
+    if (is_alphanum(*it))
+    {
+      // TODO error message invalid octal digit.
+      assert(false && "invalid octal digit");
+    }
+  }
+  else if (is_alpha(*it))
   {
     // TODO emit error message invalid digit.
-    assert(false);
+    assert(false && "invalid digit");
   }
 
   const auto token = SourceLocation{begin, it};
@@ -442,7 +470,7 @@ auto lexer_parse_identifier(LexerContext& lexer, LexerIterator begin, LexerItera
 
 // Doesn't generate tokens, only returns an iterator past the comment.
 // There is a desire to convert them to tokens for documentation parsing though.
-auto lexer_parse_comments(LexerContext& lexer, LexerIterator begin, LexerIterator end) -> LexerIterator
+auto lexer_parse_comments(LexerContext& /*lexer*/, LexerIterator begin, LexerIterator end) -> LexerIterator
 {
   Expects(begin[0] == '/' && (begin[1] == '/' || begin[1] == '*'));
 
