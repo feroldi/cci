@@ -440,6 +440,43 @@ auto lexer_parse_identifier(LexerContext& lexer, LexerIterator begin, LexerItera
   return token.end;
 }
 
+// Doesn't generate tokens, only returns an iterator past the comment.
+// There is a desire to convert them to tokens for documentation parsing though.
+auto lexer_parse_comments(LexerContext& lexer, LexerIterator begin, LexerIterator end) -> LexerIterator
+{
+  Expects(begin[0] == '/' && (begin[1] == '/' || begin[1] == '*'));
+
+  if (begin[1] == '/')
+  {
+    auto it = std::find_if(std::next(begin, 2), end, is_newline);
+
+    if (it != end)
+    {
+      return std::next(it);
+    }
+    else
+    {
+      // TODO error message line comments need to end with a new line
+      assert(false && "line comments need to end with a new line");
+    }
+  }
+  else if (begin[1] == '*')
+  {
+    for (auto it = std::next(begin, 2); it != end; ++it)
+    {
+      if (*it == '*' && std::next(it) != end && *std::next(it) == '/')
+      {
+        return std::next(it, 2);
+      }
+    }
+
+    // TODO error message missing matching */ block-comment end
+    assert(false && "missing matching '*/' block-comment end");
+  }
+
+  Unreachable();
+}
+
 } // namespace
 
 auto lexer_tokenize_text(string_view text) -> std::vector<TokenData>
@@ -450,7 +487,11 @@ auto lexer_tokenize_text(string_view text) -> std::vector<TokenData>
 
   while (it != end)
   {
-    if (is_char_literal_match(*it) || is_string_literal_match(*it) || is_digit(*it))
+    if (*it == '/' && std::next(it) != end && (*std::next(it) == '/' || *std::next(it) == '*'))
+    {
+      it = lexer_parse_comments(context, it, end);
+    }
+    else if (is_char_literal_match(*it) || is_string_literal_match(*it) || is_digit(*it))
     {
       it = lexer_parse_constant(context, it, end);
     }
