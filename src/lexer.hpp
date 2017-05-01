@@ -2,9 +2,7 @@
 
 #include <cstddef>
 #include <vector>
-#include <experimental/string_view>
-
-using std::experimental::string_view;
+#include "cpp/string_view.hpp"
 
 enum class TokenType
 {
@@ -130,10 +128,33 @@ struct SourceLocation
   LexerIterator begin;
   LexerIterator end;
 
+  explicit SourceLocation() = default;
+  explicit SourceLocation(LexerIterator begin, LexerIterator end) noexcept :
+    begin(begin), end(end)
+  {}
+
   operator string_view() const
   {
     return string_view{begin, static_cast<size_t>(std::distance(begin, end))};
   }
+};
+
+struct LineCol
+{
+  size_t lineno;
+  size_t colno;
+};
+
+struct TextStream
+{
+  std::string filename;
+  std::string text;
+  std::vector<SourceLocation> line_offsets;
+
+  explicit TextStream(string_view filename);
+
+  void calculate_line_offsets();
+  auto linecol_from_source_location(const SourceLocation&) const -> LineCol;
 };
 
 struct TokenData

@@ -1,4 +1,5 @@
 #include <cstdio>
+#include <cstdlib>
 #include <string>
 #include <tuple>
 #include <algorithm>
@@ -6,6 +7,7 @@
 #include <cassert>
 #include "cpp/contracts.hpp"
 #include "cpp/optional.hpp"
+#include "utils/stream.hpp"
 #include "lexer.hpp"
 
 namespace
@@ -141,9 +143,14 @@ constexpr auto is_special(char c) -> bool
   return is_operator(c)  || c == '"'  || c == '\'';
 }
 
+constexpr auto is_newline(char c) -> bool
+{
+  return c == '\n' || c == '\r';
+}
+
 constexpr auto is_space(char c) -> bool
 {
-  return c == ' ' || c == '\t' || c == '\n' || c == '\r';
+  return c == ' ' || c == '\t' || is_newline(c);
 }
 
 // Whites are used to tell apart from different tokens.
@@ -187,15 +194,7 @@ constexpr auto is_alphanum(char c) -> bool
   return is_alpha(c) || is_digit(c);
 }
 
-auto is_token(SourceLocation source, string_view tok) -> bool
-{
-  return string_view(source) == tok;
-}
-
-auto is_token(LexerIterator begin, LexerIterator end, string_view tok) -> bool
-{
-  return is_token(SourceLocation{begin, end}, tok);
-}
+////////////////
 
 struct LexerContext
 {
@@ -473,5 +472,60 @@ auto lexer_tokenize_text(string_view text) -> std::vector<TokenData>
   }
 
   return context.tokens;
+}
+
+TextStream::TextStream(string_view filename) :
+  filename(filename), text(), line_offsets()
+{
+  if (auto data = utils::read_stream(filename); data.has_value())
+  {
+    text = std::move(*data);
+  }
+  else
+  {
+    // TODO error message file is not valid
+    assert(false && "file is not valid");
+  }
+
+  calculate_line_offsets();
+}
+
+void TextStream::calculate_line_offsets()
+{
+  Expects(!std::empty(text));
+
+  string_view text_view = text;
+  LexerIterator line_begin = text_view.begin();
+  LexerIterator line_end = text_view.begin();
+
+  while (line_end != text_view.end())
+  {
+    line_end = std::find_if(line_end, text_view.end(), is_newline);
+    line_offsets.emplace_back(line_begin, line_end);
+    line_begin = line_end;
+    std::advance(line_end, 1);
+  }
+}
+
+auto TextStream::linecol_from_source_location(const SourceLocation& source) const -> LineCol
+{
+  Expects(!std::empty(line_offsets));
+  Expects(source.begin >= line_offsets.front().begin);
+  Expects(source.end <= line_offsets.back().end);
+
+  for (auto it = line_offsets.begin(); it != line_offsets.end(); ++it)
+  {
+    const auto& range = *it;
+
+    if (source.begin >= range.begin && source.end <= range.end)
+    {
+      const auto lineno = static_cast<size_t>(std::distance(line_offsets.begin(), it)) + 1;
+      const auto colno = static_cast<size_t>(std::distance(range.begin, source.begin));
+
+      return LineCol{lineno, colno};
+    }
+  }
+
+  Unreachable();
 }
 
