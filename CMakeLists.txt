@@ -12,8 +12,10 @@ add_executable(${PROJECT_NAME} src/main.cpp)
 target_sources(${PROJECT_NAME}
   PRIVATE
     src/lexer.cpp
+    src/utils/stream.cpp
   PUBLIC
     src/lexer.hpp
+    src/utils/stream.hpp
 )
 
 target_link_libraries(${PROJECT_NAME}
