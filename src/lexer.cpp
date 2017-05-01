@@ -336,7 +336,7 @@ auto lexer_parse_integer(LexerContext& lexer, LexerIterator begin, LexerIterator
     return IntegerBase::Decimal;
   }();
 
-  auto it = [&] {
+  const auto it = [&] {
     switch (base)
     {
       case IntegerBase::Decimal:
@@ -353,18 +353,37 @@ auto lexer_parse_integer(LexerContext& lexer, LexerIterator begin, LexerIterator
     }
   }();
 
-  if (base == IntegerBase::Octal)
+  if (it != end)
   {
-    if (is_alphanum(*it))
+    switch (base)
     {
-      // TODO error message invalid octal digit.
-      assert(false && "invalid octal digit");
+      case IntegerBase::Decimal:
+        if (is_alpha(*it))
+        {
+          // TODO error message invalid digit.
+          assert(false && "invalid decimal digit");
+        }
+        break;
+
+      case IntegerBase::Octal:
+        if (is_alphanum(*it))
+        {
+          // TODO error message invalid digit.
+          assert(false && "invalid octal digit");
+        }
+        break;
+
+      case IntegerBase::Hexadecimal:
+        if (is_alphanum(*it))
+        {
+          // TODO error message invalid digit.
+          assert(false && "invalid hexadecimal digit");
+        }
+        break;
+
+      default:
+        Unreachable();
     }
-  }
-  else if (is_alpha(*it))
-  {
-    // TODO emit error message invalid digit.
-    assert(false && "invalid digit");
   }
 
   const auto token = SourceLocation{begin, it};
