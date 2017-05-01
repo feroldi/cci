@@ -66,6 +66,8 @@ enum class TokenType
   // Constants
   CharConstant,
   IntegerConstant,
+  OctIntegerConstant,
+  HexIntegerConstant,
   FloatConstant,
   StringConstant,
 

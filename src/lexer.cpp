@@ -322,21 +322,23 @@ auto lexer_parse_integer(LexerContext& lexer, LexerIterator begin, LexerIterator
     Hexadecimal,
   };
 
-  const auto base = [&] {
+  const auto [base, token_type] = [&] () -> std::pair<IntegerBase, TokenType>
+  {
     if (std::distance(begin, end) > 2 && begin[0] == '0')
     {
       if (begin[1] == 'x' || begin[1] == 'X')
       {
-        return IntegerBase::Hexadecimal;
+        return {IntegerBase::Hexadecimal, TokenType::HexIntegerConstant};
       }
 
-      return IntegerBase::Octal;
+      return {IntegerBase::Octal, TokenType::OctIntegerConstant};
     }
 
-    return IntegerBase::Decimal;
+    return {IntegerBase::Decimal, TokenType::IntegerConstant};
   }();
 
-  const auto it = [&] {
+  const auto it = [&]
+  {
     switch (base)
     {
       case IntegerBase::Decimal:
@@ -387,7 +389,7 @@ auto lexer_parse_integer(LexerContext& lexer, LexerIterator begin, LexerIterator
   }
 
   const auto token = SourceLocation{begin, it};
-  lexer.add_token(TokenType::IntegerConstant, token);
+  lexer.add_token(token_type, token);
 
   return token.end;
 }
