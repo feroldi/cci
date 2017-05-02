@@ -3,4 +3,5 @@ build/
 *.out
 Makefile
 TODO.md
+test/build/
 
