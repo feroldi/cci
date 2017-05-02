@@ -198,12 +198,125 @@ struct LexerContext
   }
 };
 
+// Escape sequence    Hex value in ASCII    Character represented
+// \a                 07                    Alert (Beep, Bell) (added in C89)
+// \b                 08                    Backspace
+// \f                 0C                    Formfeed
+// \n                 0A                    Newline (Line Feed); see notes below
+// \r                 0D                    Carriage Return
+// \t                 09                    Horizontal Tab
+// \v                 0B                    Vertical Tab
+// \\                 5C                    Backslash
+// \'                 27                    Single quotation mark
+// \"                 22                    Double quotation mark
+// \?                 3F                    Question mark (used to avoid trigraphs)
+// \nnn note-1        any                   The byte whose numerical value is given by nnn interpreted as an octal number
+// \xhh...            any                   The byte whose numerical value is given by hh... interpreted as a hexadecimal number
+// \e note-2 	        1B                    ESC character
+// \Uhhhhhhhh note-3 	none                  Unicode code point where h is a hexadecimal digit
+// \uhhhh note-4      none                  Unicode code point below 10000 hexadecimal
+//
+//  Note 1.^ There may be one, two, or three octal numerals n present; see the Notes section below.
+//  Note 2.^ Common non-standard code; see the Notes section below.
+//  Note 3.^ \U takes 8 hexadecimal digits h; see the Notes section below.
+//  Note 4.^ \u takes 4 hexadecimal digits h; see the Notes section below.
+
+// Putting it here first because I'll need it later for the parser (or because I'm just lazy right now).
+// FIXME This function needs to be moved to parser.cpp
+// TODO Convert escape sequences into their respective values. As of now, it's just validating them.
+auto check_escape_sequences(LexerContext& /*lexer*/, LexerIterator begin, LexerIterator end) -> bool
+{
+  const static char ESC_SEQ[] = {'n', 'r', 't', 'a', 'b', 'f', 'v', '\\', '\'', '"', '?'};
+  const static char ESC_SEQ_HEX[] = {'x', 'U', 'u'};
+  bool any_errors = false;
+  auto it = begin;
+
+  while (it != end)
+  {
+    it = std::find_if(it, end, [] (char c) { return c == '\\'; });
+
+    if (it == end)
+      break;
+
+    if (std::next(it) != end)
+    {
+      // skip '\\'
+      std::advance(it, 1);
+
+      if (is_octdigit(*it))
+      {
+        // There may exist up to three octal digits.
+        it = std::find_if_not(it, it + 3, is_octdigit);
+      }
+      else if (std::any_of(std::begin(ESC_SEQ_HEX), std::end(ESC_SEQ_HEX), [&] (char c) { return *it == c; }))
+      {
+        const auto it_end = std::find_if_not(std::next(it), end, is_hexdigit);
+        const auto distance = std::distance(it + 1, it_end);
+
+        switch (*it)
+        {
+          case 'x':
+            if (distance < 2)
+            {
+              // TODO error message \x used with no following hex digits.
+              assert(false && "\\x used with no following hex digits.");
+              any_errors = true;
+            }
+            break;
+
+          case 'U':
+            if (distance < 8)
+            {
+              // TODO error message \U incomplete universal character name.
+              assert(false && "\\U incomplete universal character name.");
+              any_errors = true;
+            }
+            break;
+
+          case 'u':
+            if (distance < 4)
+            {
+              // TODO error message \u incomplete universal character name.
+              assert(false && "\\u incomplete universal character name.");
+              any_errors = true;
+            }
+            break;
+
+          default:
+            Unreachable();
+        }
+
+        it = it_end;
+      }
+      else if (std::any_of(std::begin(ESC_SEQ), std::end(ESC_SEQ), [&] (char c) { return *it == c; }))
+      {
+        // skip already parsed escape sequence.
+        std::advance(it, 1);
+      }
+      else
+      {
+        // TODO error message unkown escape sequence.
+        assert(false && "unkown escape sequence.");
+        any_errors = true;
+      }
+    }
+    else
+    {
+      // TODO error message missing terminating '"' character.
+      assert(false && "missing terminating '\"' character.");
+      any_errors = true;
+    }
+  }
+
+  return !any_errors;
+}
+
 // TODO parse escape characters.
 auto lexer_parse_char_literal(LexerContext& lexer, LexerIterator begin, LexerIterator end) -> LexerIterator
 {
   Expects(is_char_literal_match(begin[0]));
 
-  const LexerIterator match_it = std::invoke([&] {
+  const LexerIterator it = std::invoke([&] {
     for (auto it = std::next(begin); it != end; ++it)
     {
       // skip escaping \'
@@ -222,13 +335,11 @@ auto lexer_parse_char_literal(LexerContext& lexer, LexerIterator begin, LexerIte
     return end;
   });
 
-  if (match_it == end && !is_char_literal_match(*std::prev(match_it)))
+  if (it == end && !is_char_literal_match(*std::prev(it)))
   {
     // TODO emit error message missing matching char symbol.
     assert(false);
   }
-
-  const auto token = SourceLocation{begin, match_it};
 
   // TODO count bytes in a char literal.
   const size_t byte_count = 1;
@@ -240,9 +351,10 @@ auto lexer_parse_char_literal(LexerContext& lexer, LexerIterator begin, LexerIte
     assert(false);
   }
 
-  lexer.add_token(TokenType::CharConstant, token);
+  check_escape_sequences(lexer, std::next(begin), std::prev(it));
+  lexer.add_token(TokenType::CharConstant, begin, it);
 
-  return token.end;
+  return it;
 }
 
 // TODO parse escape characters.
@@ -250,7 +362,7 @@ auto lexer_parse_string_literal(LexerContext& lexer, LexerIterator begin, LexerI
 {
   Expects(is_string_literal_match(begin[0]));
 
-  const LexerIterator match_it = std::invoke([&] {
+  const LexerIterator it = std::invoke([&] {
     for (auto it = std::next(begin); it != end; ++it)
     {
       // skip escaping \"
@@ -269,16 +381,16 @@ auto lexer_parse_string_literal(LexerContext& lexer, LexerIterator begin, LexerI
     return end;
   });
 
-  if (match_it == end && !is_string_literal_match(*std::prev(match_it)))
+  if (it == end && !is_string_literal_match(*std::prev(it)))
   {
     // TODO emit error message missing matching string literal symbol.
     assert(false);
   }
 
-  const auto token = SourceLocation{begin, match_it};
-  lexer.add_token(TokenType::StringConstant, token);
+  check_escape_sequences(lexer, std::next(begin), std::prev(it));
+  lexer.add_token(TokenType::StringConstant, begin, it);
 
-  return token.end;
+  return it;
 }
 
 auto lexer_parse_operator(LexerContext& lexer, LexerIterator begin, LexerIterator end) -> LexerIterator
@@ -322,7 +434,7 @@ auto lexer_parse_integer(LexerContext& lexer, LexerIterator begin, LexerIterator
     Hexadecimal,
   };
 
-  const auto [base, token_type] = [&] () -> std::pair<IntegerBase, TokenType>
+  const auto [base_, token_type] = [&] () -> std::pair<IntegerBase, TokenType>
   {
     if (std::distance(begin, end) > 2 && begin[0] == '0')
     {
@@ -336,6 +448,10 @@ auto lexer_parse_integer(LexerContext& lexer, LexerIterator begin, LexerIterator
 
     return {IntegerBase::Decimal, TokenType::IntegerConstant};
   }();
+
+  // temporary hack, clang gives errors otherwise:
+  // error: reference to local binding 'base' declared in enclosing function 'lexer_parse_integer'
+  const auto& base = base_;
 
   const auto it = [&]
   {
@@ -388,10 +504,9 @@ auto lexer_parse_integer(LexerContext& lexer, LexerIterator begin, LexerIterator
     }
   }
 
-  const auto token = SourceLocation{begin, it};
-  lexer.add_token(token_type, token);
+  lexer.add_token(token_type, begin, it);
 
-  return token.end;
+  return it;
 }
 
 auto lexer_parse_decimal(LexerContext& lexer, LexerIterator begin, LexerIterator end) -> LexerIterator
@@ -429,10 +544,9 @@ auto lexer_parse_decimal(LexerContext& lexer, LexerIterator begin, LexerIterator
     }
   }
 
-  const auto token = SourceLocation{begin, it};
-  lexer.add_token(TokenType::FloatConstant, token);
+  lexer.add_token(TokenType::FloatConstant, begin, it);
 
-  return token.end;
+  return it;
 }
 
 auto lexer_parse_constant(LexerContext& lexer, LexerIterator begin, LexerIterator end) -> LexerIterator
