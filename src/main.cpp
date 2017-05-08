@@ -1,6 +1,6 @@
+#include "program.hpp"
 #include <cstdio>
 #include <string>
-#include "program.hpp"
 
 int main(int /*argc*/, char** argv)
 {
@@ -8,4 +8,3 @@ int main(int /*argc*/, char** argv)
   auto program = ProgramContext{Options{}, stdout};
   auto tokens = lexer_tokenize_text(program, stream, stream.data);
 }
-

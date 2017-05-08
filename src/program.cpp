@@ -1,10 +1,13 @@
+#include "program.hpp"
+#include "cpp/contracts.hpp"
 #include "cpp/format.hpp"
 #include "cpp/string_view.hpp"
-#include "cpp/contracts.hpp"
 #include "utils/stream.hpp"
-#include "program.hpp"
 
-auto format_error_message(const string_view& error_from, optional<LineInfo> line_info, DiagnosticSeverity severity, const string_view& msg) -> std::string
+auto format_error_message(const string_view& error_from,
+                          optional<LineInfo> line_info,
+                          DiagnosticSeverity severity, const string_view& msg)
+  -> std::string
 {
   std::string message;
   message.reserve(128);
@@ -17,16 +20,21 @@ auto format_error_message(const string_view& error_from, optional<LineInfo> line
 
   if (line_info.has_value())
   {
-    message += fmt::format("{}:{}:", line_info->pos.line_no, line_info->pos.column_no);
+    message +=
+      fmt::format("{}:{}:", line_info->pos.line_no, line_info->pos.column_no);
   }
 
   message += [&] {
     switch (severity)
     {
-      case DiagnosticSeverity::Note: return " note: ";
-      case DiagnosticSeverity::Warning: return " warning: ";
-      case DiagnosticSeverity::Error: return " error: ";
-      case DiagnosticSeverity::Fatal: return " fatal: ";
+      case DiagnosticSeverity::Note:
+        return " note: ";
+      case DiagnosticSeverity::Warning:
+        return " warning: ";
+      case DiagnosticSeverity::Error:
+        return " error: ";
+      case DiagnosticSeverity::Fatal:
+        return " fatal: ";
       default:
         Unreachable();
     }
@@ -37,8 +45,8 @@ auto format_error_message(const string_view& error_from, optional<LineInfo> line
 
   if (line_info.has_value())
   {
-    auto [line, pos, length] = *line_info;
-    auto [lineno, colno] = pos;
+    auto[line, pos, length] = *line_info;
+    auto[lineno, colno] = pos;
 
     std::string highlight;
     highlight.reserve(colno + length);
@@ -51,10 +59,9 @@ auto format_error_message(const string_view& error_from, optional<LineInfo> line
     highlight.back() = '^';
     highlight += std::string(length - 1, '~');
 
-    message += fmt::format("{}\n{}\n", std::string(line.begin(), line.end()), highlight);
+    message +=
+      fmt::format("{}\n{}\n", std::string(line.begin(), line.end()), highlight);
   }
 
   return message;
 }
-
-

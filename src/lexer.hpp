@@ -1,9 +1,9 @@
 #pragma once
 
+#include "cpp/contracts.hpp"
+#include "cpp/string_view.hpp"
 #include <cstddef>
 #include <vector>
-#include "cpp/string_view.hpp"
-#include "cpp/contracts.hpp"
 
 struct ProgramContext;
 
@@ -142,15 +142,15 @@ private:
 public:
   explicit SourceLocation() = default;
 
-  explicit SourceLocation(const_iterator begin, const_iterator end) :
-    first(begin), last(end)
+  explicit SourceLocation(const_iterator begin, const_iterator end)
+    : first(begin), last(end)
   {
     Expects(begin <= end);
   }
 
-  explicit SourceLocation(const_iterator it) noexcept :
-    first(it), last(it + 1)
-  {}
+  explicit SourceLocation(const_iterator it) noexcept : first(it), last(it + 1)
+  {
+  }
 
   constexpr auto begin() const noexcept -> const_iterator
   {
@@ -167,7 +167,7 @@ public:
     return static_cast<size_t>(this->end() - this->begin());
   }
 
-  constexpr auto operator[] (size_t index) const noexcept -> value_type
+  constexpr auto operator[](size_t index) const noexcept -> value_type
   {
     return *(this->begin() + index);
   }
@@ -210,9 +210,10 @@ struct TokenInfo
   const TextStream& stream;
   SourceLocation source;
 
-  explicit TokenInfo(const TextStream& stream, const SourceLocation& source) :
-    stream(stream), source(source)
-  {}
+  explicit TokenInfo(const TextStream& stream, const SourceLocation& source)
+    : stream(stream), source(source)
+  {
+  }
 };
 
 struct TokenData
@@ -220,12 +221,12 @@ struct TokenData
   TokenType type;
   SourceLocation data;
 
-  explicit TokenData(TokenType type, SourceLocation source) noexcept :
-    type{type},
-    data{source}
-  {}
+  explicit TokenData(TokenType type, SourceLocation source) noexcept
+    : type{type}, data{source}
+  {
+  }
 };
 
 // TODO move this to TokenStream
-auto lexer_tokenize_text(ProgramContext&, const TextStream&, string_view text) -> std::vector<TokenData>;
-
+auto lexer_tokenize_text(ProgramContext&, const TextStream&, string_view text)
+  -> std::vector<TokenData>;
