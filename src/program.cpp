@@ -60,7 +60,7 @@ auto format_error_message(const string_view& error_from,
     highlight += std::string(length - 1, '~');
 
     message +=
-      fmt::format("{}\n{}\n", std::string(line.begin(), line.end()), highlight);
+      fmt::format("{}\n{}", std::string(line.begin(), line.end()), highlight);
   }
 
   return message;

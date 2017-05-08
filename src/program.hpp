@@ -66,6 +66,10 @@ private:
   const Options options;
   std::FILE* log_stream;
 
+  size_t errors_count{0};
+  size_t warns_count{0};
+  size_t fatal_count{0};
+
   void put(const std::string& msg) const
   {
     std::fprintf(log_stream, "%s\n", msg.c_str());
@@ -78,9 +82,47 @@ public:
   }
 
   template <typename Context, typename... Args>
+  void note(Context&& c, Args&&... args)
+  {
+    this->put(format_error(std::forward<Context>(c), DiagnosticSeverity::Note,
+                           std::forward<Args>(args)...));
+  }
+
+  template <typename Context, typename... Args>
+  void warning(Context&& c, Args&&... args)
+  {
+    this->put(format_error(std::forward<Context>(c), DiagnosticSeverity::Warning,
+                           std::forward<Args>(args)...));
+    this->warns_count += 1;
+  }
+
+  template <typename Context, typename... Args>
   void error(Context&& c, Args&&... args)
   {
     this->put(format_error(std::forward<Context>(c), DiagnosticSeverity::Error,
                            std::forward<Args>(args)...));
+    this->errors_count += 1;
+  }
+
+  template <typename Context, typename... Args>
+  void pedantic(Context&& c, Args&&... args)
+  {
+    if (options.pedantic_errors)
+    {
+      this->put(format_error(std::forward<Context>(c), DiagnosticSeverity::Error, std::forward<Args>(args)...));
+    }
+    else if (options.pedantic)
+    {
+      this->put(format_error(std::forward<Context>(c), DiagnosticSeverity::Warning, std::forward<Args>(args)...));
+    }
+  }
+
+  template <typename Context, typename... Args>
+  [[noreturn]] void fatal(Context&& c, Args&&... args)
+  {
+    this->put(format_error(std::forward<Context>(c), DiagnosticSeverity::Fatal,
+                           std::forward<Args>(args)...));
+    this->fatal_count += 1;
+    throw std::runtime_error("Fatal");
   }
 };
