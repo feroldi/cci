@@ -9,6 +9,7 @@
 #include "cpp/optional.hpp"
 #include "utils/stream.hpp"
 #include "lexer.hpp"
+#include "program.hpp"
 
 namespace
 {
@@ -185,7 +186,13 @@ constexpr auto is_alphanum(char c) -> bool
 
 struct LexerContext
 {
+  ProgramContext& program;
+  const TextStream& stream;
   std::vector<TokenData> tokens;
+
+  explicit LexerContext(ProgramContext& p, const TextStream& ts) :
+    program(p), stream(ts), tokens()
+  {}
 
   void add_token(TokenType type, LexerIterator begin, LexerIterator end)
   {
@@ -195,6 +202,18 @@ struct LexerContext
   void add_token(TokenType type, SourceLocation source)
   {
     tokens.emplace_back(type, source);
+  }
+
+  template <typename... Args>
+  void error(const SourceLocation& source, Args&&... args)
+  {
+    program.error(TokenInfo{this->stream, source}, std::forward<Args>(args)...);
+  }
+
+  template <typename... Args>
+  void warning(const SourceLocation& source, Args&&... args)
+  {
+    program.error(TokenInfo{this->stream, source}, std::forward<Args>(args)...);
   }
 };
 
@@ -224,7 +243,7 @@ struct LexerContext
 // Putting it here first because I'll need it later for the parser (or because I'm just lazy right now).
 // FIXME This function needs to be moved to parser.cpp
 // TODO Convert escape sequences into their respective values. As of now, it's just validating them.
-auto check_escape_sequences(LexerContext& /*lexer*/, LexerIterator begin, LexerIterator end) -> bool
+auto check_escape_sequences(LexerContext& lexer, LexerIterator begin, LexerIterator end) -> bool
 {
   const static char ESC_SEQ[] = {'n', 'r', 't', 'a', 'b', 'f', 'v', '\\', '\'', '"', '?'};
   const static char ESC_SEQ_HEX[] = {'x', 'U', 'u'};
@@ -258,8 +277,7 @@ auto check_escape_sequences(LexerContext& /*lexer*/, LexerIterator begin, LexerI
           case 'x':
             if (distance < 2)
             {
-              // TODO error message \x used with no following hex digits.
-              assert(false && "\\x used with no following hex digits.");
+              lexer.error(SourceLocation(it - 1, it_end), "\\x used with no following hex digits");
               any_errors = true;
             }
             break;
@@ -267,8 +285,7 @@ auto check_escape_sequences(LexerContext& /*lexer*/, LexerIterator begin, LexerI
           case 'U':
             if (distance < 8)
             {
-              // TODO error message \U incomplete universal character name.
-              assert(false && "\\U incomplete universal character name.");
+              lexer.error(SourceLocation(it - 1, it_end), "\\U incomplete universal character name");
               any_errors = true;
             }
             break;
@@ -276,8 +293,7 @@ auto check_escape_sequences(LexerContext& /*lexer*/, LexerIterator begin, LexerI
           case 'u':
             if (distance < 4)
             {
-              // TODO error message \u incomplete universal character name.
-              assert(false && "\\u incomplete universal character name.");
+              lexer.error(SourceLocation(it - 1, it_end), "\\u incomplete universal character name");
               any_errors = true;
             }
             break;
@@ -295,15 +311,13 @@ auto check_escape_sequences(LexerContext& /*lexer*/, LexerIterator begin, LexerI
       }
       else
       {
-        // TODO error message unkown escape sequence.
-        assert(false && "unkown escape sequence.");
+        lexer.warning(SourceLocation(it - 1, it + 1), "unkown escape sequence");
         any_errors = true;
       }
     }
     else
     {
-      // TODO error message missing terminating '"' character.
-      assert(false && "missing terminating '\"' character.");
+      lexer.error(SourceLocation(it), "missing terminating '\"' character");
       any_errors = true;
     }
   }
@@ -398,13 +412,13 @@ auto lexer_parse_operator(LexerContext& lexer, LexerIterator begin, LexerIterato
   Expects(is_operator(begin[0]));
 
   auto it = std::find_if_not(begin, end, is_operator);
-  auto token = SourceLocation{begin, it};
+  auto source_sv = string_view(SourceLocation(begin, it));
   auto best_match = optional<std::pair<TokenType, string_view>>{};
 
   // Find the longest symbol that matches a token.
   for (const auto& [type, str] : TOKEN_SYMBOLS)
   {
-    if (string_view(token).substr(0, str.size()) == str)
+    if (source_sv.substr(0, str.size()) == str)
     {
       if (!best_match.has_value() || best_match->second.size() < str.size())
       {
@@ -416,11 +430,11 @@ auto lexer_parse_operator(LexerContext& lexer, LexerIterator begin, LexerIterato
   if (best_match.has_value())
   {
     auto [type, str] = *best_match;
-    token.end = token.begin + str.size();
-    lexer.add_token(type, token);
+    it = begin + str.size();
+    lexer.add_token(type, begin, it);
   }
 
-  return token.end;
+  return it;
 }
 
 auto lexer_parse_integer(LexerContext& lexer, LexerIterator begin, LexerIterator end) -> LexerIterator
@@ -594,13 +608,13 @@ auto lexer_parse_identifier(LexerContext& lexer, LexerIterator begin, LexerItera
     if (token == token_str)
     {
       lexer.add_token(type, token);
-      return token.end;
+      return token.end();
     }
   }
 
   lexer.add_token(TokenType::Identifier, token);
 
-  return token.end;
+  return token.end();
 }
 
 // Doesn't generate tokens, only returns an iterator past the comment.
@@ -640,11 +654,30 @@ auto lexer_parse_comments(LexerContext& /*lexer*/, LexerIterator begin, LexerIte
   Unreachable();
 }
 
+auto calculate_line_offsets(string_view text) -> std::vector<SourceLocation>
+{
+  Expects(!std::empty(text));
+
+  LexerIterator line_begin = text.begin();
+  LexerIterator line_end = text.begin();
+  std::vector<SourceLocation> line_offsets{};
+
+  while (line_end != text.end())
+  {
+    line_end = std::find_if(line_end, text.end(), [] (char c) { return c == '\n'; });
+    line_offsets.emplace_back(line_begin, line_end);
+    line_begin = line_end + 1;
+    std::advance(line_end, 1);
+  }
+
+  return line_offsets;
+}
+
 } // namespace
 
-auto lexer_tokenize_text(string_view text) -> std::vector<TokenData>
+auto lexer_tokenize_text(ProgramContext& program, const TextStream& ts, string_view text) -> std::vector<TokenData>
 {
-  LexerContext context{};
+  LexerContext context(program, ts);
   const auto end = text.end();
   auto it = std::find_if_not(text.begin(), end, is_space);
 
@@ -679,57 +712,50 @@ auto lexer_tokenize_text(string_view text) -> std::vector<TokenData>
 }
 
 TextStream::TextStream(string_view filename) :
-  filename(filename), text(), line_offsets()
+  filename(filename)
 {
-  if (auto data = utils::read_stream(filename); data.has_value())
+  if (auto content = utils::read_stream(filename); content.has_value())
   {
-    text = std::move(*data);
+    this->data = std::move(*content);
   }
   else
   {
-    // TODO error message file is not valid
-    assert(false && "file is not valid");
+    throw std::runtime_error(fmt::format("file '{}' is not valid or doesn't exist", std::string(filename)));
   }
 
-  calculate_line_offsets();
+  line_offsets = calculate_line_offsets(this->data);
 }
 
-void TextStream::calculate_line_offsets()
+auto TextStream::linecol_from_source(const SourceLocation& source) const -> LineColumn
 {
-  Expects(!std::empty(text));
-
-  string_view text_view = text;
-  LexerIterator line_begin = text_view.begin();
-  LexerIterator line_end = text_view.begin();
-
-  while (line_end != text_view.end())
-  {
-    line_end = std::find_if(line_end, text_view.end(), is_newline);
-    line_offsets.emplace_back(line_begin, line_end);
-    line_begin = line_end;
-    std::advance(line_end, 1);
-  }
-}
-
-auto TextStream::linecol_from_source_location(const SourceLocation& source) const -> LineCol
-{
-  Expects(!std::empty(line_offsets));
-  Expects(source.begin >= line_offsets.front().begin);
-  Expects(source.end <= line_offsets.back().end);
+  Expects(!std::empty(this->line_offsets));
+  Expects(source.begin() >= this->line_offsets.front().begin());
+  Expects(source.end() <= this->line_offsets.back().end());
 
   for (auto it = line_offsets.begin(); it != line_offsets.end(); ++it)
   {
     const auto& range = *it;
 
-    if (source.begin >= range.begin && source.end <= range.end)
+    if (source.is_sub_of(range))
     {
-      const auto lineno = static_cast<size_t>(std::distance(line_offsets.begin(), it)) + 1;
-      const auto colno = static_cast<size_t>(std::distance(range.begin, source.begin));
+      size_t lineno = std::distance(this->line_offsets.begin(), it) + 1;
+      size_t colno = std::distance(range.begin(), source.begin()) + 1;
 
-      return LineCol{lineno, colno};
+      return LineColumn{lineno, colno};
     }
   }
 
   Unreachable();
+}
+
+auto TextStream::get_line(const SourceLocation& source) const -> SourceLocation
+{
+  auto [lineno, colno] = this->linecol_from_source(source);
+  return line_offsets[lineno - 1];
+}
+
+auto TextStream::get_line(size_t line_no) const -> SourceLocation
+{
+  return line_offsets[line_no - 1];
 }
 
