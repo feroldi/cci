@@ -65,7 +65,7 @@ public:
     return string_view{this->begin(), this->size()};
   }
 
-  auto dump_to_string() const -> std::string
+  auto to_string() const -> std::string
   {
     return std::string(this->begin(), this->end());
   }
@@ -81,16 +81,10 @@ struct SourceManager
 
   struct SourceLineCache
   {
-  private:
-    std::vector<SourceRange> line_offsets;
+    std::vector<SourceRange> offsets;
 
-  public:
     explicit SourceLineCache() = default;
     explicit SourceLineCache(SourceRange range);
-
-    auto linecol_from_location(SourceLocation) const -> LineColumn;
-    auto line_from_location(SourceLocation) const -> SourceRange;
-    auto line_at(size_t line_no) const -> SourceRange;
   };
 
 private:
@@ -111,12 +105,32 @@ public:
   SourceManager(SourceManager&&) = default;
   SourceManager& operator= (SourceManager&&) = default;
 
+  auto linecol_from_location(SourceLocation) const -> LineColumn;
+  auto line_range_from_location(SourceLocation) const -> SourceRange;
+  auto line_range_at(size_t line_no) const -> SourceRange;
+
+  // TODO: change filepath's type to fs::path
   // Reads content from a file and returns a valid SourceManager.
   // Throws std::runtime_error if given filepath is invalid.
   static auto from_path(std::string filepath) -> SourceManager;
 
-  // Accesses lines cache.
-  auto lines() const -> const SourceLineCache& { return this->line_cache; }
-  auto content() const -> string_view { return this->source_content; }
+  auto begin() const -> SourceLocation
+  {
+    string_view v = this->source_content;
+    return v.begin();
+  }
+
+  auto end() const -> SourceLocation
+  {
+    string_view v = this->source_content;
+    return v.end();
+  }
+
+  auto range() const -> SourceRange
+  {
+    return SourceRange(this->begin(), this->end());
+  }
+
+  auto get_name() const -> const std::string& { return this->source_name; }
 };
 

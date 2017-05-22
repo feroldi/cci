@@ -4,7 +4,7 @@
 
 int main(int /*argc*/, char** argv)
 {
-  auto stream = TextStream(argv[1]);
-  auto program = ProgramContext{Options{}, stdout};
-  auto tokens = lexer_tokenize_text(program, stream, stream.data);
+  auto source = SourceManager::from_path(argv[1]);
+  auto program = ProgramContext(Options{}, stderr);
+  auto tokens = TokenStream::parse(program, source);
 }

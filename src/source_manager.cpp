@@ -12,25 +12,25 @@ SourceManager::SourceLineCache::SourceLineCache(SourceRange range)
   {
     line_end =
       std::find_if(line_end, range.end(), [](char c) { return c == '\n'; });
-    this->line_offsets.emplace_back(line_begin, line_end);
+    this->offsets.emplace_back(line_begin, line_end);
     line_begin = line_end + 1;
     std::advance(line_end, 1);
   }
 }
 
-auto SourceManager::SourceLineCache::linecol_from_location(SourceLocation loc) const -> LineColumn
+auto SourceManager::linecol_from_location(SourceLocation loc) const -> LineColumn
 {
-  Expects(!std::empty(this->line_offsets));
-  Expects(loc >= this->line_offsets.front().begin());
-  Expects(loc <= this->line_offsets.back().end());
+  Expects(!std::empty(this->line_cache.offsets));
+  Expects(loc >= this->line_cache.offsets.front().begin());
+  Expects(loc <= this->line_cache.offsets.back().end());
 
-  for (auto it = line_offsets.begin(); it != line_offsets.end(); ++it)
+  for (auto it = this->line_cache.offsets.begin(); it != this->line_cache.offsets.end(); ++it)
   {
     const auto& range = *it;
 
     if (range.contains(loc))
     {
-      size_t lineno = std::distance(this->line_offsets.begin(), it) + 1;
+      size_t lineno = std::distance(this->line_cache.offsets.begin(), it) + 1;
       size_t colno = std::distance(range.begin(), loc) + 1;
 
       return LineColumn{lineno, colno};
@@ -40,15 +40,15 @@ auto SourceManager::SourceLineCache::linecol_from_location(SourceLocation loc) c
   Unreachable();
 }
 
-auto SourceManager::SourceLineCache::line_from_location(SourceLocation loc) const -> SourceRange
+auto SourceManager::line_range_from_location(SourceLocation loc) const -> SourceRange
 {
   auto [line_no, col_no] = this->linecol_from_location(loc);
-  return this->line_at(line_no);
+  return this->line_range_at(line_no);
 }
 
-auto SourceManager::SourceLineCache::line_at(size_t line_no) const -> SourceRange
+auto SourceManager::line_range_at(size_t line_no) const -> SourceRange
 {
-  return line_offsets[line_no - 1];
+  return this->line_cache.offsets[line_no - 1];
 }
 
 auto SourceManager::from_path(std::string filepath) -> SourceManager
