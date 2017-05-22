@@ -13,11 +13,13 @@ target_sources(${PROJECT_NAME}
   PRIVATE
     "src/lexer.cpp"
     "src/program.cpp"
+    "src/source_manager.cpp"
     "src/cpp/format.cpp"
     "src/utils/stream.cpp"
   PUBLIC
     "src/lexer.hpp"
     "src/program.hpp"
+    "src/source_manager.hpp"
     "src/cpp/format.hpp"
     "src/utils/stream.hpp"
 )

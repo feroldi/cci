@@ -1,24 +1,17 @@
 #pragma once
 
+#include <stdexcept>
 #include "cpp/format.hpp"
 #include "cpp/optional.hpp"
+#include "source_manager.hpp"
 #include "lexer.hpp"
 
-struct Options
+struct ProgramFailure : std::runtime_error
 {
-  bool pedantic = false;
-  bool pedantic_errors = false;
+  using std::runtime_error::runtime_error;
 };
 
-// Tag used by format_error when there's no reference point.
-struct no_context_tag
-{
-  explicit no_context_tag() noexcept = default;
-};
-
-inline constexpr no_context_tag no_context = no_context_tag{};
-
-enum class DiagnosticSeverity
+enum class DiagLevel
 {
   Note,
   Warning,
@@ -28,101 +21,126 @@ enum class DiagnosticSeverity
 
 struct LineInfo
 {
-  SourceLocation line;
-  TextStream::LineColumn pos;
-  size_t length;
+  SourceManager::LineColumn pos;
+  SourceRange line;
+  SourceRange range;
 };
 
-auto format_error_message(const string_view& error_from, optional<LineInfo>,
-                          DiagnosticSeverity, const string_view& msg)
-  -> std::string;
+struct NoContextTag
+{};
+
+constexpr inline NoContextTag nocontext = {};
+
+// Formats a compiler diagnostic message to be shown to the end user.
+//
+// Parameters:
+//  from: Where is this diagnostic from (compiler, translation unit etc)
+//  level: Diagnostic severity (error, warning etc)
+//  line_info: Source code information (line, location, relevant code etc)
+//  description: Diagnostic message
+//
+// Returns:
+//  The formatted diagnostic. Suitable for the end user to read.
+auto format_error(const char* from, DiagLevel, const optional<LineInfo>&, string_view description) -> std::string;
 
 template <typename... Args>
-inline auto format_error(no_context_tag, DiagnosticSeverity ds,
-                         const string_view& format, Args&&... args)
-  -> std::string
+auto format_error(const char* from, DiagLevel level, const optional<LineInfo>& info, const char* format, Args&&... args) -> std::string
 {
-  return format_error_message(
-    "ccompiler", nullopt, ds,
-    fmt::format(std::string(format), std::forward<Args>(args)...));
+  return format_error(from, level, info, fmt::format(format, std::forward<Args>(args)...));
 }
 
 template <typename... Args>
-inline auto format_error(const TokenInfo& context, DiagnosticSeverity ds,
-                         const string_view& format, Args&&... args)
+inline auto format_error(NoContextTag, DiagLevel level, const char* format, Args&&... args) -> std::string
+{
+  return format_error(
+    nullptr, level, nullopt,
+    fmt::format(format, std::forward<Args>(args)...));
+}
+
+template <typename... Args>
+inline auto format_error(const TokenStream::TokenDebug& context, DiagLevel level,
+                         const char* format, Args&&... args)
   -> std::string
 {
-  auto linecol = context.stream.linecol_from_source(context.source);
-  auto line = context.stream.get_line(linecol.line_no);
+  const auto line = context.source.line_range_at(context.pos.line_no);
 
-  return format_error_message(
-    context.stream.filename, LineInfo{line, linecol, context.source.size()}, ds,
-    fmt::format(std::string(format), std::forward<Args>(args)...));
+  return format_error(
+    context.source.get_name().c_str(), level, LineInfo{context.pos, line, context.range},
+    fmt::format(format, std::forward<Args>(args)...));
 }
+
+struct Options
+{
+  bool pedantic = false;
+  bool pedantic_errors = false; //< implies pedantic
+  bool warning_as_error = false;
+};
 
 struct ProgramContext
 {
 private:
-  const Options options;
-  std::FILE* log_stream;
+  const Options opts;
+  std::FILE* output;
 
-  size_t errors_count{0};
-  size_t warns_count{0};
-  size_t fatal_count{0};
+  size_t error_count = 0;
+  size_t warn_count = 0;
+  size_t fatal_count = 0;
+  const size_t max_errors = 32;
 
-  void put(const std::string& msg) const
+  void put(std::string msg) const
   {
-    std::fprintf(log_stream, "%s\n", msg.c_str());
+    std::fprintf(this->output, "%s\n", msg.c_str());
   }
 
 public:
-  explicit ProgramContext(const Options& opts, std::FILE* log)
-    : options(opts), log_stream(log)
-  {
-  }
+  ProgramContext(const Options& opts, std::FILE* log)
+    : opts(opts), output(log)
+  {}
 
   template <typename Context, typename... Args>
-  void note(Context&& c, Args&&... args)
+  void error(Context&& context, Args&&... args)
   {
-    this->put(format_error(std::forward<Context>(c), DiagnosticSeverity::Note,
-                           std::forward<Args>(args)...));
-  }
+    this->put(format_error(std::forward<Context>(context), DiagLevel::Error, std::forward<Args>(args)...));
+    this->error_count += 1;
 
-  template <typename Context, typename... Args>
-  void warning(Context&& c, Args&&... args)
-  {
-    this->put(format_error(std::forward<Context>(c), DiagnosticSeverity::Warning,
-                           std::forward<Args>(args)...));
-    this->warns_count += 1;
-  }
-
-  template <typename Context, typename... Args>
-  void error(Context&& c, Args&&... args)
-  {
-    this->put(format_error(std::forward<Context>(c), DiagnosticSeverity::Error,
-                           std::forward<Args>(args)...));
-    this->errors_count += 1;
-  }
-
-  template <typename Context, typename... Args>
-  void pedantic(Context&& c, Args&&... args)
-  {
-    if (options.pedantic_errors)
+    if (this->error_count >= this->max_errors)
     {
-      this->put(format_error(std::forward<Context>(c), DiagnosticSeverity::Error, std::forward<Args>(args)...));
-    }
-    else if (options.pedantic)
-    {
-      this->put(format_error(std::forward<Context>(c), DiagnosticSeverity::Warning, std::forward<Args>(args)...));
+      this->fatal("too many errors [max = {}]", this->max_errors);
     }
   }
 
   template <typename Context, typename... Args>
-  [[noreturn]] void fatal(Context&& c, Args&&... args)
+  void warn(Context&& context, Args&&... args)
   {
-    this->put(format_error(std::forward<Context>(c), DiagnosticSeverity::Fatal,
-                           std::forward<Args>(args)...));
+    if (this->opts.warning_as_error)
+    {
+      this->error(std::forward<Context>(context), std::forward<Args>(args)...);
+    }
+    else
+    {
+      this->put(format_error(std::forward<Context>(context), DiagLevel::Warning, std::forward<Args>(args)...));
+      this->warn_count += 1;
+    }
+  }
+
+  template <typename Context, typename... Args>
+  void pedantic(Context&& context, Args&&... args)
+  {
+    if (this->opts.pedantic_errors)
+    {
+      this->error(std::forward<Context>(context), std::forward<Args>(args)...);
+    }
+    else if (this->opts.pedantic)
+    {
+      this->warn(std::forward<Context>(context), std::forward<Args>(args)...);
+    }
+  }
+
+  template <typename... Args>
+  [[noreturn]] void fatal(const char* format, Args&&... args)
+  {
+    this->put(format_error(nocontext, DiagLevel::Fatal, format, std::forward<Args>(args)...));
     this->fatal_count += 1;
-    throw std::runtime_error("Fatal");
+    throw ProgramFailure("fatal error occurred");
   }
 };
