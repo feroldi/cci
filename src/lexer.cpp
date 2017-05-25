@@ -536,18 +536,16 @@ auto lexer_parse_decimal(LexerContext& lexer, SourceLocation begin,
 
   if (is_alpha(*it))
   {
-    if (*it != 'f' && *it != 'F')
-    {
-      lexer.error(SourceRange(it), "invalid suffix '{}' on floating constant", *it);
-    }
-
-    // skip suffix so we get the token's end.
+    // skip suffix.
     ++it;
 
-    if (it != end && is_alphanum(*it))
+    if (it != end)
     {
-      auto suffix_end = std::find_if_not(it, end, is_alphanum);
-      lexer.error({it - 1, suffix_end}, "invalid suffix '{}' on floating constant", std::string(it - 1, suffix_end));
+      if ((*it != 'f' && *it != 'F') || (it != end && is_alphanum(*it)))
+      {
+        auto suffix_end = std::find_if_not(it, end, is_alphanum);
+        lexer.error({it - 1, suffix_end}, "invalid suffix '{}' on floating constant", std::string(it - 1, suffix_end));
+      }
     }
   }
 
