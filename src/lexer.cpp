@@ -311,13 +311,13 @@ auto check_escape_sequences(LexerContext& lexer, SourceLocation begin,
       }
       else
       {
-        lexer.warning(SourceRange(it - 1, it + 1), "unkown escape sequence");
+        lexer.warning(SourceRange(it - 1, it + 1), "unknown escape sequence");
         any_errors = true;
       }
     }
     else
     {
-      lexer.error(SourceRange(it), "missing terminating '\"' character");
+      lexer.error(SourceRange(it), "missing terminating \" character");
       any_errors = true;
     }
   }
@@ -330,7 +330,7 @@ auto lexer_parse_char_literal(LexerContext& lexer, SourceLocation begin,
 {
   Expects(is_char_literal_match(begin[0]));
 
-  const SourceLocation it = std::invoke([&] {
+  const SourceLocation it = [&] {
     for (auto it = std::next(begin); it != end; ++it)
     {
       // skip escaping \'
@@ -348,21 +348,35 @@ auto lexer_parse_char_literal(LexerContext& lexer, SourceLocation begin,
     }
 
     return end;
-  });
+  }();
 
   if (it == end && !is_char_literal_match(*std::prev(it)))
   {
     lexer.error(SourceRange(begin), "missing terminating ' character");
   }
 
-  // TODO count bytes in a char literal.
-  const size_t byte_count = 1;
-
-  // TODO generate warning only when pedantic errors are enabled.
-  if (byte_count > 1)
+  if (lexer.program.opts.pedantic)
   {
-    // TODO report warning /multibyte character literal.
-    assert(false);
+    // TODO count bytes in a char literal.
+    // NOTE: consider other escape sequences as well.
+    const std::size_t byte_count = [begin=std::next(begin), end=std::prev(it)] {
+      std::size_t count{};
+
+      for (auto it = begin; it != end; ++it)
+      {
+        if (*it != '\\')
+        {
+          ++count;
+        }
+      }
+
+      return count;
+    }();
+
+    if (byte_count > 1)
+    {
+      lexer.pedantic({begin, it}, "multiple character literal");
+    }
   }
 
   check_escape_sequences(lexer, std::next(begin), std::prev(it));
@@ -371,7 +385,6 @@ auto lexer_parse_char_literal(LexerContext& lexer, SourceLocation begin,
   return it;
 }
 
-// TODO parse escape characters.
 auto lexer_parse_string_literal(LexerContext& lexer, SourceLocation begin,
                                 SourceLocation end) -> SourceLocation
 {
@@ -544,7 +557,7 @@ auto lexer_parse_decimal(LexerContext& lexer, SourceLocation begin,
       if ((*it != 'f' && *it != 'F') || (it != end && is_alphanum(*it)))
       {
         auto suffix_end = std::find_if_not(it, end, is_alphanum);
-        lexer.error({it - 1, suffix_end}, "invalid suffix '{}' on floating constant", std::string(it - 1, suffix_end));
+        lexer.error({it - 1, suffix_end}, "invalid suffix '{}' on floating constant", fmt::StringRef(it - 1, std::distance(it - 1, suffix_end)));
       }
     }
   }
@@ -647,8 +660,7 @@ auto lexer_parse_comments(LexerContext& lexer, SourceLocation begin,
       }
     }
 
-    // TODO error message missing matching */ block-comment end
-    assert(false && "missing matching '*/' block-comment end");
+    lexer.error(SourceRange(begin), "missing matching */ block-comment");
   }
 
   Unreachable();
@@ -658,7 +670,7 @@ auto lexer_parse_comments(LexerContext& lexer, SourceLocation begin,
 
 auto TokenStream::parse(ProgramContext& program, const SourceManager& source) -> TokenStream
 {
-  auto context = LexerContext(program, source);
+  auto lexer = LexerContext(program, source);
   auto range = source.range();
   auto it = std::find_if_not(range.begin(), range.end(), is_space);
 
@@ -667,30 +679,30 @@ auto TokenStream::parse(ProgramContext& program, const SourceManager& source) ->
     if (*it == '/' && std::next(it) != range.end() &&
         (*std::next(it) == '/' || *std::next(it) == '*'))
     {
-      it = lexer_parse_comments(context, it, range.end());
+      it = lexer_parse_comments(lexer, it, range.end());
     }
     else if (is_char_literal_match(*it) || is_string_literal_match(*it) ||
              is_digit(*it) || *it == '.')
     {
-      it = lexer_parse_constant(context, it, range.end());
+      it = lexer_parse_constant(lexer, it, range.end());
     }
     else if (is_alpha(*it))
     {
-      it = lexer_parse_identifier(context, it, range.end());
+      it = lexer_parse_identifier(lexer, it, range.end());
     }
     else if (is_operator(*it))
     {
-      it = lexer_parse_operator(context, it, range.end());
+      it = lexer_parse_operator(lexer, it, range.end());
     }
     else
     {
-      // TODO emit unknown symbol.
+      lexer.error(SourceRange(it), "unknown symbol '{}'", *it);
       ++it;
     }
 
     it = std::find_if_not(it, range.end(), is_space);
   }
 
-  return TokenStream(std::move(context.tokens));
+  return TokenStream(std::move(lexer.tokens));
 }
 

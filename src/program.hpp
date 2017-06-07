@@ -31,16 +31,6 @@ struct NoContextTag
 
 constexpr inline NoContextTag nocontext = {};
 
-// Formats a compiler diagnostic message to be shown to the end user.
-//
-// Parameters:
-//  from: Where is this diagnostic from (compiler, translation unit etc)
-//  level: Diagnostic severity (error, warning etc)
-//  line_info: Source code information (line, location, relevant code etc)
-//  description: Diagnostic message
-//
-// Returns:
-//  The formatted diagnostic. Suitable for the end user to read.
 auto format_error(const char* from, DiagLevel, const optional<LineInfo>&, string_view description) -> std::string;
 
 template <typename... Args>
@@ -78,14 +68,15 @@ struct Options
 
 struct ProgramContext
 {
-private:
   const Options opts;
+
+private:
   std::FILE* output;
 
-  size_t error_count = 0;
-  size_t warn_count = 0;
-  size_t fatal_count = 0;
-  const size_t max_errors = 32;
+  std::size_t error_count = 0;
+  std::size_t warn_count = 0;
+  std::size_t fatal_count = 0;
+  const std::size_t max_errors = 32;
 
   void put(std::string msg) const
   {
@@ -93,7 +84,7 @@ private:
   }
 
 public:
-  ProgramContext(const Options& opts, std::FILE* log)
+  explicit ProgramContext(const Options& opts, std::FILE* log = stderr)
     : opts(opts), output(log)
   {}
 
