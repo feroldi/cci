@@ -525,17 +525,13 @@ auto lexer_parse_decimal(LexerContext& lexer, SourceLocation begin,
 
   if (is_alpha(*it))
   {
-    // skip suffix.
-    ++it;
-
-    if (it != end)
+    if ((*it != 'f' && *it != 'F') || (std::next(it) != end && is_alphanum(*std::next(it))))
     {
-      if ((*it != 'f' && *it != 'F') || (it != end && is_alphanum(*it)))
-      {
-        auto suffix_end = std::find_if_not(it, end, is_alphanum);
-        lexer.error({it - 1, suffix_end}, "invalid suffix '{}' on floating constant", fmt::StringRef(it - 1, std::distance(it - 1, suffix_end)));
-      }
+      auto suffix_end = std::find_if_not(it, end, is_alphanum);
+      lexer.error({it, suffix_end}, "invalid suffix '{}' on floating constant", fmt::StringRef(it, std::distance(it, suffix_end)));
     }
+
+    ++it;
   }
 
   lexer.add_token(TokenType::FloatConstant, begin, it);
@@ -657,8 +653,25 @@ auto TokenStream::parse(ProgramContext& program, const SourceManager& source) ->
     {
       it = lexer_parse_comments(lexer, it, range.end());
     }
-    else if (is_char_literal_match(*it) || is_string_literal_match(*it) ||
-             is_digit(*it) || *it == '.')
+    else if (is_char_literal_match(*it) || is_string_literal_match(*it))
+    {
+      it = lexer_parse_constant(lexer, it, range.end());
+    }
+    else if (*it == '.') //< Special case for when tokens == [Identifier, Dot]
+    {
+      auto& tokens = lexer.tokens;
+
+      // Don't parse a floating literal when it's following an identifier.
+      if (!tokens.empty() && tokens.back().type == TokenType::Identifier)
+      {
+        it = lexer_parse_operator(lexer, it, range.end());
+      }
+      else
+      {
+        it = lexer_parse_constant(lexer, it, range.end());
+      }
+    }
+    else if (is_digit(*it))
     {
       it = lexer_parse_constant(lexer, it, range.end());
     }

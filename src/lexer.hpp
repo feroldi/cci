@@ -146,10 +146,8 @@ struct TokenStream
     SourceRange range;
   };
 
-private:
   std::vector<TokenData> tokens;
 
-public:
   explicit TokenStream(std::vector<TokenData> tokens) :
     tokens{std::move(tokens)}
   {}
