@@ -146,6 +146,8 @@ struct TokenStream
     SourceRange range;
   };
 
+  using iterator = std::vector<TokenData>::const_iterator;
+
 private:
   std::vector<TokenData> tokens;
 
@@ -156,6 +158,7 @@ public:
 
   static auto parse(ProgramContext&, const SourceManager& source) -> TokenStream;
 
-  // TODO: begin(), end()
+  auto begin() const -> iterator { return this->tokens.begin(); }
+  auto end() const -> iterator { return this->tokens.end(); }
 };
 
