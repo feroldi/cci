@@ -355,30 +355,6 @@ auto lexer_parse_char_literal(LexerContext& lexer, SourceLocation begin,
     lexer.error(SourceRange(begin), "missing terminating ' character");
   }
 
-  if (lexer.program.opts.pedantic)
-  {
-    // TODO count bytes in a char literal.
-    // NOTE: consider other escape sequences as well.
-    const std::size_t byte_count = [begin=std::next(begin), end=std::prev(it)] {
-      std::size_t count{};
-
-      for (auto it = begin; it != end; ++it)
-      {
-        if (*it != '\\')
-        {
-          ++count;
-        }
-      }
-
-      return count;
-    }();
-
-    if (byte_count > 1)
-    {
-      lexer.pedantic({begin, it}, "multiple character literal");
-    }
-  }
-
   check_escape_sequences(lexer, std::next(begin), std::prev(it));
   lexer.add_token(TokenType::CharConstant, begin, it);
 
