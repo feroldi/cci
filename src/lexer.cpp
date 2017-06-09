@@ -12,6 +12,9 @@
 #include "source_manager.hpp"
 #include "program.hpp"
 
+namespace ccompiler
+{
+
 namespace
 {
 
@@ -695,3 +698,4 @@ auto TokenStream::parse(ProgramContext& program, const SourceManager& source) ->
   return TokenStream(std::move(lexer.tokens));
 }
 
+} // namespace ccompiler

@@ -3,6 +3,9 @@
 #include "utils/stream.hpp"
 #include "source_manager.hpp"
 
+namespace ccompiler
+{
+
 SourceManager::SourceLineCache::SourceLineCache(SourceRange range)
 {
   auto line_begin = range.begin();
@@ -62,3 +65,4 @@ auto SourceManager::from_path(std::string filepath) -> SourceManager
       "file '{}' is not valid or doesn't exist", std::move(filepath)));
 }
 
+} // namespace ccompiler

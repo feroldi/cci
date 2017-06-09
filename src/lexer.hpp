@@ -6,6 +6,9 @@
 #include "cpp/string_view.hpp"
 #include "source_manager.hpp"
 
+namespace ccompiler
+{
+
 struct ProgramContext;
 
 enum class TokenType
@@ -162,3 +165,4 @@ public:
   auto end() const -> iterator { return this->tokens.end(); }
 };
 
+} // namespace ccompiler

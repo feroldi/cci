@@ -6,6 +6,9 @@
 #include "source_manager.hpp"
 #include "lexer.hpp"
 
+namespace ccompiler
+{
+
 struct ProgramFailure : std::runtime_error
 {
   using std::runtime_error::runtime_error;
@@ -135,3 +138,5 @@ public:
     throw ProgramFailure("fatal error occurred");
   }
 };
+
+} // namespace ccompiler

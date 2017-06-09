@@ -4,6 +4,9 @@
 #include "program.hpp"
 #include "source_manager.hpp"
 
+namespace ccompiler
+{
+
 auto format_error(const char* from, DiagLevel level, const optional<LineInfo>& line_info,
                   string_view description) -> std::string
 {
@@ -67,3 +70,5 @@ auto format_error(const char* from, DiagLevel level, const optional<LineInfo>& l
 
   return message;
 }
+
+} // namespace ccompiler

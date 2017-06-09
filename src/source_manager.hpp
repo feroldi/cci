@@ -5,6 +5,9 @@
 #include "cpp/contracts.hpp"
 #include "cpp/string_view.hpp"
 
+namespace ccompiler
+{
+
 using SourceLocation = const char*;
 
 struct SourceRange
@@ -134,3 +137,4 @@ public:
   auto get_name() const -> const std::string& { return this->source_name; }
 };
 
+} // namespace ccompiler
