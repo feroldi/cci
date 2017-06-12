@@ -56,7 +56,7 @@ auto SourceManager::line_range_at(size_t line_no) const -> SourceRange
 
 auto SourceManager::from_path(std::string filepath) -> SourceManager
 {
-  if (auto content = utils::read_stream(filepath); content.has_value())
+  if (auto content = utils::read_stream(filepath); content)
   {
     return SourceManager(std::move(filepath), std::move(*content));
   }

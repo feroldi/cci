@@ -414,14 +414,14 @@ auto lexer_parse_operator(LexerContext& lexer, SourceLocation begin,
   {
     if (source_sv.substr(0, str.size()) == str)
     {
-      if (!best_match.has_value() || best_match->second.size() < str.size())
+      if (!best_match || best_match->second.size() < str.size())
       {
         best_match = std::make_pair(type, str);
       }
     }
   }
 
-  if (best_match.has_value())
+  if (best_match)
   {
     auto[type, str] = *best_match;
     it = begin + str.size();

@@ -23,7 +23,7 @@ auto format_error(const char* from, DiagLevel level, const optional<LineInfo>& l
     message += "cc:";
   }
 
-  if (line_info.has_value())
+  if (line_info)
   {
     message +=
       fmt::format("{}:{}:", line_info->pos.line_no, line_info->pos.column_no);
@@ -48,7 +48,7 @@ auto format_error(const char* from, DiagLevel level, const optional<LineInfo>& l
   message += description.data();
   message.push_back('\n');
 
-  if (line_info.has_value())
+  if (line_info)
   {
     auto [pos, line, range] = *line_info;
     std::string highlight;
