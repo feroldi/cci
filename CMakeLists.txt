@@ -4,7 +4,7 @@ project(ccompiler)
 
 # Disable extended variants of C++ dialects
 # i.e. don't choose gnu++11 over c++11
-#set(CXX_EXTENSIONS OFF)
+set(CXX_EXTENSIONS OFF)
 
 add_executable(ccompiler src/main.cpp)
 
