@@ -32,45 +32,37 @@ struct LineInfo
 struct NoContextTag
 {};
 
-constexpr inline NoContextTag nocontext = {};
+constexpr inline auto nocontext() -> NoContextTag { return {}; }
 
-auto format_error(const char* from, DiagLevel, const optional<LineInfo>&, string_view description) -> std::string;
-
-template <typename... Args>
-auto format_error(const char* from, DiagLevel level, const optional<LineInfo>& info, const char* format, Args&&... args) -> std::string
-{
-  return format_error(from, level, info, fmt::format(format, std::forward<Args>(args)...));
-}
+auto base_format_error(const char* from, DiagLevel, const optional<LineInfo>&, string_view description) -> std::string;
 
 template <typename... Args>
-inline auto format_error(NoContextTag, DiagLevel level, const char* format, Args&&... args) -> std::string
-{
-  return format_error(
-    nullptr, level, nullopt,
-    fmt::format(format, std::forward<Args>(args)...));
-}
+inline auto format_error(const char* from, DiagLevel level, const optional<LineInfo>& info, const char* format, Args&&... args) -> std::string;
 
 template <typename... Args>
-inline auto format_error(const TokenStream::TokenDebug& context, DiagLevel level,
-                         const char* format, Args&&... args)
-  -> std::string
-{
-  const auto line = context.source.line_range_at(context.pos.line_no);
+inline auto format_error(NoContextTag, DiagLevel level, const char* format, Args&&... args) -> std::string;
 
-  return format_error(
-    context.source.get_name().c_str(), level, LineInfo{context.pos, line, context.range},
-    fmt::format(format, std::forward<Args>(args)...));
-}
+template <typename... Args>
+inline auto format_error(const TokenStream::TokenDebug& context, DiagLevel level, const char* format, Args&&... args) -> std::string;
 
 struct Options
 {
   bool pedantic = false;
   bool pedantic_errors = false; //< implies pedantic
   bool warning_as_error = false;
+  bool syntax_only = false;
+  bool show_help = false; //< exits program if true
+  std::string output_filename = "a.out";
+  uint32_t optimization_level = 0;
+  std::vector<std::string> source_filenames;
+
+  static auto parse_arguments(int argc, char**& argv) -> Options;
+  void dump(std::FILE* out) const;
 };
 
-struct ProgramContext
+class ProgramContext
 {
+public:
   const Options opts;
 
 private:
@@ -79,6 +71,7 @@ private:
   std::size_t error_count = 0;
   std::size_t warn_count = 0;
   std::size_t fatal_count = 0;
+
   const std::size_t max_errors = 32;
 
   void put(std::string msg) const
@@ -133,10 +126,36 @@ public:
   template <typename... Args>
   [[noreturn]] void fatal(const char* format, Args&&... args)
   {
-    this->put(format_error(nocontext, DiagLevel::Fatal, format, std::forward<Args>(args)...));
+    this->put(format_error(nocontext(), DiagLevel::Fatal, format, std::forward<Args>(args)...));
     this->fatal_count += 1;
     throw ProgramFailure("fatal error occurred");
   }
 };
+
+template <typename... Args>
+inline auto format_error(const char* from, DiagLevel level, const optional<LineInfo>& info, const char* format, Args&&... args) -> std::string
+{
+  return base_format_error(from, level, info, fmt::format(format, std::forward<Args>(args)...));
+}
+
+template <typename... Args>
+inline auto format_error(NoContextTag, DiagLevel level, const char* format, Args&&... args) -> std::string
+{
+  return base_format_error(
+    nullptr, level, nullopt,
+    fmt::format(format, std::forward<Args>(args)...));
+}
+
+template <typename... Args>
+inline auto format_error(const TokenStream::TokenDebug& context, DiagLevel level,
+                         const char* format, Args&&... args)
+  -> std::string
+{
+  const auto line = context.source.line_range_at(context.pos.line_no);
+
+  return base_format_error(
+    context.source.get_name().c_str(), level, LineInfo{context.pos, line, context.range},
+    fmt::format(format, std::forward<Args>(args)...));
+}
 
 } // namespace ccompiler

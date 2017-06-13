@@ -369,9 +369,16 @@ auto lexer_parse_string_literal(LexerContext& lexer, SourceLocation begin,
 {
   Expects(is_string_literal_match(begin[0]));
 
-  const SourceLocation it = std::invoke([&] {
+  // Finds next matching " character.
+  const SourceLocation it = [&] {
     for (auto it = std::next(begin); it != end; ++it)
     {
+      // String literals shall not contain new lines.
+      if (is_newline(*it))
+      {
+        return it;
+      }
+
       // skip escaping \"
       if (*it == '\\' && std::next(it) != end &&
           is_string_literal_match(*std::next(it)))
@@ -387,9 +394,14 @@ auto lexer_parse_string_literal(LexerContext& lexer, SourceLocation begin,
     }
 
     return end;
-  });
+  }();
 
   if (it == end && !is_string_literal_match(*std::prev(it)))
+  {
+    lexer.error(SourceRange(begin), "missing terminating '\"' character");
+  }
+
+  if (it != end && is_newline(*it))
   {
     lexer.error(SourceRange(begin), "missing terminating '\"' character");
   }

@@ -9,7 +9,7 @@
 namespace ccompiler
 {
 
-struct ProgramContext;
+class ProgramContext;
 
 enum class TokenType
 {
