@@ -1,10 +1,48 @@
-#include "program.hpp"
 #include <cstdio>
 #include <string>
+#include "cpp/format.hpp"
+#include "cpp/contracts.hpp"
+#include "utils/args.hpp"
+#include "program.hpp"
 
-int main(int /*argc*/, char** argv)
+namespace cc = ccompiler;
+
+static void show_help()
 {
-  auto source = SourceManager::from_path(argv[1]);
-  auto program = ProgramContext(Options{}, stderr);
-  auto tokens = TokenStream::parse(program, source);
+  fmt::print(stderr, "ccompiler 0.1-alpha\n");
+}
+
+int main(int argc, char** argv)
+{
+  // skip program name
+  std::advance(argv, 1);
+  argc -= 1;
+
+  try
+  {
+    const auto opts = cc::Options::parse_arguments(argc, argv);
+
+    if (opts.show_help)
+    {
+      show_help();
+      return 0;
+    }
+
+    auto program = cc::ProgramContext(opts);
+
+    for (const auto& filename : opts.source_filenames)
+    {
+      auto source = cc::SourceManager::from_path(filename);
+      auto token_stream = cc::TokenStream::parse(program, source);
+    }
+
+    if (opts.syntax_only)
+    {
+      return 0;
+    }
+  }
+  catch (const std::exception& e)
+  {
+    fmt::print(stderr, "ccompiler: error: {}\n", e.what());
+  }
 }
