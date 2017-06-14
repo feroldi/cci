@@ -60,26 +60,10 @@ struct Options
   void dump(std::FILE* out) const;
 };
 
-class ProgramContext
+struct ProgramContext
 {
-public:
   const Options opts;
 
-private:
-  std::FILE* output;
-
-  std::size_t error_count = 0;
-  std::size_t warn_count = 0;
-  std::size_t fatal_count = 0;
-
-  const std::size_t max_errors = 32;
-
-  void put(std::string msg) const
-  {
-    std::fprintf(this->output, "%s\n", msg.c_str());
-  }
-
-public:
   explicit ProgramContext(const Options& opts, std::FILE* log = stderr)
     : opts(opts), output(log)
   {}
@@ -130,6 +114,20 @@ public:
     this->fatal_count += 1;
     throw ProgramFailure("fatal error occurred");
   }
+
+private:
+  std::FILE* output;
+
+  std::size_t error_count = 0;
+  std::size_t warn_count = 0;
+  std::size_t fatal_count = 0;
+
+  const std::size_t max_errors = 32;
+
+  void put(std::string msg) const
+  {
+    std::fprintf(this->output, "%s\n", msg.c_str());
+  }
 };
 
 template <typename... Args>
@@ -154,7 +152,7 @@ inline auto format_error(const TokenStream::TokenDebug& context, DiagLevel level
   const auto line = context.source.line_range_at(context.pos.line_no);
 
   return base_format_error(
-    context.source.get_name().c_str(), level, LineInfo{context.pos, line, context.range},
+    context.source.filename.c_str(), level, LineInfo{context.pos, line, context.range},
     fmt::format(format, std::forward<Args>(args)...));
 }
 

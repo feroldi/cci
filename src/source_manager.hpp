@@ -12,11 +12,6 @@ using SourceLocation = const char*;
 
 struct SourceRange
 {
-private:
-  SourceLocation first;
-  SourceLocation last;
-
-public:
   explicit SourceRange() = default;
 
   SourceRange(SourceLocation begin, SourceLocation end)
@@ -72,6 +67,10 @@ public:
   {
     return std::string(this->begin(), this->end());
   }
+
+private:
+  SourceLocation first;
+  SourceLocation last;
 };
 
 struct SourceManager
@@ -90,16 +89,12 @@ struct SourceManager
     explicit SourceLineCache(SourceRange range);
   };
 
-private:
-  const std::string source_name;
-  const std::string source_content;
-  const SourceLineCache line_cache;
+  const std::string filename;
 
-public:
   // TODO: change source_name's type to fs::path
-  explicit SourceManager(std::string source_name, std::string content)
-    : source_name{std::move(source_name)}, source_content{std::move(content)},
-      line_cache{SourceRange(this->source_content)}
+  explicit SourceManager(std::string filename, std::string content)
+    : filename{std::move(filename)}, content{std::move(content)},
+      line_cache{SourceRange(this->content)}
   {}
 
   SourceManager(const SourceManager&) = delete;
@@ -119,13 +114,13 @@ public:
 
   auto begin() const -> SourceLocation
   {
-    string_view v = this->source_content;
+    string_view v = this->content;
     return v.begin();
   }
 
   auto end() const -> SourceLocation
   {
-    string_view v = this->source_content;
+    string_view v = this->content;
     return v.end();
   }
 
@@ -134,7 +129,9 @@ public:
     return SourceRange(this->begin(), this->end());
   }
 
-  auto get_name() const -> const std::string& { return this->source_name; }
+private:
+  const std::string content;
+  const SourceLineCache line_cache;
 };
 
 } // namespace ccompiler

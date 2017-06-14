@@ -9,7 +9,7 @@
 namespace ccompiler
 {
 
-class ProgramContext;
+struct ProgramContext;
 
 enum class TokenType
 {
@@ -151,10 +151,6 @@ struct TokenStream
 
   using iterator = std::vector<TokenData>::const_iterator;
 
-private:
-  std::vector<TokenData> tokens;
-
-public:
   explicit TokenStream(std::vector<TokenData> tokens) :
     tokens{std::move(tokens)}
   {}
@@ -163,6 +159,9 @@ public:
 
   auto begin() const -> iterator { return this->tokens.begin(); }
   auto end() const -> iterator { return this->tokens.end(); }
+
+private:
+  std::vector<TokenData> tokens;
 };
 
 } // namespace ccompiler

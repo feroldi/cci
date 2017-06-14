@@ -498,7 +498,7 @@ auto lexer_parse_integer(LexerContext& lexer, SourceLocation begin,
         break;
 
       case IntegerBase::Octal:
-        if (is_alphanum(*it) || *it == '.')
+        if (is_alphanum(*it))
         {
           lexer.error(SourceRange(it), "invalid digit '{}' in octal constant", *it);
         }
@@ -650,7 +650,7 @@ auto lexer_parse_comments(LexerContext& lexer, SourceLocation begin,
     lexer.error(SourceRange(begin), "missing matching */ block-comment");
   }
 
-  Unreachable();
+  return end;
 }
 
 } // namespace

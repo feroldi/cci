@@ -39,3 +39,6 @@ target_compile_options(ccompiler
     -pedantic-errors
     -Wno-c++98-compat
 )
+
+# Enable LTO (Link Time Optimization)
+set_property(TARGET ccompiler PROPERTY INTERPROCEDURAL_OPTIMIZATION TRUE)
