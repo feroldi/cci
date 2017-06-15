@@ -2,7 +2,14 @@
 
 #include <cstddef>
 #include <vector>
+#include "cpp/contracts.hpp"
 #include "cpp/string_view.hpp"
+#include "source_manager.hpp"
+
+namespace ccompiler
+{
+
+struct ProgramContext;
 
 enum class TokenType
 {
@@ -123,53 +130,38 @@ enum class TokenType
   Const,
 };
 
-using LexerIterator = const char*;
-
-struct SourceLocation
+struct TokenStream
 {
-  LexerIterator begin;
-  LexerIterator end;
-
-  explicit SourceLocation() = default;
-  explicit SourceLocation(LexerIterator begin, LexerIterator end) noexcept :
-    begin(begin), end(end)
-  {}
-
-  operator string_view() const
+  struct TokenData
   {
-    return string_view{begin, static_cast<size_t>(std::distance(begin, end))};
-  }
-};
+    TokenType type;
+    SourceRange data;
 
-struct LineCol
-{
-  size_t lineno;
-  size_t colno;
-};
+    explicit TokenData(TokenType type, SourceRange source) noexcept
+      : type{type}, data{source}
+    {}
+  };
 
-struct TextStream
-{
-  std::string filename;
-  std::string text;
-  std::vector<SourceLocation> line_offsets;
+  struct TokenDebug
+  {
+    const SourceManager& source;
+    SourceManager::LineColumn pos;
+    SourceRange range;
+  };
 
-  explicit TextStream(string_view filename);
+  using iterator = std::vector<TokenData>::const_iterator;
 
-  void calculate_line_offsets();
-  auto linecol_from_source_location(const SourceLocation&) const -> LineCol;
-};
-
-struct TokenData
-{
-  TokenType type;
-  SourceLocation data;
-
-  explicit TokenData(TokenType type, SourceLocation source) noexcept :
-    type{type},
-    data{source}
+  explicit TokenStream(std::vector<TokenData> tokens) :
+    tokens{std::move(tokens)}
   {}
+
+  static auto parse(ProgramContext&, const SourceManager& source) -> TokenStream;
+
+  auto begin() const -> iterator { return this->tokens.begin(); }
+  auto end() const -> iterator { return this->tokens.end(); }
+
+private:
+  std::vector<TokenData> tokens;
 };
 
-auto lexer_tokenize_text(string_view text) -> std::vector<TokenData>;
-
-
+} // namespace ccompiler
