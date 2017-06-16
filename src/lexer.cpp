@@ -336,6 +336,12 @@ auto lexer_parse_char_literal(LexerContext& lexer, SourceLocation begin,
   const SourceLocation it = [&] {
     for (auto it = std::next(begin); it != end; ++it)
     {
+      // Char literals shall not contain new lines.
+      if (is_newline(*it))
+      {
+        return it;
+      }
+
       // skip escaping \'
       if (*it == '\\' && std::next(it) != end &&
           is_char_literal_match(*std::next(it)))
@@ -354,6 +360,11 @@ auto lexer_parse_char_literal(LexerContext& lexer, SourceLocation begin,
   }();
 
   if (it == end && !is_char_literal_match(*std::prev(it)))
+  {
+    lexer.error(SourceRange(begin), "missing terminating ' character");
+  }
+
+  else if (it != end && is_newline(*it))
   {
     lexer.error(SourceRange(begin), "missing terminating ' character");
   }
@@ -401,7 +412,7 @@ auto lexer_parse_string_literal(LexerContext& lexer, SourceLocation begin,
     lexer.error(SourceRange(begin), "missing terminating '\"' character");
   }
 
-  if (it != end && is_newline(*it))
+  else if (it != end && is_newline(*it))
   {
     lexer.error(SourceRange(begin), "missing terminating '\"' character");
   }
