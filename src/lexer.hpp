@@ -150,18 +150,40 @@ struct TokenStream
   };
 
   using iterator = std::vector<TokenData>::const_iterator;
+  using const_iterator = std::vector<TokenData>::const_iterator;
 
-  explicit TokenStream(std::vector<TokenData> tokens) :
-    tokens{std::move(tokens)}
+  explicit TokenStream(std::vector<TokenData> tokens, const SourceManager& source) :
+    tokens{std::move(tokens)}, source{source}
   {}
 
   static auto parse(ProgramContext&, const SourceManager& source) -> TokenStream;
 
   auto begin() const -> iterator { return this->tokens.begin(); }
+
   auto end() const -> iterator { return this->tokens.end(); }
+
+  auto source_manager() const noexcept -> const SourceManager&
+  {
+    return this->source;
+  }
 
 private:
   std::vector<TokenData> tokens;
+  const SourceManager& source;
 };
+
+inline auto make_token_debug(const SourceManager& src_man, SourceRange range)
+  -> TokenStream::TokenDebug
+{
+  const auto pos = src_man.linecol_from_location(range.begin());
+
+  return TokenStream::TokenDebug{src_man, pos, range};
+}
+
+inline auto make_token_debug(const TokenStream& tokens, SourceRange range)
+  -> TokenStream::TokenDebug
+{
+  return make_token_debug(tokens.source_manager(), range);
+}
 
 } // namespace ccompiler

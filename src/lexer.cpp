@@ -718,7 +718,7 @@ auto TokenStream::parse(ProgramContext& program, const SourceManager& source) ->
     it = std::find_if_not(it, range.end(), is_space);
   }
 
-  return TokenStream(std::move(lexer.tokens));
+  return TokenStream(std::move(lexer.tokens), source);
 }
 
 } // namespace ccompiler
