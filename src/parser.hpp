@@ -2,6 +2,8 @@
 
 #include <memory>
 #include <vector>
+#include "cpp/any.hpp"
+#include "cpp/observer_ptr.hpp"
 #include "lexer.hpp"
 #include "source_manager.hpp"
 #include "program.hpp"
@@ -11,83 +13,168 @@ namespace ccompiler
 
 enum class NodeType
 {
+  None,
+  PrimaryExpression,
+  GenericSelection,
+  GenericAssocList,
+  GenericAssociation,
+  PostfixExpression,
+  ArgumentExpressionList,
+  UnaryExpression,
+  UnaryOperator,
+  CastExpression,
+  MultiplicativeExpression,
+  AdditiveExpression,
+  ShiftExpression,
+  RelatioalExpression,
+  EqualityExpression,
+  AndExpression,
+  ExclusiveOrExpression,
+  InclusiveOrExpression,
+  LogicalAndExpression,
+  LogicalOrExpression,
+  ConditionalExpression, //< expr ? expr : expr
+  AssignmentExpression,
+  AssignmentOperator,
+  Expression,
+  ConstantExpression,
+  Declaration,
+  DeclarationSpecifiers,
+  DeclarationSpecifier,
+  InitDeclaratorList,
+  InitDeclarator,
+  StorageClassSpecifier,
+  TypeSpecifier,
+  StructOrUnionSpecifier,
+  StructOrUnion,
+  StructDeclarationList,
+  StructDeclaration,
+  SpecifierQualifierList,
+  StructDeclaratorList,
+  StructDeclarator,
+  EnumSpecifier,
+  EnumeratorList,
+  Enumerator,
+  EnumerationConstant,
+  AtomicTypeSpecifier,
+  TypeQualifier,
+  FunctionSpecifier,
+  AlignmentSpecifier,
+  Declarator,
+  DirectDeclarator,
+  NestedParenthesesBlock,
+  Pointer,
+  TypeQualifierList,
+  ParameterTypeList,
+  ParameterList,
+  ParameterDeclaration,
+  IdentifierList,
+  TypeName,
+  AbstractDeclarator,
+  DirectAbstractDeclarator,
+  TypedefName,
+  Initializer,
+  InitializerList,
+  Designation,
+  DesignatorList,
+  Designator,
+  StaticAssertDeclaration,
+  Statement,
+  LabeledStatement,
+  CompoundStatement,
+  BlockItemList,
+  BlockItem,
+  ExpressionStatement,
+  SelectionStatement,
+  IterationStatement,
+  JumpStatement,
+  CompilationUnit,
   TranslationUnit,
+  ExternalDeclaration,
+  FunctionDefinition,
+  DeclarationList,
+  Identifier,
   Constant,
+  StringLiteral,
+  AsmBlock,
 };
 
-struct SyntaxTree : std::enable_shared_from_this<SyntaxTree>
+struct SyntaxTree
 {
-  using iterator = std::vector<std::shared_ptr<SyntaxTree>>::iterator;
-  using const_iterator = std::vector<std::shared_ptr<SyntaxTree>>::const_iterator;
+  using iterator = std::vector<std::unique_ptr<SyntaxTree>>::iterator;
+  using const_iterator = std::vector<std::unique_ptr<SyntaxTree>>::const_iterator;
 
-  static auto parse(ProgramContext&, const TokenStream&) -> std::shared_ptr<SyntaxTree>;
+  static auto parse(ProgramContext&, const TokenStream&) -> std::unique_ptr<SyntaxTree>;
 
-  explicit SyntaxTree(NodeType type, TokenStream::iterator first,
-                      TokenStream::iterator last)
-    : node_type(type), token_range(first, last)
+  explicit SyntaxTree() noexcept = default;
+
+  explicit SyntaxTree(NodeType type) noexcept
+    : node_type(type), token(nullopt)
   {}
 
-  explicit SyntaxTree(NodeType type, TokenStream::iterator it)
-    : node_type(type), token_range(it, std::next(it))
+  explicit SyntaxTree(NodeType type, const TokenStream::TokenData& token) noexcept
+    : node_type(type), token(token)
   {}
 
-  SyntaxTree(const SyntaxTree&) = delete;
-  SyntaxTree(SyntaxTree&&) = default;
-
-  SyntaxTree& operator= (const SyntaxTree&) = delete;
-  SyntaxTree& operator= (SyntaxTree&&) = default;
-
-  void add_child(std::shared_ptr<SyntaxTree> tree)
+  SyntaxTree(SyntaxTree&& other) noexcept
+    : node_type(other.node_type),
+      node_parent(other.node_parent),
+      token(std::move(other.token)),
+      data(std::move(other.data))
   {
-    Expects(tree->node_parent == nullopt);
-    tree->node_parent = std::weak_ptr<SyntaxTree>(this->shared_from_this());
+    other.node_type = NodeType::None;
+    other.node_parent.reset();
+  }
+
+  SyntaxTree& operator= (SyntaxTree&&) noexcept = default;
+
+  void add_child(std::unique_ptr<SyntaxTree> tree)
+  {
+    Expects(tree->parent() == nullptr);
+
+    tree->node_parent.reset(this);
     this->children.emplace_back(std::move(tree));
   }
 
-  void take_children(std::vector<std::shared_ptr<SyntaxTree>> tree)
+  void take_children(std::unique_ptr<SyntaxTree> tree)
   {
-    for (auto& child : tree)
+    this->children.reserve(this->child_count() + tree->child_count());
+
+    for (auto& child : *tree)
     {
-      child->node_parent = std::weak_ptr<SyntaxTree>(this->shared_from_this());
+      child->node_parent.reset(this);
       this->children.emplace_back(std::move(child));
     }
   }
 
-  auto parent() const noexcept -> std::shared_ptr<SyntaxTree>
+  auto parent() const noexcept -> observer_ptr<SyntaxTree>
   {
-    if (this->node_parent != nullopt)
-    {
-      return this->node_parent->lock();
-    }
-
-    return nullptr;
+    return this->node_parent;
   }
 
-  struct TokenRange
+  auto type() const noexcept -> NodeType
   {
-    TokenStream::iterator begin;
-    TokenStream::iterator end;
+    return this->node_type;
+  }
 
-    TokenRange(TokenStream::iterator begin, TokenStream::iterator end) noexcept
-      : begin(begin), end(end)
-    {}
-
-    operator SourceRange() const noexcept
-    {
-      auto first_loc = this->begin->data.begin();
-      auto last_loc = std::prev(this->end)->data.end();
-
-      return SourceRange(first_loc, last_loc);
-    }
-  };
-
-  auto type() const noexcept -> NodeType { return this->node_type; }
-
-  auto tokens() const noexcept -> TokenRange { return this->token_range; }
-
-  auto range() const noexcept -> SourceRange
+  auto has_text() const noexcept -> bool
   {
-    return static_cast<SourceRange>(this->tokens());
+    return this->token != nullopt;
+  }
+
+  auto text() const -> string_view
+  {
+    return static_cast<string_view>(this->token.value().data);
+  }
+
+  auto begin() noexcept -> iterator
+  {
+    return this->children.begin();
+  }
+
+  auto end() noexcept -> iterator
+  {
+    return this->children.end();
   }
 
   auto begin() const noexcept -> const_iterator
@@ -98,6 +185,11 @@ struct SyntaxTree : std::enable_shared_from_this<SyntaxTree>
   auto end() const noexcept -> const_iterator
   {
     return this->children.end();
+  }
+
+  auto child_count() const noexcept -> std::size_t
+  {
+    return this->children.size();
   }
 
   template <typename F>
@@ -113,9 +205,10 @@ struct SyntaxTree : std::enable_shared_from_this<SyntaxTree>
 
 private:
   NodeType node_type;
-  optional<std::weak_ptr<SyntaxTree>> node_parent;
-  std::vector<std::shared_ptr<SyntaxTree>> children;
-  TokenRange token_range;
+  observer_ptr<SyntaxTree> node_parent;
+  std::vector<std::unique_ptr<SyntaxTree>> children;
+  optional<TokenStream::TokenData> token;
+  any data;
 };
 
-} // namespace
+} // namespace ccompiler
