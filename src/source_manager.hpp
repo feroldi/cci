@@ -68,6 +68,16 @@ struct SourceRange
     return std::string(this->begin(), this->end());
   }
 
+  friend auto operator== (const SourceRange& lhs, const SourceRange& rhs) -> bool
+  {
+    return (lhs.begin() == rhs.begin()) & (lhs.end() == rhs.end());
+  }
+
+  friend auto operator!= (const SourceRange& lhs, const SourceRange& rhs) -> bool
+  {
+    return (lhs.begin() != rhs.begin()) | (lhs.end() != rhs.end());
+  }
+
 private:
   SourceLocation first;
   SourceLocation last;
@@ -135,3 +145,24 @@ private:
 };
 
 } // namespace ccompiler
+
+namespace std
+{
+template<>
+struct hash<ccompiler::SourceRange>
+{
+  using argument_type = ccompiler::SourceRange;
+  using result_type = std::size_t;
+
+  auto operator()(const ccompiler::SourceRange& range) const noexcept
+    -> std::size_t
+  {
+    using ccompiler::SourceLocation;
+
+    const std::size_t h1 = std::hash<SourceLocation>{}(range.begin());
+    const std::size_t h2 = std::hash<SourceLocation>{}(range.end());
+
+    return h1 ^ (h2 << 1);
+  }
+};
+} // namespace std
