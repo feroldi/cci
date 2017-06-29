@@ -258,69 +258,61 @@ auto check_escape_sequences(LexerContext& lexer, SourceLocation begin,
     if (it == end)
       break;
 
-    if (std::next(it) != end)
+    // skip '\\'
+    std::advance(it, 1);
+
+    if (is_octdigit(*it))
     {
-      // skip '\\'
+      // There may exist up to three octal digits.
+      it = std::find_if_not(it, it + 3, is_octdigit);
+    }
+    else if (std::any_of(std::begin(ESC_SEQ_HEX), std::end(ESC_SEQ_HEX),
+                         [&](char c) { return *it == c; }))
+    {
+      const auto it_end = std::find_if_not(std::next(it), end, is_hexdigit);
+      const auto distance = std::distance(it + 1, it_end);
+
+      switch (*it)
+      {
+        case 'x':
+          if (distance < 2)
+          {
+            lexer.error(SourceRange(std::prev(it)), "\\x used with no following hex digits");
+            any_errors = true;
+          }
+          break;
+
+        case 'U':
+          if (distance < 8)
+          {
+            lexer.error({std::prev(it), it_end}, "\\U incomplete universal character name");
+            any_errors = true;
+          }
+          break;
+
+        case 'u':
+          if (distance < 4)
+          {
+            lexer.error({std::prev(it), it_end}, "\\u incomplete universal character name");
+            any_errors = true;
+          }
+          break;
+
+        default:
+          Unreachable();
+      }
+
+      it = it_end;
+    }
+    else if (std::any_of(std::begin(ESC_SEQ), std::end(ESC_SEQ),
+                         [&](char c) { return *it == c; }))
+    {
+      // skip already parsed escape sequence.
       std::advance(it, 1);
-
-      if (is_octdigit(*it))
-      {
-        // There may exist up to three octal digits.
-        it = std::find_if_not(it, it + 3, is_octdigit);
-      }
-      else if (std::any_of(std::begin(ESC_SEQ_HEX), std::end(ESC_SEQ_HEX),
-                           [&](char c) { return *it == c; }))
-      {
-        const auto it_end = std::find_if_not(std::next(it), end, is_hexdigit);
-        const auto distance = std::distance(it + 1, it_end);
-
-        switch (*it)
-        {
-          case 'x':
-            if (distance < 2)
-            {
-              lexer.error(SourceRange(std::prev(it)), "\\x used with no following hex digits");
-              any_errors = true;
-            }
-            break;
-
-          case 'U':
-            if (distance < 8)
-            {
-              lexer.error({std::prev(it), it_end}, "\\U incomplete universal character name");
-              any_errors = true;
-            }
-            break;
-
-          case 'u':
-            if (distance < 4)
-            {
-              lexer.error({std::prev(it), it_end}, "\\u incomplete universal character name");
-              any_errors = true;
-            }
-            break;
-
-          default:
-            Unreachable();
-        }
-
-        it = it_end;
-      }
-      else if (std::any_of(std::begin(ESC_SEQ), std::end(ESC_SEQ),
-                           [&](char c) { return *it == c; }))
-      {
-        // skip already parsed escape sequence.
-        std::advance(it, 1);
-      }
-      else
-      {
-        lexer.warning(SourceRange(it - 1, it + 1), "unknown escape sequence");
-        any_errors = true;
-      }
     }
     else
     {
-      lexer.error(SourceRange(it), "missing terminating \" character");
+      lexer.warning(SourceRange(it - 1, it + 1), "unknown escape sequence");
       any_errors = true;
     }
   }
@@ -412,7 +404,7 @@ auto lexer_parse_string_literal(LexerContext& lexer, SourceLocation begin,
     lexer.error(SourceRange(begin), "missing terminating '\"' character");
   }
 
-  else if (it != end && is_newline(*it))
+  else if (std::next(it) != end && is_newline(*it))
   {
     lexer.error(SourceRange(begin), "missing terminating '\"' character");
   }
