@@ -8,7 +8,7 @@
 namespace ccompiler
 {
 
-auto Options::parse_arguments(int argc, char**& argv) -> Options
+auto Options::parse_arguments([[maybe_unused]] int argc, char**& argv) -> Options
 {
   using utils::opt_exists;
   using utils::opt_get;

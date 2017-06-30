@@ -115,6 +115,11 @@ struct ProgramContext
     throw ProgramFailure("fatal error occurred");
   }
 
+  auto has_errors() const noexcept -> bool
+  {
+    return this->error_count != 0 || this->fatal_count != 0;
+  }
+
 private:
   std::FILE* output;
 
