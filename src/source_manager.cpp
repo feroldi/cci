@@ -1,4 +1,5 @@
 #include <stdexcept>
+#include <algorithm>
 #include "cpp/format.hpp"
 #include "utils/stream.hpp"
 #include "source_manager.hpp"
