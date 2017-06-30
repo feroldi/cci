@@ -356,7 +356,7 @@ auto lexer_parse_char_literal(LexerContext& lexer, SourceLocation begin,
     lexer.error(SourceRange(begin), "missing terminating ' character");
   }
 
-  else if (it != end && is_newline(*it))
+  else if (std::next(it) != end && is_newline(*it))
   {
     lexer.error(SourceRange(begin), "missing terminating ' character");
   }
