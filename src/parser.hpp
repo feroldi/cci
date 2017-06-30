@@ -33,7 +33,7 @@ enum class NodeType
   InclusiveOrExpression,
   LogicalAndExpression,
   LogicalOrExpression,
-  ConditionalExpression, //< expr ? expr : expr
+  ConditionalExpression,
   AssignmentExpression,
   AssignmentOperator,
   Expression,
@@ -55,7 +55,6 @@ enum class NodeType
   EnumSpecifier,
   EnumeratorList,
   Enumerator,
-  EnumerationConstant,
   AtomicTypeSpecifier,
   TypeQualifier,
   FunctionSpecifier,
@@ -95,6 +94,10 @@ enum class NodeType
   DeclarationList,
   Identifier,
   Constant,
+  IntegerConstant,
+  FloatingConstant,
+  EnumerationConstant,
+  CharacterConstant,
   StringLiteral,
   AsmBlock,
 };

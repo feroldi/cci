@@ -1,13 +1,13 @@
 #pragma once
 
 #include <type_traits>
+
+#ifdef CCOMPILER_USE_EGGS_VARIANT
 #include <eggs/variant.hpp>
 
 using eggs::variants::variant;
 using eggs::variants::get;
 
-// In case we need to switch to another variant,
-// just change the inner visit.
 template <typename F, typename... V>
 inline constexpr auto visit(F&& f, V&&... v)
   -> decltype(eggs::variants::apply(std::forward<F>(f), std::forward<V>(v)...))
@@ -23,6 +23,26 @@ inline constexpr auto is(const Variant& v) -> bool
     return std::is_same<T, std::decay_t<decltype(obj)>>::value;
   }, v);
 }
+#else
+#include "mpark_variant.hpp"
+
+using mpark::variant;
+using mpark::get;
+
+template <typename F, typename... V>
+inline constexpr auto visit(F&& f, V&&... v)
+  -> decltype(mpark::visit(std::forward<F>(f), std::forward<V>(v)...))
+{
+  return mpark::visit(std::forward<F>(f), std::forward<V>(v)...);
+}
+
+// i.e. std::holds_alternative.
+template <typename T, typename Variant>
+inline constexpr auto is(const Variant& v) -> bool
+{
+  return mpark::holds_alternative<T>(v);
+}
+#endif
 
 namespace detail
 {
