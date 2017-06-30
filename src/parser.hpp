@@ -102,6 +102,8 @@ enum class NodeType
   AsmBlock,
 };
 
+auto to_string(const NodeType node_type) -> const char*;
+
 struct SyntaxTree
 {
   using iterator = std::vector<std::unique_ptr<SyntaxTree>>::iterator;

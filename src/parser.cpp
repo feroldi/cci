@@ -254,7 +254,7 @@ auto expect_match_token(ParserState& state, TokenIterator begin,
   return true;
 }
 
-// Returns a parser rule that parses a binary expression.
+// Returns a parser rule that matches a binary expression.
 //
 // binaryExpression:
 //  : lhs_rule op_rule rhs_rule
@@ -273,6 +273,30 @@ auto make_parser_binary_expr(LhsRule lhs_rule, OpRule op_rule, RhsRule rhs_rule)
     add_state(op_state, std::move(rhs_state));
 
     return ParserResult(rhs_it, std::move(op_state));
+  };
+}
+
+// Returns a parser rule that matches an operator, or token.
+template <typename OpMatch>
+auto make_parser_operator(NodeType op_type, OpMatch op_match)
+{
+  return [=] (ParserContext& /*parser*/, TokenIterator begin, TokenIterator end) -> ParserResult
+  {
+    if (begin == end)
+      return ParserResult(end, make_error(std::prev(end), to_string(op_type)));
+
+    ParserState state = ParserSuccess(nullptr);
+
+    if (op_match(begin))
+    {
+      add_node(state, std::make_unique<SyntaxTree>(op_type, *begin));
+    }
+    else
+    {
+      add_error(state, make_error(begin, to_string(op_type)));
+    }
+
+    return ParserResult(std::next(begin), std::move(state));
   };
 }
 
@@ -409,6 +433,28 @@ auto parser_constant(ParserContext& parser, TokenIterator begin, TokenIterator e
 auto parser_unary_expression(ParserContext& parser, TokenIterator begin, TokenIterator end)
   -> ParserResult
 {
+  auto parser_unary_operator =
+    make_parser_operator(NodeType::UnaryOperator, [] (TokenIterator t) {
+          switch (t->type)
+          {
+            case TokenType::Assign:
+            case TokenType::TimesAssign:
+            case TokenType::DivideAssign:
+            case TokenType::ModuloAssign:
+            case TokenType::PlusAssign:
+            case TokenType::MinusAssign:
+            case TokenType::BitwiseLeftShiftAssign:
+            case TokenType::BitwiseRightShiftAssign:
+            case TokenType::BitwiseAndAssign:
+            case TokenType::BitwiseXorAssign:
+            case TokenType::BitwiseOrAssign:
+              return true;
+
+            default:
+              return false;
+          }
+        });
+
   return ParserResult(begin, ParserSuccess(nullptr));
 }
 
@@ -438,38 +484,27 @@ auto parser_assignment_expression(ParserContext& parser, TokenIterator begin, To
 {
   Expects(begin != end);
 
-  auto parser_assign_operator = [] (ParserContext& /*parser*/, TokenIterator begin, TokenIterator end)
-    -> ParserResult
-  {
-    if (begin == end)
-    {
-      return ParserResult(end, make_error(std::prev(end), "assignment operator"));
-    }
+  auto parser_assign_operator =
+    make_parser_operator(NodeType::AssignmentOperator, [] (TokenIterator t) {
+          switch (t->type)
+          {
+            case TokenType::Assign:
+            case TokenType::TimesAssign:
+            case TokenType::DivideAssign:
+            case TokenType::ModuloAssign:
+            case TokenType::PlusAssign:
+            case TokenType::MinusAssign:
+            case TokenType::BitwiseLeftShiftAssign:
+            case TokenType::BitwiseRightShiftAssign:
+            case TokenType::BitwiseAndAssign:
+            case TokenType::BitwiseXorAssign:
+            case TokenType::BitwiseOrAssign:
+              return true;
 
-    ParserState state = ParserSuccess(nullptr);
-
-    switch (begin->type)
-    {
-      case TokenType::Assign:
-      case TokenType::TimesAssign:
-      case TokenType::DivideAssign:
-      case TokenType::ModuloAssign:
-      case TokenType::PlusAssign:
-      case TokenType::MinusAssign:
-      case TokenType::BitwiseLeftShiftAssign:
-      case TokenType::BitwiseRightShiftAssign:
-      case TokenType::BitwiseAndAssign:
-      case TokenType::BitwiseXorAssign:
-      case TokenType::BitwiseOrAssign:
-        state = ParserSuccess(std::make_unique<SyntaxTree>(NodeType::AssignmentOperator, *begin));
-        break;
-
-      default:
-        add_error(state, make_error(begin, "assignment operator"));
-    }
-
-    return ParserResult(std::next(begin), std::move(state));
-  };
+            default:
+              return false;
+          }
+        });
 
   ParserState state = ParserSuccess(std::make_unique<SyntaxTree>(NodeType::AssignmentExpression));
 
@@ -561,6 +596,187 @@ auto parser_primary_expression(ParserContext& parser, TokenIterator begin, Token
 // End of rules
 
 } // namespace
+
+auto to_string(const NodeType node_type) -> const char*
+{
+  switch (node_type)
+  {
+    case PrimaryExpression:
+      return "primary expression";
+    case GenericSelection:
+      return "generic selection";
+    case GenericAssocList:
+      return "generic assoc list";
+    case GenericAssociation:
+      return "generic association";
+    case PostfixExpression:
+      return "postfix expression";
+    case ArgumentExpressionList:
+      return "argument expression list";
+    case UnaryExpression:
+      return "unary expression";
+    case UnaryOperator:
+      return "unary operator";
+    case CastExpression:
+      return "cast expression";
+    case MultiplicativeExpression:
+      return "multiplicative expression";
+    case AdditiveExpression:
+      return "additive expression";
+    case ShiftExpression:
+      return "shift expression";
+    case RelatioalExpression:
+      return "relatioal expression";
+    case EqualityExpression:
+      return "equality expression";
+    case AndExpression:
+      return "and expression";
+    case ExclusiveOrExpression:
+      return "exclusive or expression";
+    case InclusiveOrExpression:
+      return "inclusive or expression";
+    case LogicalAndExpression:
+      return "logical and expression";
+    case LogicalOrExpression:
+      return "logical or expression";
+    case ConditionalExpression:
+      return "conditional expression";
+    case AssignmentExpression:
+      return "assignment expression";
+    case AssignmentOperator:
+      return "assignment operator";
+    case Expression:
+      return "expression";
+    case ConstantExpression:
+      return "constant expression";
+    case Declaration:
+      return "declaration";
+    case DeclarationSpecifiers:
+      return "declaration specifiers";
+    case DeclarationSpecifier:
+      return "declaration specifier";
+    case InitDeclaratorList:
+      return "init declarator list";
+    case InitDeclarator:
+      return "init declarator";
+    case StorageClassSpecifier:
+      return "storage class specifier";
+    case TypeSpecifier:
+      return "type specifier";
+    case StructOrUnionSpecifier:
+      return "struct or union specifier";
+    case StructOrUnion:
+      return "struct or union";
+    case StructDeclarationList:
+      return "struct declaration list";
+    case StructDeclaration:
+      return "struct declaration";
+    case SpecifierQualifierList:
+      return "specifier qualifier list";
+    case StructDeclaratorList:
+      return "struct declarator list";
+    case StructDeclarator:
+      return "struct declarator";
+    case EnumSpecifier:
+      return "enum specifier";
+    case EnumeratorList:
+      return "enumerator list";
+    case Enumerator:
+      return "enumerator";
+    case AtomicTypeSpecifier:
+      return "atomic type specifier";
+    case TypeQualifier:
+      return "type qualifier";
+    case FunctionSpecifier:
+      return "function specifier";
+    case AlignmentSpecifier:
+      return "alignment specifier";
+    case Declarator:
+      return "declarator";
+    case DirectDeclarator:
+      return "direct declarator";
+    case NestedParenthesesBlock:
+      return "nested parentheses block";
+    case Pointer:
+      return "pointer";
+    case TypeQualifierList:
+      return "type qualifier list";
+    case ParameterTypeList:
+      return "parameter type list";
+    case ParameterList:
+      return "parameter list";
+    case ParameterDeclaration:
+      return "parameter declaration";
+    case IdentifierList:
+      return "identifier list";
+    case TypeName:
+      return "type name";
+    case AbstractDeclarator:
+      return "abstract declarator";
+    case DirectAbstractDeclarator:
+      return "direct abstract declarator";
+    case TypedefName:
+      return "typedef name";
+    case Initializer:
+      return "initializer";
+    case InitializerList:
+      return "initializer list";
+    case Designation:
+      return "designation";
+    case DesignatorList:
+      return "designator list";
+    case Designator:
+      return "designator";
+    case StaticAssertDeclaration:
+      return "static assert declaration";
+    case Statement:
+      return "statement";
+    case LabeledStatement:
+      return "labeled statement";
+    case CompoundStatement:
+      return "compound statement";
+    case BlockItemList:
+      return "block item list";
+    case BlockItem:
+      return "block item";
+    case ExpressionStatement:
+      return "expression statement";
+    case SelectionStatement:
+      return "selection statement";
+    case IterationStatement:
+      return "iteration statement";
+    case JumpStatement:
+      return "jump statement";
+    case CompilationUnit:
+      return "compilation unit";
+    case TranslationUnit:
+      return "translation unit";
+    case ExternalDeclaration:
+      return "external declaration";
+    case FunctionDefinition:
+      return "function definition";
+    case DeclarationList:
+      return "declaration list";
+    case Identifier:
+      return "identifier";
+    case Constant:
+      return "constant";
+    case IntegerConstant:
+      return "integer constant";
+    case FloatingConstant:
+      return "floating constant";
+    case EnumerationConstant:
+      return "enumeration constant";
+    case CharacterConstant:
+      return "character constant";
+    case StringLiteral:
+      return "string literal";
+    case AsmBlock:
+      return "asm block";
+    default:
+      Unreachable();
+  }
+}
 
 // TODO
 auto SyntaxTree::parse(ProgramContext& program, const TokenStream& tokens)
