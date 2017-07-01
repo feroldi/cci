@@ -30,9 +30,6 @@ struct ParserSuccess
   explicit ParserSuccess(std::nullptr_t) noexcept
     : tree(nullptr)
   {}
-
-  ParserSuccess(ParserSuccess&&) noexcept = default;
-  ParserSuccess& operator= (ParserSuccess&&) noexcept = default;
 };
 
 // Represents an error when some parser
@@ -129,6 +126,10 @@ void add_node(ParserState& state, std::unique_ptr<SyntaxTree> node)
     {
       state = ParserSuccess(std::move(node));
     }
+    else if (tree->type() == NodeType::None)
+    {
+      tree->take_children(std::move(node));
+    }
     else
     {
       tree->add_child(std::move(node));
@@ -180,6 +181,25 @@ auto parser_one_of(ParserContext& parser, TokenIterator begin,
   {
     return ParserResult(end, make_error(begin, "expected one of"));
   }
+}
+
+template <typename... Rules>
+auto parser_all_of(ParserContext& parser, TokenIterator begin,
+                   TokenIterator end, Rules&&... rules)
+  -> ParserResult
+{
+  ParserState state = ParserSuccess(std::make_unique<SyntaxTree>());
+  auto it = begin;
+
+  auto add_result = [&] (ParserResult result)
+  {
+    it = result.next_token;
+    add_state(state, std::move(result.state));
+  };
+
+  (add_result(std::forward<Rules>(rules)(parser, it, end)), ...);
+
+  return ParserResult(it, std::move(state));
 }
 
 // Parses `rule` while condition is true.
@@ -301,6 +321,8 @@ auto make_parser_operator(NodeType op_type, OpMatch op_match)
 }
 
 // C grammar
+
+auto parser_expression(ParserContext&, TokenIterator begin, TokenIterator end) -> ParserResult;
 
 // Identifier
 
@@ -430,6 +452,7 @@ auto parser_constant(ParserContext& parser, TokenIterator begin, TokenIterator e
 //  :   '&' | '*' | '+' | '-' | '~' | '!'
 //  ;
 
+// TODO
 auto parser_unary_expression(ParserContext& parser, TokenIterator begin, TokenIterator end)
   -> ParserResult
 {
@@ -455,18 +478,242 @@ auto parser_unary_expression(ParserContext& parser, TokenIterator begin, TokenIt
           }
         });
 
-  return ParserResult(begin, ParserSuccess(nullptr));
+  return ParserResult(end, ParserSuccess(nullptr));
+}
+
+// relationalExpression
+//  :   shiftExpression
+//  |   relationalExpression '<' shiftExpression
+//  |   relationalExpression '>' shiftExpression
+//  |   relationalExpression '<=' shiftExpression
+//  |   relationalExpression '>=' shiftExpression
+//  ;
+//
+// relationalOperator
+//  : '<' | '>' | '<=' | '>='
+//  ;
+
+auto parser_relational_expression(ParserContext& parser, TokenIterator begin, TokenIterator end)
+  -> ParserResult
+{
+  // TODO
+  return ParserResult(end, ParserSuccess(nullptr));
+}
+
+// equalityExpression
+//  :   relationalExpression
+//  |   equalityExpression equalityOperator relationalExpression
+//  ;
+//
+// equalityOperator
+//  : '==' | '!='
+//  ;
+
+auto parser_equality_expression(ParserContext& parser, TokenIterator begin, TokenIterator end)
+  -> ParserResult
+{
+  auto parser_equality_operator =
+    make_parser_operator(NodeType::EqualityOperator, [] (TokenIterator t) {
+        switch (t->type)
+        {
+          case TokenType::EqualsTo:
+          case TokenType::NotEqualTo:
+            return true;
+
+          default:
+            return false;
+        }
+      });
+
+  auto parser_equality_expr =
+    make_parser_binary_expr(
+        parser_equality_expression,
+        parser_equality_operator,
+        parser_relational_expression);
+
+  auto result = parser_one_of(parser, begin, end,
+                              parser_equality_expr,
+                              parser_relational_expression);
+
+  ParserState state = ParserSuccess(std::make_unique<SyntaxTree>(NodeType::EqualityExpression));
+  add_state(state, std::move(result.state));
+
+  return ParserResult(result.next_token, std::move(state));
+}
+
+// andExpression
+//  :   equalityExpression
+//  |   andExpression '&' equalityExpression
+//  ;
+
+auto parser_and_expression(ParserContext& parser, TokenIterator begin, TokenIterator end)
+  -> ParserResult
+{
+  ParserState state = ParserSuccess(std::make_unique<SyntaxTree>(NodeType::AndExpression));
+
+  auto [it, bitand_state] =
+    parser_take_repeat(
+        parser, begin, end,
+        parser_equality_expression,
+        [] (TokenIterator& it) {
+          if (it->type == TokenType::BitwiseAnd)
+          {
+            std::advance(it, 1);
+            return true;
+          }
+          return false;
+        });
+
+  add_state(state, std::move(bitand_state));
+
+  return ParserResult(it, std::move(state));
+}
+
+// exclusiveOrExpression
+//  :   andExpression
+//  |   exclusiveOrExpression '^' andExpression
+//  ;
+
+auto parser_exclusive_or_expression(ParserContext& parser, TokenIterator begin, TokenIterator end)
+  -> ParserResult
+{
+  ParserState state = ParserSuccess(std::make_unique<SyntaxTree>(NodeType::ExclusiveOrExpression));
+
+  auto [it, xor_state] =
+    parser_take_repeat(
+        parser, begin, end,
+        parser_and_expression,
+        [] (TokenIterator& it) {
+          if (it->type == TokenType::BitwiseXor)
+          {
+            std::advance(it, 1);
+            return true;
+          }
+          return false;
+        });
+
+  add_state(state, std::move(xor_state));
+
+  return ParserResult(it, std::move(state));
+}
+
+// inclusiveOrExpression
+//  :   exclusiveOrExpression
+//  |   inclusiveOrExpression '|' exclusiveOrExpression
+//  ;
+
+auto parser_inclusive_or_expression(ParserContext& parser, TokenIterator begin, TokenIterator end)
+  -> ParserResult
+{
+  ParserState state = ParserSuccess(std::make_unique<SyntaxTree>(NodeType::InclusiveOrExpression));
+
+  auto [it, bitor_state] =
+    parser_take_repeat(
+        parser, begin, end,
+        parser_exclusive_or_expression,
+        [] (TokenIterator& it) {
+          if (it->type == TokenType::BitwiseOr)
+          {
+            std::advance(it, 1);
+            return true;
+          }
+          return false;
+        });
+
+  add_state(state, std::move(bitor_state));
+
+  return ParserResult(it, std::move(state));
+}
+
+// logicalAndExpression
+//  :   inclusiveOrExpression
+//  |   logicalAndExpression '&&' inclusiveOrExpression
+//  ;
+
+auto parser_logical_and_expression(ParserContext& parser, TokenIterator begin, TokenIterator end)
+  -> ParserResult
+{
+  ParserState state = ParserSuccess(std::make_unique<SyntaxTree>(NodeType::LogicalAndExpression));
+
+  auto [it, and_state] =
+    parser_take_repeat(
+        parser, begin, end,
+        parser_inclusive_or_expression,
+        [] (TokenIterator& it) {
+          if (it->type == TokenType::LogicalAnd)
+          {
+            std::advance(it, 1);
+            return true;
+          }
+          return false;
+        });
+
+  add_state(state, std::move(and_state));
+
+  return ParserResult(it, std::move(state));
+}
+
+// logicalOrExpression
+//  : logicalAndExpression
+//  | logicalOrExpression '||' logicalAndExpression
+//  ;
+
+auto parser_logical_or_expression(ParserContext& parser, TokenIterator begin, TokenIterator end)
+  -> ParserResult
+{
+  ParserState state = ParserSuccess(std::make_unique<SyntaxTree>(NodeType::LogicalOrExpression));
+
+  auto [it, or_state] =
+    parser_take_repeat(
+        parser, begin, end,
+        parser_logical_and_expression,
+        [] (TokenIterator& it) {
+          if (it->type == TokenType::LogicalOr)
+          {
+            std::advance(it, 1);
+            return true;
+          }
+          return false;
+        });
+
+  add_state(state, std::move(or_state));
+
+  return ParserResult(it, std::move(state));
 }
 
 // conditionalExpression
 //  :   logicalOrExpression ('?' expression ':' conditionalExpression)?
 //  ;
 
-// TODO
 auto parser_conditional_expression(ParserContext& parser, TokenIterator begin, TokenIterator end)
   -> ParserResult
 {
-  return ParserResult(begin, ParserSuccess(nullptr));
+  Expects(begin != end);
+
+  ParserState state = ParserSuccess(std::make_unique<SyntaxTree>(NodeType::ConditionalExpression));
+  auto [it, or_state] = parser_logical_or_expression(parser, begin, end);
+
+  add_state(state, std::move(or_state));
+
+  if (it != end && it->type == TokenType::QuestionMark)
+  {
+    auto expr = parser_expression(parser, std::next(it), end);
+    add_state(state, std::move(expr.state));
+    it = expr.next_token;
+
+    if (expect_token(state, it, end, TokenType::Colon))
+    {
+      auto cond_expr = parser_conditional_expression(parser, std::next(it), end);
+      add_state(state, std::move(cond_expr.state));
+      it = cond_expr.next_token;
+    }
+    else
+    {
+      add_error(state, make_error(it, "conditional expression"));
+    }
+  }
+
+  return ParserResult(it, std::move(state));
 }
 
 // assignmentExpression
@@ -478,7 +725,6 @@ auto parser_conditional_expression(ParserContext& parser, TokenIterator begin, T
 //  :   '=' | '*=' | '/=' | '%=' | '+=' | '-=' | '<<=' | '>>=' | '&=' | '^=' | '|='
 //  ;
 
-// TODO
 auto parser_assignment_expression(ParserContext& parser, TokenIterator begin, TokenIterator end)
   -> ParserResult
 {
@@ -601,177 +847,179 @@ auto to_string(const NodeType node_type) -> const char*
 {
   switch (node_type)
   {
-    case PrimaryExpression:
+    case NodeType::PrimaryExpression:
       return "primary expression";
-    case GenericSelection:
+    case NodeType::GenericSelection:
       return "generic selection";
-    case GenericAssocList:
+    case NodeType::GenericAssocList:
       return "generic assoc list";
-    case GenericAssociation:
+    case NodeType::GenericAssociation:
       return "generic association";
-    case PostfixExpression:
+    case NodeType::PostfixExpression:
       return "postfix expression";
-    case ArgumentExpressionList:
+    case NodeType::ArgumentExpressionList:
       return "argument expression list";
-    case UnaryExpression:
+    case NodeType::UnaryExpression:
       return "unary expression";
-    case UnaryOperator:
+    case NodeType::UnaryOperator:
       return "unary operator";
-    case CastExpression:
+    case NodeType::CastExpression:
       return "cast expression";
-    case MultiplicativeExpression:
+    case NodeType::MultiplicativeExpression:
       return "multiplicative expression";
-    case AdditiveExpression:
+    case NodeType::AdditiveExpression:
       return "additive expression";
-    case ShiftExpression:
+    case NodeType::ShiftExpression:
       return "shift expression";
-    case RelatioalExpression:
+    case NodeType::RelatioalExpression:
       return "relatioal expression";
-    case EqualityExpression:
+    case NodeType::EqualityExpression:
       return "equality expression";
-    case AndExpression:
+    case NodeType::EqualityOperator:
+      return "equality operator";
+    case NodeType::AndExpression:
       return "and expression";
-    case ExclusiveOrExpression:
+    case NodeType::ExclusiveOrExpression:
       return "exclusive or expression";
-    case InclusiveOrExpression:
+    case NodeType::InclusiveOrExpression:
       return "inclusive or expression";
-    case LogicalAndExpression:
+    case NodeType::LogicalAndExpression:
       return "logical and expression";
-    case LogicalOrExpression:
+    case NodeType::LogicalOrExpression:
       return "logical or expression";
-    case ConditionalExpression:
+    case NodeType::ConditionalExpression:
       return "conditional expression";
-    case AssignmentExpression:
+    case NodeType::AssignmentExpression:
       return "assignment expression";
-    case AssignmentOperator:
+    case NodeType::AssignmentOperator:
       return "assignment operator";
-    case Expression:
+    case NodeType::Expression:
       return "expression";
-    case ConstantExpression:
+    case NodeType::ConstantExpression:
       return "constant expression";
-    case Declaration:
+    case NodeType::Declaration:
       return "declaration";
-    case DeclarationSpecifiers:
+    case NodeType::DeclarationSpecifiers:
       return "declaration specifiers";
-    case DeclarationSpecifier:
+    case NodeType::DeclarationSpecifier:
       return "declaration specifier";
-    case InitDeclaratorList:
+    case NodeType::InitDeclaratorList:
       return "init declarator list";
-    case InitDeclarator:
+    case NodeType::InitDeclarator:
       return "init declarator";
-    case StorageClassSpecifier:
+    case NodeType::StorageClassSpecifier:
       return "storage class specifier";
-    case TypeSpecifier:
+    case NodeType::TypeSpecifier:
       return "type specifier";
-    case StructOrUnionSpecifier:
+    case NodeType::StructOrUnionSpecifier:
       return "struct or union specifier";
-    case StructOrUnion:
+    case NodeType::StructOrUnion:
       return "struct or union";
-    case StructDeclarationList:
+    case NodeType::StructDeclarationList:
       return "struct declaration list";
-    case StructDeclaration:
+    case NodeType::StructDeclaration:
       return "struct declaration";
-    case SpecifierQualifierList:
+    case NodeType::SpecifierQualifierList:
       return "specifier qualifier list";
-    case StructDeclaratorList:
+    case NodeType::StructDeclaratorList:
       return "struct declarator list";
-    case StructDeclarator:
+    case NodeType::StructDeclarator:
       return "struct declarator";
-    case EnumSpecifier:
+    case NodeType::EnumSpecifier:
       return "enum specifier";
-    case EnumeratorList:
+    case NodeType::EnumeratorList:
       return "enumerator list";
-    case Enumerator:
+    case NodeType::Enumerator:
       return "enumerator";
-    case AtomicTypeSpecifier:
+    case NodeType::AtomicTypeSpecifier:
       return "atomic type specifier";
-    case TypeQualifier:
+    case NodeType::TypeQualifier:
       return "type qualifier";
-    case FunctionSpecifier:
+    case NodeType::FunctionSpecifier:
       return "function specifier";
-    case AlignmentSpecifier:
+    case NodeType::AlignmentSpecifier:
       return "alignment specifier";
-    case Declarator:
+    case NodeType::Declarator:
       return "declarator";
-    case DirectDeclarator:
+    case NodeType::DirectDeclarator:
       return "direct declarator";
-    case NestedParenthesesBlock:
+    case NodeType::NestedParenthesesBlock:
       return "nested parentheses block";
-    case Pointer:
+    case NodeType::Pointer:
       return "pointer";
-    case TypeQualifierList:
+    case NodeType::TypeQualifierList:
       return "type qualifier list";
-    case ParameterTypeList:
+    case NodeType::ParameterTypeList:
       return "parameter type list";
-    case ParameterList:
+    case NodeType::ParameterList:
       return "parameter list";
-    case ParameterDeclaration:
+    case NodeType::ParameterDeclaration:
       return "parameter declaration";
-    case IdentifierList:
+    case NodeType::IdentifierList:
       return "identifier list";
-    case TypeName:
+    case NodeType::TypeName:
       return "type name";
-    case AbstractDeclarator:
+    case NodeType::AbstractDeclarator:
       return "abstract declarator";
-    case DirectAbstractDeclarator:
+    case NodeType::DirectAbstractDeclarator:
       return "direct abstract declarator";
-    case TypedefName:
+    case NodeType::TypedefName:
       return "typedef name";
-    case Initializer:
+    case NodeType::Initializer:
       return "initializer";
-    case InitializerList:
+    case NodeType::InitializerList:
       return "initializer list";
-    case Designation:
+    case NodeType::Designation:
       return "designation";
-    case DesignatorList:
+    case NodeType::DesignatorList:
       return "designator list";
-    case Designator:
+    case NodeType::Designator:
       return "designator";
-    case StaticAssertDeclaration:
+    case NodeType::StaticAssertDeclaration:
       return "static assert declaration";
-    case Statement:
+    case NodeType::Statement:
       return "statement";
-    case LabeledStatement:
+    case NodeType::LabeledStatement:
       return "labeled statement";
-    case CompoundStatement:
+    case NodeType::CompoundStatement:
       return "compound statement";
-    case BlockItemList:
+    case NodeType::BlockItemList:
       return "block item list";
-    case BlockItem:
+    case NodeType::BlockItem:
       return "block item";
-    case ExpressionStatement:
+    case NodeType::ExpressionStatement:
       return "expression statement";
-    case SelectionStatement:
+    case NodeType::SelectionStatement:
       return "selection statement";
-    case IterationStatement:
+    case NodeType::IterationStatement:
       return "iteration statement";
-    case JumpStatement:
+    case NodeType::JumpStatement:
       return "jump statement";
-    case CompilationUnit:
+    case NodeType::CompilationUnit:
       return "compilation unit";
-    case TranslationUnit:
+    case NodeType::TranslationUnit:
       return "translation unit";
-    case ExternalDeclaration:
+    case NodeType::ExternalDeclaration:
       return "external declaration";
-    case FunctionDefinition:
+    case NodeType::FunctionDefinition:
       return "function definition";
-    case DeclarationList:
+    case NodeType::DeclarationList:
       return "declaration list";
-    case Identifier:
+    case NodeType::Identifier:
       return "identifier";
-    case Constant:
+    case NodeType::Constant:
       return "constant";
-    case IntegerConstant:
+    case NodeType::IntegerConstant:
       return "integer constant";
-    case FloatingConstant:
+    case NodeType::FloatingConstant:
       return "floating constant";
-    case EnumerationConstant:
+    case NodeType::EnumerationConstant:
       return "enumeration constant";
-    case CharacterConstant:
+    case NodeType::CharacterConstant:
       return "character constant";
-    case StringLiteral:
+    case NodeType::StringLiteral:
       return "string literal";
-    case AsmBlock:
+    case NodeType::AsmBlock:
       return "asm block";
     default:
       Unreachable();

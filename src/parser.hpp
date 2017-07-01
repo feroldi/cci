@@ -28,6 +28,7 @@ enum class NodeType
   ShiftExpression,
   RelatioalExpression,
   EqualityExpression,
+  EqualityOperator,
   AndExpression,
   ExclusiveOrExpression,
   InclusiveOrExpression,
