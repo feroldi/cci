@@ -100,6 +100,7 @@ enum class NodeType
   EnumerationConstant,
   CharacterConstant,
   StringLiteral,
+  StringLiteralList,
   AsmBlock,
 };
 
@@ -151,6 +152,11 @@ struct SyntaxTree
       child->node_parent.reset(this);
       this->children.emplace_back(std::move(child));
     }
+  }
+
+  auto child(size_t idx) -> std::unique_ptr<SyntaxTree>&
+  {
+    return this->children[idx];
   }
 
   auto parent() const noexcept -> observer_ptr<SyntaxTree>
@@ -208,6 +214,8 @@ struct SyntaxTree
       child->traverse(f);
     }
   }
+
+  void dump(std::FILE* out = stderr, size_t indent_level = 0) const;
 
 private:
   NodeType node_type;
