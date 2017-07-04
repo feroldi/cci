@@ -130,6 +130,8 @@ enum class TokenType
   Const,
 };
 
+auto to_string(TokenType) -> const char*;
+
 struct TokenStream
 {
   struct TokenData

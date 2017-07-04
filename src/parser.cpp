@@ -32,19 +32,41 @@ struct ParserSuccess
   {}
 };
 
+// Error represents a trivial error.
+//
+// PlainWrong means a rule is not able
+// to start parsing. This is useful in helper functions,
+// such as `parser_one_of`, where if all rules are plain wrong,
+// then it's safe to assume an "expected one of" kind of error.
+enum class ParserStatus
+{
+  Error,      //< Syntax is partly wrong.
+  ErrorNote,  //< Note following a ParserStatus::Error.
+  PlainWrong, //< Parser couldn't make sense at all.
+};
+
 // Represents an error when some parser
 // couldn't generate an AST.
 struct ParserError
 {
-  TokenIterator where; //< Where it happened.
-  std::string error;   //< Error explanation.
+  ParserStatus status;
+  TokenIterator where;  //< Where it happened.
+  std::string error;    //< Error message/explanation.
 
   explicit ParserError(TokenIterator where) noexcept
-    : where(where)
+    : status(ParserStatus::PlainWrong), where(where), error()
   {}
 
   explicit ParserError(TokenIterator where, std::string error) noexcept
-    : where(where), error(std::move(error))
+    : status(ParserStatus::PlainWrong), where(where), error(std::move(error))
+  {}
+
+  explicit ParserError(ParserStatus status, TokenIterator where) noexcept
+    : status(status), where(where)
+  {}
+
+  explicit ParserError(ParserStatus status, TokenIterator where, std::string error) noexcept
+    : status(status), where(where), error(std::move(error))
   {}
 };
 
@@ -115,6 +137,50 @@ void add_error(ParserState& state, ParserState other)
   }
 }
 
+// Checks whether there's a plain-wrong error in `state`.
+auto is_plain_wrong(const ParserState& state) -> bool
+{
+  if (is<ParserFailure>(state))
+  {
+    for (const auto& fail : get<ParserFailure>(state))
+    {
+      if (fail.status == ParserStatus::PlainWrong)
+      {
+        return true;
+      }
+    }
+  }
+
+  return false;
+}
+
+auto expect_one_of(ParserState& state, string_view what)
+{
+  ParserState new_errors = ParserFailure();
+
+  if (is<ParserFailure>(state))
+  {
+    for (auto& fail : get<ParserFailure>(state))
+    {
+      if (fail.status == ParserStatus::PlainWrong)
+      {
+        add_error(new_errors, ParserError(fail.where, fmt::format("expected {}", what.data())));
+      }
+      else
+      {
+        add_error(new_errors, std::move(fail));
+      }
+    }
+
+    state = std::move(new_errors);
+  }
+}
+
+auto expect_one_of(ParserState& state, NodeType node_type)
+{
+  expect_one_of(state, to_string(node_type));
+}
+
 // Adds a node to state's tree if it's a `ParserSuccess`.
 void add_node(ParserState& state, std::unique_ptr<SyntaxTree> node)
 {
@@ -158,9 +224,48 @@ struct ParserContext
     : program(program),
       token_stream(tokens)
   {}
+
+  template <typename... Args>
+  void note(TokenIterator token, Args&&... args)
+  {
+    const SourceManager& source = this->token_stream.source_manager();
+    SourceRange range = token->data;
+    auto pos = source.linecol_from_location(range.begin());
+    program.note(TokenStream::TokenDebug{source, pos, range}, std::forward<Args>(args)...);
+  }
+
+  template <typename... Args>
+  void warning(TokenIterator token, Args&&... args)
+  {
+    const SourceManager& source = this->token_stream.source_manager();
+    SourceRange range = token->data;
+    auto pos = source.linecol_from_location(range.begin());
+    program.warn(TokenStream::TokenDebug{source, pos, range}, std::forward<Args>(args)...);
+  }
+
+  template <typename... Args>
+  void error(TokenIterator token, Args&&... args)
+  {
+    const SourceManager& source = this->token_stream.source_manager();
+    SourceRange range = token->data;
+    const auto pos = source.linecol_from_location(range.begin());
+    program.error(TokenStream::TokenDebug{source, pos, range}, std::forward<Args>(args)...);
+  }
+
+  template <typename... Args>
+  void pedantic(TokenIterator token, Args&&... args)
+  {
+    const SourceManager& source = this->token_stream.source_manager();
+    SourceRange range = token->data;
+    const auto pos = source.linecol_from_location(range.begin());
+    program.pedantic(TokenStream::TokenDebug{source, pos, range}, std::forward<Args>(args)...);
+  }
 };
 
 // Tries to parse one of the rules.
+// If a rule returns a trivial error, then this is the result.
+// Otherwise, if all rules return plain-wrong errors, then the result
+// is "expected one of" plain-wrong error.
 template <typename Rule, typename... Rules>
 auto parser_one_of(ParserContext& parser, TokenIterator begin,
                    TokenIterator end, Rule rule, Rules&&... rules)
@@ -168,7 +273,7 @@ auto parser_one_of(ParserContext& parser, TokenIterator begin,
 {
   auto result = rule(parser, begin, end);
 
-  if (is<ParserSuccess>(result.state))
+  if (!is_plain_wrong(result.state))
   {
     return result;
   }
@@ -179,7 +284,7 @@ auto parser_one_of(ParserContext& parser, TokenIterator begin,
   }
   else
   {
-    return ParserResult(end, make_error(begin, "expected one of"));
+    return ParserResult(end, make_error(ParserStatus::PlainWrong, begin));
   }
 }
 
@@ -253,21 +358,23 @@ auto expect_token(ParserState& state, TokenIterator it,
 {
   if (it == end || it->type != token_type)
   {
-    add_error(state, make_error((it == end ? std::prev(it) : it), "expected token"));
+    it = (it == end) ? std::prev(it) : it;
+    add_error(state, make_error(ParserStatus::Error, it, fmt::format("expected '{}'", to_string(token_type))));
     return false;
   }
 
   return true;
 }
 
-auto expect_match_token(ParserState& state, TokenIterator begin,
-                        TokenIterator end, TokenIterator it, TokenType token_type)
+auto expect_end_token(ParserState& state, TokenIterator begin,
+                      TokenIterator end, TokenIterator it, TokenType end_token)
   -> bool
 {
-  if (it == end || it->type != token_type)
+  if (it == end || it->type != end_token)
   {
-    add_error(state, make_error(begin, "expected match token for this"));
-    add_error(state, make_error((it == end ? std::prev(it) : it), "expected here"));
+    it = (it == end) ? std::prev(it) : it;
+    add_error(state, make_error(ParserStatus::Error, it, fmt::format("expected '{}'", to_string(end_token))));
+    add_error(state, make_error(ParserStatus::ErrorNote, begin, fmt::format("to match this '{}'", to_string(begin->type))));
     return false;
   }
 
@@ -303,7 +410,7 @@ auto make_parser_operator(NodeType op_type, OpMatch op_match)
   return [=] (ParserContext& /*parser*/, TokenIterator begin, TokenIterator end) -> ParserResult
   {
     if (begin == end)
-      return ParserResult(end, make_error(std::prev(end), to_string(op_type)));
+      return ParserResult(end, make_error(ParserStatus::PlainWrong, end));
 
     ParserState state = ParserSuccess(nullptr);
 
@@ -330,7 +437,8 @@ auto parser_expression(ParserContext&, TokenIterator begin, TokenIterator end) -
 auto parser_identifier(ParserContext& parser, TokenIterator begin, TokenIterator end)
   -> ParserResult
 {
-  Expects(begin != end);
+  if (begin == end)
+    return ParserResult(end, make_error(ParserStatus::PlainWrong, end));
 
   ParserState state = ParserSuccess(nullptr);
 
@@ -365,7 +473,8 @@ auto parser_identifier(ParserContext& parser, TokenIterator begin, TokenIterator
 auto parser_string_literal(ParserContext& parser, TokenIterator begin, TokenIterator end)
   -> ParserResult
 {
-  Expects(begin != end);
+  if (begin == end)
+    return ParserResult(end, make_error(ParserStatus::PlainWrong, end));
 
   ParserState state = ParserSuccess(nullptr);
 
@@ -383,6 +492,7 @@ auto parser_string_literal(ParserContext& parser, TokenIterator begin, TokenIter
 }
 
 // string-literal-list
+//    string-literal+
 
 auto parser_string_literal_list(ParserContext& parser, TokenIterator begin, TokenIterator end)
   -> ParserResult
@@ -411,17 +521,17 @@ auto parser_string_literal_list(ParserContext& parser, TokenIterator begin, Toke
   return ParserResult(it, std::move(state));
 }
 
-// Constant
-//  :   IntegerConstant
-//  |   FloatingConstant
-//  |   CharacterConstant
-//  |   EnumerationConstant
-//  ;
+// constant
+//    integer-constant
+//    floating-constant
+//    character-constant
+//    enumeration-constant
 
 auto parser_constant(ParserContext& parser, TokenIterator begin, TokenIterator end)
   -> ParserResult
 {
-  Expects(begin != end);
+  if (begin == end)
+    return ParserResult(end, make_error(ParserStatus::PlainWrong, end));
 
   auto tree = std::make_unique<SyntaxTree>(NodeType::Constant);
   ParserState state = ParserSuccess(nullptr);
@@ -459,25 +569,24 @@ auto parser_constant(ParserContext& parser, TokenIterator begin, TokenIterator e
   return ParserResult(std::next(begin), std::move(state));
 }
 
-// unaryExpression
-//  :   postfixExpression
-//  |   '++' unaryExpression
-//  |   '--' unaryExpression
-//  |   unaryOperator castExpression
-//  |   'sizeof' unaryExpression
-//  |   'sizeof' '(' typeName ')'
-//  |   '_Alignof' '(' typeName ')'
-//  ;
+// unary-expression
+//    postfix-expression
+//    '++' unary-expression
+//    '--' unary-expression
+//    unary-operator cast-expression
+//    'sizeof' unary-expression
+//    'sizeof' '(' type-name ')'
+//    '_Alignof' '(' type-name ')'
 // 
-// unaryOperator
-//  :   '&' | '*' | '+' | '-' | '~' | '!'
-//  ;
+// unary-operator
+//    '&' | '*' | '+' | '-' | '~' | '!'
 
 // TODO
 auto parser_unary_expression(ParserContext& parser, TokenIterator begin, TokenIterator end)
   -> ParserResult
 {
-  Expects(begin != end);
+  if (begin == end)
+    return ParserResult(end, make_error(ParserStatus::PlainWrong, end));
 
   auto parser_unary_operator =
     make_parser_operator(NodeType::UnaryOperator, [] (TokenIterator t) {
@@ -504,20 +613,18 @@ auto parser_unary_expression(ParserContext& parser, TokenIterator begin, TokenIt
   return ParserResult(begin, make_error(begin, "unary expression"));
 }
 
-// relationalExpression
-//  :   shiftExpression
-//  |   relationalExpression relationalOperator shiftExpression
-//  ;
+// relational-expression
+//    shift-expresion
+//    relational-expression relational-operator shift-expression
 //
-// relationalOperator
-//  : '<' | '>' | '<=' | '>='
-//  ;
+// relational-operator
+//    '<' | '>' | '<=' | '>='
 
+// TODO
 auto parser_relational_expression(ParserContext& parser, TokenIterator begin, TokenIterator end)
   -> ParserResult
 {
-  // TODO
-  return ParserResult(std::next(begin), make_error(begin, "relational expression"));
+  return ParserResult(std::next(begin), ParserSuccess(std::make_unique<SyntaxTree>(NodeType::RelatioalExpression)));
 }
 
 // equalityExpression
@@ -532,7 +639,8 @@ auto parser_relational_expression(ParserContext& parser, TokenIterator begin, To
 auto parser_equality_expression(ParserContext& parser, TokenIterator begin, TokenIterator end)
   -> ParserResult
 {
-  Expects(begin != end);
+  if (begin == end)
+    return ParserResult(end, make_error(ParserStatus::PlainWrong, end));
 
   auto parser_equality_operator =
     make_parser_operator(NodeType::EqualityOperator, [] (TokenIterator t) {
@@ -557,6 +665,8 @@ auto parser_equality_expression(ParserContext& parser, TokenIterator begin, Toke
                               parser_equality_expr,
                               parser_relational_expression);
 
+  expect_one_of(result.state, NodeType::EqualityExpression);
+
   ParserState state = ParserSuccess(std::make_unique<SyntaxTree>(NodeType::EqualityExpression));
   add_state(state, std::move(result.state));
 
@@ -571,7 +681,8 @@ auto parser_equality_expression(ParserContext& parser, TokenIterator begin, Toke
 auto parser_and_expression(ParserContext& parser, TokenIterator begin, TokenIterator end)
   -> ParserResult
 {
-  Expects(begin != end);
+  if (begin == end)
+    return ParserResult(end, make_error(ParserStatus::PlainWrong, end));
 
   ParserState state = ParserSuccess(std::make_unique<SyntaxTree>(NodeType::AndExpression));
 
@@ -601,7 +712,8 @@ auto parser_and_expression(ParserContext& parser, TokenIterator begin, TokenIter
 auto parser_exclusive_or_expression(ParserContext& parser, TokenIterator begin, TokenIterator end)
   -> ParserResult
 {
-  Expects(begin != end);
+  if (begin == end)
+    return ParserResult(end, make_error(ParserStatus::PlainWrong, end));
 
   ParserState state = ParserSuccess(std::make_unique<SyntaxTree>(NodeType::ExclusiveOrExpression));
 
@@ -631,7 +743,8 @@ auto parser_exclusive_or_expression(ParserContext& parser, TokenIterator begin, 
 auto parser_inclusive_or_expression(ParserContext& parser, TokenIterator begin, TokenIterator end)
   -> ParserResult
 {
-  Expects(begin != end);
+  if (begin == end)
+    return ParserResult(end, make_error(ParserStatus::PlainWrong, end));
 
   ParserState state = ParserSuccess(std::make_unique<SyntaxTree>(NodeType::InclusiveOrExpression));
 
@@ -661,7 +774,8 @@ auto parser_inclusive_or_expression(ParserContext& parser, TokenIterator begin, 
 auto parser_logical_and_expression(ParserContext& parser, TokenIterator begin, TokenIterator end)
   -> ParserResult
 {
-  Expects(begin != end);
+  if (begin == end)
+    return ParserResult(end, make_error(ParserStatus::PlainWrong, end));
 
   ParserState state = ParserSuccess(std::make_unique<SyntaxTree>(NodeType::LogicalAndExpression));
 
@@ -691,7 +805,8 @@ auto parser_logical_and_expression(ParserContext& parser, TokenIterator begin, T
 auto parser_logical_or_expression(ParserContext& parser, TokenIterator begin, TokenIterator end)
   -> ParserResult
 {
-  Expects(begin != end);
+  if (begin == end)
+    return ParserResult(end, make_error(ParserStatus::PlainWrong, end));
 
   ParserState state = ParserSuccess(std::make_unique<SyntaxTree>(NodeType::LogicalOrExpression));
 
@@ -720,7 +835,8 @@ auto parser_logical_or_expression(ParserContext& parser, TokenIterator begin, To
 auto parser_conditional_expression(ParserContext& parser, TokenIterator begin, TokenIterator end)
   -> ParserResult
 {
-  Expects(begin != end);
+  if (begin == end)
+    return ParserResult(end, make_error(ParserStatus::PlainWrong, end));
 
   ParserState state = ParserSuccess(std::make_unique<SyntaxTree>(NodeType::ConditionalExpression));
   auto [it, or_state] = parser_logical_or_expression(parser, begin, end);
@@ -756,7 +872,8 @@ auto parser_conditional_expression(ParserContext& parser, TokenIterator begin, T
 auto parser_assignment_expression(ParserContext& parser, TokenIterator begin, TokenIterator end)
   -> ParserResult
 {
-  Expects(begin != end);
+  if (begin == end)
+    return ParserResult(end, make_error(ParserStatus::PlainWrong, end));
 
   auto parser_assign_operator =
     make_parser_operator(NodeType::AssignmentOperator, [] (TokenIterator t) {
@@ -791,7 +908,8 @@ auto parser_assignment_expression(ParserContext& parser, TokenIterator begin, To
   auto result = parser_one_of(parser, begin, end,
                               parser_conditional_expression,
                               parser_binary_expr);
-  
+
+  expect_one_of(result.state, NodeType::AssignmentExpression);
   add_state(state, std::move(result.state));
 
   return ParserResult(result.next_token, std::move(state));
@@ -805,7 +923,8 @@ auto parser_assignment_expression(ParserContext& parser, TokenIterator begin, To
 auto parser_expression(ParserContext& parser, TokenIterator begin, TokenIterator end)
   -> ParserResult
 {
-  Expects(begin != end);
+  if (begin == end)
+    return ParserResult(end, make_error(ParserStatus::PlainWrong, end));
 
   ParserState state = ParserSuccess(std::make_unique<SyntaxTree>(NodeType::Expression));
 
@@ -831,7 +950,7 @@ auto parser_expression(ParserContext& parser, TokenIterator begin, TokenIterator
 //  :   Identifier
 //  |   Constant
 //  |   StringLiteral+
-//  |   '(' expression ')' //< TODO
+//  |   '(' expression ')'
 //  ;
 //
 // TODO: genericSelection
@@ -839,14 +958,32 @@ auto parser_expression(ParserContext& parser, TokenIterator begin, TokenIterator
 auto parser_primary_expression(ParserContext& parser, TokenIterator begin, TokenIterator end)
   -> ParserResult
 {
-  Expects(begin != end);
+  if (begin == end)
+    return ParserResult(end, make_error(ParserStatus::PlainWrong, end));
 
   ParserState state = ParserSuccess(std::make_unique<SyntaxTree>(NodeType::PrimaryExpression));
 
-  // TODO
   auto parser_parens_expression = [] (ParserContext& parser, TokenIterator begin, TokenIterator end) -> ParserResult
   {
-    return ParserResult(end, make_error(begin, "parens expression"));
+    ParserState state = ParserSuccess(nullptr);
+    auto it = begin;
+
+    if (expect_token(state, it, end, TokenType::LeftParen))
+    {
+      std::advance(it, 1);
+
+      auto [expr_it, expr_state] = parser_expression(parser, it, end);
+
+      it = expr_it;
+      add_state(state, std::move(expr_state));
+
+      if (expect_end_token(state, begin, end, it, TokenType::RightParen))
+      {
+        std::advance(it, 1);
+      }
+    }
+
+    return ParserResult(it, std::move(state));
   };
 
   auto [it, expr_state] = parser_one_of(parser, begin, end, 
@@ -855,6 +992,7 @@ auto parser_primary_expression(ParserContext& parser, TokenIterator begin, Token
                                         parser_string_literal_list,
                                         parser_parens_expression);
 
+  expect_one_of(expr_state, NodeType::PrimaryExpression);
   add_state(state, std::move(expr_state));
 
   return ParserResult(it, std::move(state));
@@ -863,6 +1001,61 @@ auto parser_primary_expression(ParserContext& parser, TokenIterator begin, Token
 // End of rules
 
 } // namespace
+
+// TODO
+auto SyntaxTree::parse(ProgramContext& program, const TokenStream& tokens)
+  -> std::unique_ptr<SyntaxTree>
+{
+  ParserContext parser{program, tokens};
+
+  auto result = parser_primary_expression(parser, tokens.begin(), tokens.end());
+
+  if (is<ParserSuccess>(result.state))
+  {
+    return get<ParserSuccess>(std::move(result.state)).tree;
+  }
+  else
+  {
+    for (const auto& fail : get<ParserFailure>(result.state))
+    {
+      if (fail.where == tokens.end())
+      {
+        parser.program.error(nocontext(), fail.error.c_str());
+      }
+      else if (fail.status == ParserStatus::ErrorNote)
+      {
+        parser.note(fail.where, fail.error.c_str());
+      }
+      else
+      {
+        parser.error(fail.where, fail.error.c_str());
+      }
+    }
+
+    return nullptr;
+  }
+}
+
+void SyntaxTree::dump(std::FILE* out, size_t indent_level) const
+{
+  auto indent = std::string(indent_level * 2, ' ');
+  auto type = to_string(this->type());
+
+  if (this->has_text())
+  {
+    auto text = fmt::StringRef(this->text().begin(), this->text().size());
+    fmt::print(out, "{}{}({}){}\n", indent, type, text, this->child_count() ? ":" : "");
+  }
+  else
+  {
+    fmt::print(out, "{}{}{}\n", indent, type, this->child_count() ? ":" : "");
+  }
+
+  for (const auto& child : *this)
+  {
+    child->dump(out, indent_level + 1);
+  }
+}
 
 auto to_string(const NodeType node_type) -> const char*
 {
@@ -1046,50 +1239,6 @@ auto to_string(const NodeType node_type) -> const char*
       return "asm block";
     default:
       Unreachable();
-  }
-}
-
-// TODO
-auto SyntaxTree::parse(ProgramContext& program, const TokenStream& tokens)
-  -> std::unique_ptr<SyntaxTree>
-{
-  ParserContext context{program, tokens};
-
-  auto result = parser_primary_expression(context, tokens.begin(), tokens.end());
-
-  if (is<ParserSuccess>(result.state))
-  {
-    return get<ParserSuccess>(std::move(result.state)).tree;
-  }
-  else
-  {
-    for (const auto& fail : get<ParserFailure>(result.state))
-    {
-      program.error(nocontext(), "syntax error: {}", fail.error);
-    }
-
-    return nullptr;
-  }
-}
-
-void SyntaxTree::dump(std::FILE* out, size_t indent_level) const
-{
-  auto indent = std::string(indent_level * 2, ' ');
-  auto type = to_string(this->type());
-
-  if (this->has_text())
-  {
-    auto text = fmt::StringRef(this->text().begin(), this->text().size());
-    fmt::print(out, "{}{}({}){}\n", indent, type, text, this->child_count() ? ":" : "");
-  }
-  else
-  {
-    fmt::print(out, "{}{}{}\n", indent, type, this->child_count() ? ":" : "");
-  }
-
-  for (const auto& child : *this)
-  {
-    child->dump(out, indent_level + 1);
   }
 }
 

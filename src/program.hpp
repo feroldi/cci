@@ -69,6 +69,12 @@ struct ProgramContext
   {}
 
   template <typename Context, typename... Args>
+  void note(Context&& context, Args&&... args)
+  {
+    this->put(format_error(std::forward<Context>(context), DiagLevel::Note, std::forward<Args>(args)...));
+  }
+
+  template <typename Context, typename... Args>
   void error(Context&& context, Args&&... args)
   {
     this->put(format_error(std::forward<Context>(context), DiagLevel::Error, std::forward<Args>(args)...));
