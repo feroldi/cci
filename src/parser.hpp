@@ -26,7 +26,9 @@ enum class NodeType
   MultiplicativeExpression,
   AdditiveExpression,
   ShiftExpression,
-  RelatioalExpression,
+  ShiftOperator,
+  RelationalExpression,
+  RelationalOperator,
   EqualityExpression,
   EqualityOperator,
   AndExpression,
@@ -133,7 +135,28 @@ struct SyntaxTree
     other.node_parent.reset();
   }
 
-  SyntaxTree& operator= (SyntaxTree&&) noexcept = default;
+  // Unattaches the last child (parent is reset)
+  // and returns it.
+  auto pop_child() -> std::unique_ptr<SyntaxTree>
+  {
+    auto child = std::move(this->children.back());
+    child->node_parent.reset();
+    this->children.pop_back();
+
+    return child;
+  }
+
+  // Takes the `tree`'s children, type, token
+  // and data, but keeps own parent untouched.
+  void become_tree(std::unique_ptr<SyntaxTree> tree)
+  {
+    Expects(this->child_count() == 0);
+
+    this->node_type = tree->type();
+    this->token = std::move(tree->token);
+    this->data = std::move(tree->data);
+    this->take_children(std::move(tree));
+  }
 
   void add_child(std::unique_ptr<SyntaxTree> tree)
   {
@@ -145,12 +168,15 @@ struct SyntaxTree
 
   void take_children(std::unique_ptr<SyntaxTree> tree)
   {
-    this->children.reserve(this->child_count() + tree->child_count());
-
-    for (auto& child : *tree)
+    if (tree->child_count() != 0)
     {
-      child->node_parent.reset(this);
-      this->children.emplace_back(std::move(child));
+      this->children.reserve(this->child_count() + tree->child_count());
+
+      for (auto& child : *tree)
+      {
+        child->node_parent.reset(this);
+        this->children.emplace_back(std::move(child));
+      }
     }
   }
 
@@ -213,6 +239,17 @@ struct SyntaxTree
     {
       child->traverse(f);
     }
+  }
+
+  template <typename F>
+  void traverse_backwards(const F& f)
+  {
+    for (auto& child : this->children)
+    {
+      child->traverse_backwards(f);
+    }
+
+    f(*this);
   }
 
   void dump(std::FILE* out = stderr, size_t indent_level = 0) const;

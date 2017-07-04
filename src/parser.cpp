@@ -97,6 +97,34 @@ struct ParserResult
   {}
 };
 
+// Reduces a tree containing one child to its own child.
+//
+// If tree has only one child, unattaches it and turn tree into
+// that child.
+//
+// E.g. the following tree:
+//
+//     Tree(A):
+//       Tree(B):
+//         Tree(B1)
+//         Tree(B2)
+//
+// Turns into:
+//
+//     Tree(A):
+//       Tree(B1)
+//       Tree(B2)
+//
+// `Tree(A)`'s parent is kept untouched.
+void reduce_one_child_node(std::unique_ptr<SyntaxTree>& tree)
+{
+  if (tree->child_count() == 1)
+  {
+    auto child = tree->pop_child();
+    tree->become_tree(std::move(child));
+  }
+}
+
 // Constructs a state with a ParserFailure containing one error.
 //
 // Useful for adding an error to a ParserState.
@@ -187,6 +215,8 @@ void add_node(ParserState& state, std::unique_ptr<SyntaxTree> node)
   if (is<ParserSuccess>(state))
   {
     auto& tree = get<ParserSuccess>(state).tree;
+
+    reduce_one_child_node(node);
 
     if (tree == nullptr)
     {
@@ -427,6 +457,7 @@ auto make_parser_operator(NodeType op_type, OpMatch op_match)
   };
 }
 
+
 // C grammar
 
 auto parser_expression(ParserContext&, TokenIterator begin, TokenIterator end) -> ParserResult;
@@ -613,6 +644,66 @@ auto parser_unary_expression(ParserContext& parser, TokenIterator begin, TokenIt
   return ParserResult(begin, make_error(begin, "unary expression"));
 }
 
+// additive-expression
+//    multiplicative-expression
+//    additive-expression '+' multiplicative-expression
+//
+// additive-operator
+//    '+' | '-'
+
+auto parser_additive_expression(ParserContext& parser, TokenIterator begin, TokenIterator end)
+  -> ParserResult
+{
+  if (begin == end)
+    return ParserResult(end, make_error(ParserStatus::PlainWrong, end));
+
+  return parser_identifier(parser, begin, end);
+}
+
+// shift-expression
+//    additive-expression
+//    shift-expression shift-operator additive-expression
+//
+// shift-operator
+//    '<<' | '>>'
+
+auto parser_shift_expression(ParserContext& parser, TokenIterator begin, TokenIterator end)
+  -> ParserResult
+{
+  if (begin == end)
+    return ParserResult(end, make_error(ParserStatus::PlainWrong, end));
+
+  auto parser_shift_operator =
+    make_parser_operator(NodeType::ShiftOperator, [] (TokenIterator t) {
+        switch (t->type)
+        {
+          case TokenType::BitwiseLeftShift:
+          case TokenType::BitwiseRightShift:
+            return true;
+
+          default:
+            return false;
+        }
+      });
+
+  auto parser_shift_expr =
+    make_parser_binary_expr(
+        parser_additive_expression,
+        parser_shift_operator,
+        parser_shift_expression);
+
+  auto result = parser_one_of(parser, begin, end,
+                              parser_shift_expr,
+                              parser_additive_expression);
+
+  expect_one_of(result.state, NodeType::ShiftExpression);
+
+  ParserState state = ParserSuccess(std::make_unique<SyntaxTree>(NodeType::ShiftExpression));
+  add_state(state, std::move(result.state));
+
+  return ParserResult(result.next_token, std::move(state));
+}
+
 // relational-expression
 //    shift-expresion
 //    relational-expression relational-operator shift-expression
@@ -620,11 +711,43 @@ auto parser_unary_expression(ParserContext& parser, TokenIterator begin, TokenIt
 // relational-operator
 //    '<' | '>' | '<=' | '>='
 
-// TODO
 auto parser_relational_expression(ParserContext& parser, TokenIterator begin, TokenIterator end)
   -> ParserResult
 {
-  return ParserResult(std::next(begin), ParserSuccess(std::make_unique<SyntaxTree>(NodeType::RelatioalExpression)));
+  if (begin == end)
+    return ParserResult(end, make_error(ParserStatus::PlainWrong, end));
+
+  auto parser_relational_operator =
+    make_parser_operator(NodeType::RelationalOperator, [] (TokenIterator t) {
+        switch (t->type)
+        {
+          case TokenType::LessThan:
+          case TokenType::GreaterThan:
+          case TokenType::LessEqual:
+          case TokenType::GreaterEqual:
+            return true;
+
+          default:
+            return false;
+        }
+      });
+
+  auto parser_relational_expr =
+    make_parser_binary_expr(
+        parser_shift_expression,
+        parser_relational_operator,
+        parser_relational_expression);
+
+  auto result = parser_one_of(parser, begin, end,
+                              parser_relational_expr,
+                              parser_shift_expression);
+
+  expect_one_of(result.state, NodeType::RelationalExpression);
+
+  ParserState state = ParserSuccess(std::make_unique<SyntaxTree>(NodeType::RelationalExpression));
+  add_state(state, std::move(result.state));
+
+  return ParserResult(result.next_token, std::move(state));
 }
 
 // equalityExpression
@@ -1085,8 +1208,12 @@ auto to_string(const NodeType node_type) -> const char*
       return "additive expression";
     case NodeType::ShiftExpression:
       return "shift expression";
-    case NodeType::RelatioalExpression:
+    case NodeType::ShiftOperator:
+      return "shift operator";
+    case NodeType::RelationalExpression:
       return "relatioal expression";
+    case NodeType::RelationalOperator:
+      return "relatioal operator";
     case NodeType::EqualityExpression:
       return "equality expression";
     case NodeType::EqualityOperator:
