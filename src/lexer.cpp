@@ -181,9 +181,9 @@ struct LexerContext
     tokens.emplace_back(type, SourceRange{begin, end});
   }
 
-  void add_token(TokenType type, SourceRange source)
+  void add_token(TokenType type, const SourceRange& range)
   {
-    tokens.emplace_back(type, source);
+    tokens.emplace_back(type, range);
   }
 
   template <typename... Args>
@@ -331,14 +331,14 @@ auto lexer_parse_char_literal(LexerContext& lexer, SourceLocation begin,
       // Char literals shall not contain new lines.
       if (is_newline(*it))
       {
-        return it;
+        return std::next(it);
       }
 
       // skip escaping \'
       if (*it == '\\' && std::next(it) != end &&
           is_char_literal_match(*std::next(it)))
       {
-        ++it;
+        std::advance(it, 1);
         continue;
       }
 
@@ -351,18 +351,15 @@ auto lexer_parse_char_literal(LexerContext& lexer, SourceLocation begin,
     return end;
   }();
 
-  if (it == end && !is_char_literal_match(*std::prev(it)))
+  if (!is_char_literal_match(*std::prev(it)) || is_newline(*std::prev(it)))
   {
     lexer.error(SourceRange(begin), "missing terminating ' character");
   }
-
-  else if (std::next(it) != end && is_newline(*it))
+  else
   {
-    lexer.error(SourceRange(begin), "missing terminating ' character");
+    check_escape_sequences(lexer, std::next(begin), std::prev(it));
+    lexer.add_token(TokenType::CharConstant, begin, it);
   }
-
-  check_escape_sequences(lexer, std::next(begin), std::prev(it));
-  lexer.add_token(TokenType::CharConstant, begin, it);
 
   return it;
 }
@@ -379,14 +376,14 @@ auto lexer_parse_string_literal(LexerContext& lexer, SourceLocation begin,
       // String literals shall not contain new lines.
       if (is_newline(*it))
       {
-        return it;
+        return std::next(it);
       }
 
       // skip escaping \"
       if (*it == '\\' && std::next(it) != end &&
           is_string_literal_match(*std::next(it)))
       {
-        ++it;
+        std::advance(it, 1);
         continue;
       }
 
@@ -399,18 +396,15 @@ auto lexer_parse_string_literal(LexerContext& lexer, SourceLocation begin,
     return end;
   }();
 
-  if (it == end && !is_string_literal_match(*std::prev(it)))
+  if (!is_string_literal_match(*std::prev(it)) || is_newline(*std::prev(it)))
   {
     lexer.error(SourceRange(begin), "missing terminating '\"' character");
   }
-
-  else if (std::next(it) != end && is_newline(*it))
+  else
   {
-    lexer.error(SourceRange(begin), "missing terminating '\"' character");
+    check_escape_sequences(lexer, std::next(begin), std::prev(it));
+    lexer.add_token(TokenType::StringConstant, begin, it);
   }
-
-  check_escape_sequences(lexer, std::next(begin), std::prev(it));
-  lexer.add_token(TokenType::StringConstant, begin, it);
 
   return it;
 }
@@ -549,7 +543,7 @@ auto lexer_parse_decimal(LexerContext& lexer, SourceLocation begin,
       lexer.error({it, suffix_end}, "invalid suffix '{}' on floating constant", fmt::StringRef(it, std::distance(it, suffix_end)));
     }
 
-    ++it;
+    std::advance(it, 1);
   }
 
   lexer.add_token(TokenType::FloatConstant, begin, it);
@@ -675,19 +669,13 @@ auto TokenStream::parse(ProgramContext& program, const SourceManager& source) ->
     {
       it = lexer_parse_constant(lexer, it, range.end());
     }
-    else if (*it == '.') //< Special case for when tokens == [Identifier, Dot]
+    else if (*it == '.')
     {
-      auto& tokens = lexer.tokens;
-
-      // Don't parse a floating literal when it's following an identifier.
-      if (!tokens.empty() && tokens.back().type == TokenType::Identifier)
-      {
-        it = lexer_parse_operator(lexer, it, range.end());
-      }
-      else
-      {
+      // Don't parse a floating literal if the next character is a digit.
+      if (std::next(it) != range.end() && is_digit(*std::next(it)))
         it = lexer_parse_constant(lexer, it, range.end());
-      }
+      else
+        it = lexer_parse_operator(lexer, it, range.end());
     }
     else if (is_digit(*it))
     {
@@ -704,7 +692,7 @@ auto TokenStream::parse(ProgramContext& program, const SourceManager& source) ->
     else
     {
       lexer.error(SourceRange(it), "unknown symbol '{}'", *it);
-      ++it;
+      std::advance(it, 1);
     }
 
     it = std::find_if_not(it, range.end(), is_space);
@@ -811,6 +799,20 @@ auto to_string(TokenType token) -> const char*
       return ";";
     case TokenType::QuestionMark:
       return "?";
+    case TokenType::CharConstant:
+      return "char-constant";
+    case TokenType::IntegerConstant:
+      return "integer-constant";
+    case TokenType::OctIntegerConstant:
+      return "octal-integer-constant";
+    case TokenType::HexIntegerConstant:
+      return "hexadecimal-integer-constant";
+    case TokenType::FloatConstant:
+      return "floating-constant";
+    case TokenType::StringConstant:
+      return "string-constant";
+    case TokenType::Identifier:
+      return "identifier";
     case TokenType::If:
       return "if";
     case TokenType::Else:
