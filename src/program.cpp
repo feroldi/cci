@@ -156,7 +156,7 @@ auto base_format_error(const char* from, DiagLevel level, const optional<LineInf
 
     for (size_t i = 0; i < pos.column_no; ++i)
     {
-      highlight.push_back(line[i] == '\t' ? '\t' : ' ');
+      highlight.push_back(*std::next(line.begin(), i) == '\t' ? '\t' : ' ');
     }
 
     highlight.back() = '^';
@@ -165,7 +165,7 @@ auto base_format_error(const char* from, DiagLevel level, const optional<LineInf
       highlight += std::string(range.size() - 1, '~');
 
     message +=
-      fmt::format("{}\n{}", line.to_string(), highlight);
+      fmt::format("{}\n{}", string_ref(line), highlight);
   }
 
   return message;

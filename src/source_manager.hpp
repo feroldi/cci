@@ -2,6 +2,7 @@
 
 #include <string>
 #include <vector>
+#include "cpp/format.hpp"
 #include "cpp/contracts.hpp"
 #include "cpp/string_view.hpp"
 
@@ -38,14 +39,14 @@ struct SourceRange
     return this->last;
   }
 
+  constexpr auto data() const noexcept -> SourceLocation
+  {
+    return this->first;
+  }
+
   constexpr auto size() const noexcept -> std::size_t
   {
     return static_cast<std::size_t>(this->end() - this->begin());
-  }
-
-  constexpr auto operator[](size_t index) const noexcept -> char
-  {
-    return *(this->begin() + index);
   }
 
   constexpr auto contains(SourceLocation loc) const -> bool
@@ -60,20 +61,15 @@ struct SourceRange
 
   operator string_view() const
   {
-    return string_view{this->begin(), this->size()};
+    return string_view(this->data(), this->size());
   }
 
-  auto to_string() const -> std::string
-  {
-    return std::string(this->begin(), this->end());
-  }
-
-  friend auto operator== (const SourceRange& lhs, const SourceRange& rhs) -> bool
+  friend constexpr auto operator== (const SourceRange& lhs, const SourceRange& rhs) -> bool
   {
     return (lhs.begin() == rhs.begin()) & (lhs.end() == rhs.end());
   }
 
-  friend auto operator!= (const SourceRange& lhs, const SourceRange& rhs) -> bool
+  friend constexpr auto operator!= (const SourceRange& lhs, const SourceRange& rhs) -> bool
   {
     return (lhs.begin() != rhs.begin()) | (lhs.end() != rhs.end());
   }
@@ -82,6 +78,11 @@ private:
   SourceLocation first;
   SourceLocation last;
 };
+
+inline auto string_ref(const SourceRange& range) -> fmt::StringRef
+{
+  return fmt::StringRef(range.data(), range.size());
+}
 
 struct SourceManager
 {

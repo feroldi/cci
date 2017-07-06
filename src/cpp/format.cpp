@@ -1,5 +1,4 @@
-// Compile format as part of this binary.
+// XXX: Compile format as part of this binary.
 
 #include "format.hpp"
-#include <fmt/format.cc>
-
+#include "../../deps/fmt/fmt/format.cc"

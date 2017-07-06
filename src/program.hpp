@@ -29,10 +29,8 @@ struct LineInfo
   SourceRange range;
 };
 
-struct NoContextTag
-{};
-
-constexpr inline auto nocontext() -> NoContextTag { return {}; }
+struct no_context_t { constexpr explicit no_context_t() = default; };
+inline constexpr no_context_t no_context = no_context_t();
 
 auto base_format_error(const char* from, DiagLevel, const optional<LineInfo>&, string_view description) -> std::string;
 
@@ -40,7 +38,7 @@ template <typename... Args>
 inline auto format_error(const char* from, DiagLevel level, const optional<LineInfo>& info, const char* format, Args&&... args) -> std::string;
 
 template <typename... Args>
-inline auto format_error(NoContextTag, DiagLevel level, const char* format, Args&&... args) -> std::string;
+inline auto format_error(no_context_t, DiagLevel level, const char* format, Args&&... args) -> std::string;
 
 template <typename... Args>
 inline auto format_error(const TokenStream::TokenDebug& context, DiagLevel level, const char* format, Args&&... args) -> std::string;
@@ -116,7 +114,7 @@ struct ProgramContext
   template <typename... Args>
   [[noreturn]] void fatal(const char* format, Args&&... args)
   {
-    this->put(format_error(nocontext(), DiagLevel::Fatal, format, std::forward<Args>(args)...));
+    this->put(format_error(no_context, DiagLevel::Fatal, format, std::forward<Args>(args)...));
     this->fatal_count += 1;
     throw ProgramFailure("fatal error occurred");
   }
@@ -148,7 +146,7 @@ inline auto format_error(const char* from, DiagLevel level, const optional<LineI
 }
 
 template <typename... Args>
-inline auto format_error(NoContextTag, DiagLevel level, const char* format, Args&&... args) -> std::string
+inline auto format_error(no_context_t, DiagLevel level, const char* format, Args&&... args) -> std::string
 {
   return base_format_error(
     nullptr, level, nullopt,

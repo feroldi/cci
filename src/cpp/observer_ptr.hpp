@@ -19,8 +19,8 @@ struct observer_ptr
 {
   using element_type = T;
 
-  constexpr observer_ptr() noexcept : ptr(nullptr) {};
-  constexpr observer_ptr(std::nullptr_t) noexcept : ptr(nullptr) {};
+  constexpr observer_ptr() noexcept : ptr(nullptr) {}
+  constexpr observer_ptr(std::nullptr_t) noexcept : ptr(nullptr) {}
   constexpr explicit observer_ptr(element_type* p) noexcept : ptr(p) {}
 
   template <

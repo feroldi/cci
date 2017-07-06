@@ -118,7 +118,7 @@ struct ParserResult
 // `Tree(A)`'s parent is kept untouched.
 void reduce_one_child_node(std::unique_ptr<SyntaxTree>& tree)
 {
-  if (tree->child_count() == 1)
+  if (!tree->has_text() && tree->child_count() == 1)
   {
     auto child = tree->pop_child();
     tree->become_tree(std::move(child));
@@ -182,7 +182,7 @@ auto is_plain_wrong(const ParserState& state) -> bool
   return false;
 }
 
-auto expect_one_of(ParserState& state, string_view what)
+void expect_one_of(ParserState& state, string_view what)
 {
   ParserState new_errors = ParserFailure();
 
@@ -204,9 +204,9 @@ auto expect_one_of(ParserState& state, string_view what)
   }
 }
 
-auto expect_one_of(ParserState& state, NodeType node_type)
+void expect_one_of(ParserState& state, NodeType node_type)
 {
-  expect_one_of(state, to_string(node_type));
+  return expect_one_of(state, to_string(node_type));
 }
 
 // Adds a node to state's tree if it's a `ParserSuccess`.
@@ -230,9 +230,12 @@ void add_node(ParserState& state, std::unique_ptr<SyntaxTree> node)
     {
       tree->add_child(std::move(node));
     }
+
+    reduce_one_child_node(tree);
   }
 }
 
+// Accumulates one state into another.
 void add_state(ParserState& state, ParserState other)
 {
   if (is<ParserSuccess>(other))
@@ -258,42 +261,40 @@ struct ParserContext
   template <typename... Args>
   void note(TokenIterator token, Args&&... args)
   {
-    const SourceManager& source = this->token_stream.source_manager();
-    SourceRange range = token->data;
-    auto pos = source.linecol_from_location(range.begin());
-    program.note(TokenStream::TokenDebug{source, pos, range}, std::forward<Args>(args)...);
+    program.note(this->token_info(token), std::forward<Args>(args)...);
   }
 
   template <typename... Args>
   void warning(TokenIterator token, Args&&... args)
   {
-    const SourceManager& source = this->token_stream.source_manager();
-    SourceRange range = token->data;
-    auto pos = source.linecol_from_location(range.begin());
-    program.warn(TokenStream::TokenDebug{source, pos, range}, std::forward<Args>(args)...);
+    program.warn(this->token_info(token), std::forward<Args>(args)...);
   }
 
   template <typename... Args>
   void error(TokenIterator token, Args&&... args)
   {
-    const SourceManager& source = this->token_stream.source_manager();
-    SourceRange range = token->data;
-    const auto pos = source.linecol_from_location(range.begin());
-    program.error(TokenStream::TokenDebug{source, pos, range}, std::forward<Args>(args)...);
+    program.error(this->token_info(token), std::forward<Args>(args)...);
   }
 
   template <typename... Args>
   void pedantic(TokenIterator token, Args&&... args)
   {
+    program.pedantic(this->token_info(token), std::forward<Args>(args)...);
+  }
+
+private:
+  auto token_info(TokenIterator token) const noexcept -> TokenStream::TokenDebug
+  {
     const SourceManager& source = this->token_stream.source_manager();
     SourceRange range = token->data;
     const auto pos = source.linecol_from_location(range.begin());
-    program.pedantic(TokenStream::TokenDebug{source, pos, range}, std::forward<Args>(args)...);
+
+    return TokenStream::TokenDebug{source, pos, range};
   }
 };
 
 // Tries to parse one of the rules.
-// If a rule returns a trivial error, then this is the result.
+// If a rule returns a trivial error, then that's the result.
 // Otherwise, if all rules return plain-wrong errors, then the result
 // is "expected one of" plain-wrong error.
 template <typename Rule, typename... Rules>
@@ -318,6 +319,7 @@ auto parser_one_of(ParserContext& parser, TokenIterator begin,
   }
 }
 
+// Parses a sequence of rules.
 template <typename... Rules>
 auto parser_all_of(ParserContext& parser, TokenIterator begin,
                    TokenIterator end, Rules&&... rules)
@@ -389,7 +391,8 @@ auto expect_token(ParserState& state, TokenIterator it,
   if (it == end || it->type != token_type)
   {
     it = (it == end) ? std::prev(it) : it;
-    add_error(state, make_error(ParserStatus::Error, it, fmt::format("expected '{}'", to_string(token_type))));
+    std::string msg = fmt::format("expected '{}', got '{}'", to_string(token_type), string_ref(it->data));
+    add_error(state, make_error(ParserStatus::Error, it, std::move(msg)));
     return false;
   }
 
@@ -411,14 +414,56 @@ auto expect_end_token(ParserState& state, TokenIterator begin,
   return true;
 }
 
+// Parses the token sequence into a left-to-right associated tree.
+//
+// E.g.: the following sequence of tokens:
+//
+//    A op B op C
+//
+// Parses into:
+//
+//    node(op):
+//      node(op):
+//        node(A)
+//        node(B)
+//      node(C)
+template <typename LhsRule, typename OpRule, typename RhsRule>
+auto parser_left_associate(LhsRule lhs_rule, OpRule op_rule, RhsRule rhs_rule)
+{
+  return [=] (ParserContext& parser, TokenIterator begin, TokenIterator end) -> ParserResult
+  {
+    auto [it, lhs_state] = lhs_rule(parser, begin, end);
+
+    while (true)
+    {
+      auto [op_it, op_state] = op_rule(parser, it, end);
+
+      if (is<ParserSuccess>(op_state))
+      {
+        auto [rhs_it, rhs_state] = rhs_rule(parser, op_it, end);
+
+        add_state(op_state, std::move(lhs_state));
+        add_state(op_state, std::move(rhs_state));
+
+        it = rhs_it;
+        lhs_state = std::move(op_state);
+      }
+      else
+      {
+        break;
+      }
+    }
+
+    return ParserResult(it, std::move(lhs_state));
+  };
+}
+
 // Returns a parser rule that matches a binary expression.
 //
-// binaryExpression:
-//  : lhs_rule op_rule rhs_rule
-//  ;
-//    -> ^($op_rule $lhs_rule $rhs_rule)
+// binary-expression:
+//    lhs_rule op_rule rhs_rule -> ^($op_rule $lhs_rule $rhs_rule)
 template <typename LhsRule, typename OpRule, typename RhsRule>
-auto make_parser_binary_expr(LhsRule lhs_rule, OpRule op_rule, RhsRule rhs_rule)
+auto make_binary_expr(LhsRule lhs_rule, OpRule op_rule, RhsRule rhs_rule)
 {
   return [=] (ParserContext& parser, TokenIterator begin, TokenIterator end) -> ParserResult
   {
@@ -433,9 +478,45 @@ auto make_parser_binary_expr(LhsRule lhs_rule, OpRule op_rule, RhsRule rhs_rule)
   };
 }
 
+// Returns a parser rule that matches a unary expression (prefix).
+//
+// binary-expression
+//    op_rule rhs_rule -> ^($op_rule $rhs_rule)
+template <typename OpRule, typename RhsRule>
+auto make_unary_expr_prefix(OpRule op_rule, RhsRule rhs_rule)
+{
+  return [=] (ParserContext& parser, TokenIterator begin, TokenIterator end) -> ParserResult
+  {
+    auto [op_it, op_state] = op_rule(parser, begin, end);
+    auto [rhs_it, rhs_state] = rhs_rule(parser, op_it, end);
+
+    add_state(op_state, std::move(rhs_state));
+
+    return ParserResult(rhs_it, std::move(op_state));
+  };
+}
+
+// Returns a parser rule that matches a unary expression (postfix).
+//
+// binary-expression
+//    lhs_rule op_rule -> ^($op_rule $lhs_rule)
+template <typename OpRule, typename LhsRule>
+auto make_unary_expr_postfix(LhsRule lhs_rule, OpRule op_rule)
+{
+  return [=] (ParserContext& parser, TokenIterator begin, TokenIterator end) -> ParserResult
+  {
+    auto [lhs_it, lhs_state] = lhs_rule(parser, begin, end);
+    auto [op_it, op_state] = op_rule(parser, lhs_it, end);
+
+    add_state(op_state, std::move(lhs_state));
+
+    return ParserResult(op_it, std::move(op_state));
+  };
+}
+
 // Returns a parser rule that matches an operator, or token.
 template <typename OpMatch>
-auto make_parser_operator(NodeType op_type, OpMatch op_match)
+auto parser_make_operator(NodeType op_type, OpMatch op_match)
 {
   return [=] (ParserContext& /*parser*/, TokenIterator begin, TokenIterator end) -> ParserResult
   {
@@ -457,18 +538,76 @@ auto make_parser_operator(NodeType op_type, OpMatch op_match)
   };
 }
 
+// Parses a rule repeatedly separated by `token`.
+template <typename Rule>
+auto parser_make_sequence_list(NodeType node_type, Rule rule, TokenType token)
+{
+  return [=] (ParserContext& parser, TokenIterator begin, TokenIterator end) -> ParserResult
+  {
+    ParserState state = ParserSuccess(std::make_unique<SyntaxTree>(node_type));
+    auto [it, list_state] = parser_take_repeat(parser, begin, end, rule, [token] (TokenIterator& it) {
+        if (it->type == token)
+        {
+          std::advance(it, 1);
+          return true;
+        }
+        return false;
+      });
+
+    add_state(state, std::move(list_state));
+
+    return ParserResult(it, std::move(state));
+  };
+}
+
+template <typename Rule>
+auto parser_make_inside_brackets(TokenType lhs_token, Rule rule, TokenType rhs_token)
+{
+  return [=] (ParserContext& parser, TokenIterator begin, TokenIterator end) -> ParserResult
+  {
+    ParserState state = ParserSuccess(nullptr);
+    auto it = begin;
+
+    if (it->type == lhs_token)
+    {
+      std::advance(it, 1);
+      auto [rule_it, rule_state] = rule(parser, it, end);
+
+      add_state(state, std::move(rule_state));
+      it = rule_it;
+
+      if (expect_end_token(state, begin, end, it, rhs_token))
+      {
+        std::advance(it, 1);
+      }
+    }
+    else
+    {
+      add_error(state, ParserError(ParserStatus::PlainWrong, begin));
+    }
+
+    return ParserResult(it, std::move(state));
+  };
+}
 
 // C grammar
 
 auto parser_expression(ParserContext&, TokenIterator begin, TokenIterator end) -> ParserResult;
+auto parser_primary_expression(ParserContext&, TokenIterator begin, TokenIterator end) -> ParserResult;
 
-// identifier
+// identifier:
 //    [a-zA-Z_$] ([a-zA-Z_$] | [0-9])*
 
-auto parser_identifier(ParserContext& parser, TokenIterator begin, TokenIterator end)
+auto parser_identifier(ParserContext& /*parser*/, TokenIterator begin, TokenIterator end)
   -> ParserResult
 {
   if (begin == end)
+    return ParserResult(end, make_error(ParserStatus::PlainWrong, end));
+
+  // XXX: Means I'm an encoding prefix.
+  // Should remove this once NodeType::EncodingPrefix is implemented.
+  // NOTE: See parser_string_literal.
+  if (std::next(begin) != end && std::next(begin)->type == TokenType::StringConstant)
     return ParserResult(end, make_error(ParserStatus::PlainWrong, end));
 
   ParserState state = ParserSuccess(nullptr);
@@ -486,43 +625,68 @@ auto parser_identifier(ParserContext& parser, TokenIterator begin, TokenIterator
   return ParserResult(std::next(begin), std::move(state));
 }
 
-// string-literal
+// string-literal:
 //    encoding-prefix? '"' schar-sequence? '"'
 //
-// encoding-prefix
-//    'u8' | 'u' | 'U' | 'L'
+// encoding-prefix: one of
+//    u8 u U L
 //
-// schar-sequence
+// schar-sequence:
 //    schar+
 //
-// schar
+// schar:
 //    ~["\\\r\n]
 //    escape-sequence
 //    '\\\n'
 //    '\\\r\n'
 
-auto parser_string_literal(ParserContext& parser, TokenIterator begin, TokenIterator end)
+auto parser_string_literal(ParserContext& /*parser*/, TokenIterator begin, TokenIterator end)
   -> ParserResult
 {
   if (begin == end)
     return ParserResult(end, make_error(ParserStatus::PlainWrong, end));
 
   ParserState state = ParserSuccess(nullptr);
+  optional<TokenData> prefix = nullopt;
+  auto it = begin;
 
-  if (begin->type == TokenType::StringConstant)
+  // Encoding prefix.
+  if (it->type == TokenType::Identifier)
   {
-    auto tree = std::make_unique<SyntaxTree>(NodeType::StringLiteral, *begin);
-    state = ParserSuccess(std::move(tree));
+    string_view token = it->data;
+
+    if (token == "u8" || token == "u" || token == "U" || token == "L")
+    {
+      prefix = *it;
+      std::advance(it, 1);
+    }
+    else
+    {
+      add_error(state, make_error(it, "encoding prefix"));
+    }
+  }
+
+  if (it->type == TokenType::StringConstant)
+  {
+    auto tree = std::make_unique<SyntaxTree>(NodeType::StringLiteral, *it);
+
+    // TODO: Turn it into an annotation.
+    if (prefix)
+    {
+      tree->add_child(std::make_unique<SyntaxTree>(NodeType::EncodingPrefix, *prefix));
+    }
+
+    add_node(state, std::move(tree));
   }
   else
   {
-    add_error(state, make_error(begin, "string literal"));
+    add_error(state, make_error(it, "string literal"));
   }
 
-  return ParserResult(std::next(begin), std::move(state));
+  return ParserResult(std::next(it), std::move(state));
 }
 
-// string-literal-list
+// string-literal-list:
 //    string-literal+
 
 auto parser_string_literal_list(ParserContext& parser, TokenIterator begin, TokenIterator end)
@@ -533,7 +697,7 @@ auto parser_string_literal_list(ParserContext& parser, TokenIterator begin, Toke
   auto [it, strs_state] = parser_take_repeat(
       parser, begin, end,
       parser_string_literal,
-      [] (TokenIterator t) { return t->type == TokenType::StringConstant; });
+      [] (TokenIterator t) { return t->type == TokenType::StringConstant || t->type == TokenType::Identifier; });
 
   add_state(state, std::move(strs_state));
 
@@ -552,13 +716,13 @@ auto parser_string_literal_list(ParserContext& parser, TokenIterator begin, Toke
   return ParserResult(it, std::move(state));
 }
 
-// constant
+// constant:
 //    integer-constant
 //    floating-constant
 //    character-constant
 //    enumeration-constant
 
-auto parser_constant(ParserContext& parser, TokenIterator begin, TokenIterator end)
+auto parser_constant(ParserContext& /*parser*/, TokenIterator begin, TokenIterator end)
   -> ParserResult
 {
   if (begin == end)
@@ -600,7 +764,7 @@ auto parser_constant(ParserContext& parser, TokenIterator begin, TokenIterator e
   return ParserResult(std::next(begin), std::move(state));
 }
 
-// unary-expression
+// unary-expression:
 //    postfix-expression
 //    '++' unary-expression
 //    '--' unary-expression
@@ -609,8 +773,8 @@ auto parser_constant(ParserContext& parser, TokenIterator begin, TokenIterator e
 //    'sizeof' '(' type-name ')'
 //    '_Alignof' '(' type-name ')'
 // 
-// unary-operator
-//    '&' | '*' | '+' | '-' | '~' | '!'
+// unary-operator: one of
+//    ++ -- & * + - ~ !
 
 // TODO
 auto parser_unary_expression(ParserContext& parser, TokenIterator begin, TokenIterator end)
@@ -619,37 +783,75 @@ auto parser_unary_expression(ParserContext& parser, TokenIterator begin, TokenIt
   if (begin == end)
     return ParserResult(end, make_error(ParserStatus::PlainWrong, end));
 
-  auto parser_unary_operator =
-    make_parser_operator(NodeType::UnaryOperator, [] (TokenIterator t) {
-          switch (t->type)
-          {
-            case TokenType::Assign:
-            case TokenType::TimesAssign:
-            case TokenType::DivideAssign:
-            case TokenType::ModuloAssign:
-            case TokenType::PlusAssign:
-            case TokenType::MinusAssign:
-            case TokenType::BitwiseLeftShiftAssign:
-            case TokenType::BitwiseRightShiftAssign:
-            case TokenType::BitwiseAndAssign:
-            case TokenType::BitwiseXorAssign:
-            case TokenType::BitwiseOrAssign:
-              return true;
-
-            default:
-              return false;
-          }
+  auto parser_incr_decr_expr = [] (ParserContext& parser, TokenIterator begin, TokenIterator end) -> ParserResult
+  {
+    auto incr_decr_operator =
+      parser_make_operator(NodeType::UnaryOperator, [] (TokenIterator t) {
+        return t->type == TokenType::Increment
+            || t->type == TokenType::Decrement;
         });
 
-  return ParserResult(begin, make_error(begin, "unary expression"));
+    auto rule = make_unary_expr_prefix(incr_decr_operator, parser_unary_expression);
+
+    return rule(parser, begin, end);
+  };
+
+  auto result = parser_one_of(parser, begin, end,
+                              parser_incr_decr_expr,
+                              parser_identifier);
+
+  expect_one_of(result.state, NodeType::UnaryExpression);
+
+  return result;
 }
 
-// additive-expression
+// cast-expression:
+//    unary-expression
+//    '(' type-name ')' cast-expression
+
+auto parser_cast_expression(ParserContext& parser, TokenIterator begin, TokenIterator end)
+  -> ParserResult
+{
+  if (begin == end)
+    return ParserResult(end, make_error(ParserStatus::PlainWrong, end));
+
+  return parser_primary_expression(parser, begin, end);
+}
+
+// multiplicative-expression:
+//    cast-expression
+//    multiplicative-expression multiplicative-operator cast-expression
+//
+// multiplicative-operator: one of
+//    * / %
+
+auto parser_multiplicative_expression(ParserContext& parser, TokenIterator begin, TokenIterator end)
+  -> ParserResult
+{
+  if (begin == end)
+    return ParserResult(end, make_error(ParserStatus::PlainWrong, end));
+
+  auto parser_multiplicative_operator =
+    parser_make_operator(NodeType::MultiplicativeExpression, [] (TokenIterator t) {
+        return t->type == TokenType::Times  ||
+               t->type == TokenType::Divide ||
+               t->type == TokenType::Percent;
+      });
+
+  auto parser_multiplicative_expr =
+    parser_left_associate(parser_cast_expression,
+                          parser_multiplicative_operator,
+                          parser_cast_expression);
+
+  return parser_multiplicative_expr(parser, begin, end);
+}
+
+// additive-expression:
 //    multiplicative-expression
 //    additive-expression '+' multiplicative-expression
 //
-// additive-operator
-//    '+' | '-'
+// additive-operator: one of
+//    + -
 
 auto parser_additive_expression(ParserContext& parser, TokenIterator begin, TokenIterator end)
   -> ParserResult
@@ -657,15 +859,26 @@ auto parser_additive_expression(ParserContext& parser, TokenIterator begin, Toke
   if (begin == end)
     return ParserResult(end, make_error(ParserStatus::PlainWrong, end));
 
-  return parser_identifier(parser, begin, end);
+  auto parser_additive_operator =
+    parser_make_operator(NodeType::AdditiveExpression, [] (TokenIterator t) {
+        return t->type == TokenType::Plus ||
+               t->type == TokenType::Minus;
+      });
+
+  auto parser_additive_expr =
+    parser_left_associate(parser_multiplicative_expression,
+                          parser_additive_operator,
+                          parser_multiplicative_expression);
+
+  return parser_additive_expr(parser, begin, end);
 }
 
-// shift-expression
+// shift-expression:
 //    additive-expression
 //    shift-expression shift-operator additive-expression
 //
-// shift-operator
-//    '<<' | '>>'
+// shift-operator: one of
+//    << >>
 
 auto parser_shift_expression(ParserContext& parser, TokenIterator begin, TokenIterator end)
   -> ParserResult
@@ -674,42 +887,25 @@ auto parser_shift_expression(ParserContext& parser, TokenIterator begin, TokenIt
     return ParserResult(end, make_error(ParserStatus::PlainWrong, end));
 
   auto parser_shift_operator =
-    make_parser_operator(NodeType::ShiftOperator, [] (TokenIterator t) {
-        switch (t->type)
-        {
-          case TokenType::BitwiseLeftShift:
-          case TokenType::BitwiseRightShift:
-            return true;
-
-          default:
-            return false;
-        }
+    parser_make_operator(NodeType::ShiftExpression, [] (TokenIterator t) {
+          return t->type == TokenType::BitwiseLeftShift ||
+                 t->type == TokenType::BitwiseRightShift;
       });
 
   auto parser_shift_expr =
-    make_parser_binary_expr(
-        parser_additive_expression,
-        parser_shift_operator,
-        parser_shift_expression);
+    parser_left_associate(parser_additive_expression,
+                          parser_shift_operator,
+                          parser_additive_expression);
 
-  auto result = parser_one_of(parser, begin, end,
-                              parser_shift_expr,
-                              parser_additive_expression);
-
-  expect_one_of(result.state, NodeType::ShiftExpression);
-
-  ParserState state = ParserSuccess(std::make_unique<SyntaxTree>(NodeType::ShiftExpression));
-  add_state(state, std::move(result.state));
-
-  return ParserResult(result.next_token, std::move(state));
+  return parser_shift_expr(parser, begin, end);
 }
 
-// relational-expression
+// relational-expression:
 //    shift-expresion
 //    relational-expression relational-operator shift-expression
 //
-// relational-operator
-//    '<' | '>' | '<=' | '>='
+// relational-operator: one of
+//    < > <= >=
 
 auto parser_relational_expression(ParserContext& parser, TokenIterator begin, TokenIterator end)
   -> ParserResult
@@ -718,7 +914,7 @@ auto parser_relational_expression(ParserContext& parser, TokenIterator begin, To
     return ParserResult(end, make_error(ParserStatus::PlainWrong, end));
 
   auto parser_relational_operator =
-    make_parser_operator(NodeType::RelationalOperator, [] (TokenIterator t) {
+    parser_make_operator(NodeType::RelationalExpression, [] (TokenIterator t) {
         switch (t->type)
         {
           case TokenType::LessThan:
@@ -733,31 +929,19 @@ auto parser_relational_expression(ParserContext& parser, TokenIterator begin, To
       });
 
   auto parser_relational_expr =
-    make_parser_binary_expr(
-        parser_shift_expression,
-        parser_relational_operator,
-        parser_relational_expression);
+    parser_left_associate(parser_shift_expression,
+                          parser_relational_operator,
+                          parser_shift_expression);
 
-  auto result = parser_one_of(parser, begin, end,
-                              parser_relational_expr,
-                              parser_shift_expression);
-
-  expect_one_of(result.state, NodeType::RelationalExpression);
-
-  ParserState state = ParserSuccess(std::make_unique<SyntaxTree>(NodeType::RelationalExpression));
-  add_state(state, std::move(result.state));
-
-  return ParserResult(result.next_token, std::move(state));
+  return parser_relational_expr(parser, begin, end);
 }
 
-// equalityExpression
-//  :   relationalExpression
-//  |   equalityExpression equalityOperator relationalExpression
-//  ;
+// equality-expression:
+//    relational-expression
+//    equality-expression equality-operator relational-expression
 //
-// equalityOperator
-//  : '==' | '!='
-//  ;
+// equality-operator: one of
+//  == !=
 
 auto parser_equality_expression(ParserContext& parser, TokenIterator begin, TokenIterator end)
   -> ParserResult
@@ -766,40 +950,22 @@ auto parser_equality_expression(ParserContext& parser, TokenIterator begin, Toke
     return ParserResult(end, make_error(ParserStatus::PlainWrong, end));
 
   auto parser_equality_operator =
-    make_parser_operator(NodeType::EqualityOperator, [] (TokenIterator t) {
-        switch (t->type)
-        {
-          case TokenType::EqualsTo:
-          case TokenType::NotEqualTo:
-            return true;
-
-          default:
-            return false;
-        }
+    parser_make_operator(NodeType::EqualityExpression, [] (TokenIterator t) {
+        return t->type == TokenType::EqualsTo ||
+               t->type == TokenType::NotEqualTo;
       });
 
   auto parser_equality_expr =
-    make_parser_binary_expr(
-        parser_relational_expression,
-        parser_equality_operator,
-        parser_equality_expression);
+    parser_left_associate(parser_relational_expression,
+                          parser_equality_operator,
+                          parser_relational_expression);
 
-  auto result = parser_one_of(parser, begin, end,
-                              parser_equality_expr,
-                              parser_relational_expression);
-
-  expect_one_of(result.state, NodeType::EqualityExpression);
-
-  ParserState state = ParserSuccess(std::make_unique<SyntaxTree>(NodeType::EqualityExpression));
-  add_state(state, std::move(result.state));
-
-  return ParserResult(result.next_token, std::move(state));
+  return parser_equality_expr(parser, begin, end);
 }
 
-// andExpression
-//  :   equalityExpression
-//  |   andExpression '&' equalityExpression
-//  ;
+// and-expression:
+//    equality-expression
+//    and-expression '&' equality-expression
 
 auto parser_and_expression(ParserContext& parser, TokenIterator begin, TokenIterator end)
   -> ParserResult
@@ -807,30 +973,22 @@ auto parser_and_expression(ParserContext& parser, TokenIterator begin, TokenIter
   if (begin == end)
     return ParserResult(end, make_error(ParserStatus::PlainWrong, end));
 
-  ParserState state = ParserSuccess(std::make_unique<SyntaxTree>(NodeType::AndExpression));
+  auto parser_and_operator =
+    parser_make_operator(NodeType::AndExpression, [] (TokenIterator it) {
+        return it->type == TokenType::BitwiseAnd;
+      });
 
-  auto [it, bitand_state] =
-    parser_take_repeat(
-        parser, begin, end,
-        parser_equality_expression,
-        [] (TokenIterator& it) {
-          if (it->type == TokenType::BitwiseAnd)
-          {
-            std::advance(it, 1);
-            return true;
-          }
-          return false;
-        });
+  auto parser_and_expr =
+    parser_left_associate(parser_equality_expression,
+                          parser_and_operator,
+                          parser_equality_expression);
 
-  add_state(state, std::move(bitand_state));
-
-  return ParserResult(it, std::move(state));
+  return parser_and_expr(parser, begin, end);
 }
 
-// exclusiveOrExpression
-//  :   andExpression
-//  |   exclusiveOrExpression '^' andExpression
-//  ;
+// exclusive-or-expression:
+//    and-expression
+//    exclusive-or-expression '^' and-expression
 
 auto parser_exclusive_or_expression(ParserContext& parser, TokenIterator begin, TokenIterator end)
   -> ParserResult
@@ -838,30 +996,22 @@ auto parser_exclusive_or_expression(ParserContext& parser, TokenIterator begin, 
   if (begin == end)
     return ParserResult(end, make_error(ParserStatus::PlainWrong, end));
 
-  ParserState state = ParserSuccess(std::make_unique<SyntaxTree>(NodeType::ExclusiveOrExpression));
+  auto parser_exclusive_or_operator =
+    parser_make_operator(NodeType::ExclusiveOrExpression, [] (TokenIterator it) {
+        return it->type == TokenType::BitwiseXor;
+      });
 
-  auto [it, xor_state] =
-    parser_take_repeat(
-        parser, begin, end,
-        parser_and_expression,
-        [] (TokenIterator& it) {
-          if (it->type == TokenType::BitwiseXor)
-          {
-            std::advance(it, 1);
-            return true;
-          }
-          return false;
-        });
+  auto parser_exclusive_or_expr =
+    parser_left_associate(parser_and_expression,
+                          parser_exclusive_or_operator,
+                          parser_and_expression);
 
-  add_state(state, std::move(xor_state));
-
-  return ParserResult(it, std::move(state));
+  return parser_exclusive_or_expr(parser, begin, end);
 }
 
-// inclusiveOrExpression
-//  :   exclusiveOrExpression
-//  |   inclusiveOrExpression '|' exclusiveOrExpression
-//  ;
+// inclusive-or-expression:
+//    exclusive-or-expression
+//    inclusive-or-expression '|' exclusive-or-expression
 
 auto parser_inclusive_or_expression(ParserContext& parser, TokenIterator begin, TokenIterator end)
   -> ParserResult
@@ -869,30 +1019,22 @@ auto parser_inclusive_or_expression(ParserContext& parser, TokenIterator begin, 
   if (begin == end)
     return ParserResult(end, make_error(ParserStatus::PlainWrong, end));
 
-  ParserState state = ParserSuccess(std::make_unique<SyntaxTree>(NodeType::InclusiveOrExpression));
+  auto parser_inclusive_or_operator =
+    parser_make_operator(NodeType::InclusiveOrExpression, [] (TokenIterator it) {
+        return it->type == TokenType::BitwiseOr;
+      });
 
-  auto [it, bitor_state] =
-    parser_take_repeat(
-        parser, begin, end,
-        parser_exclusive_or_expression,
-        [] (TokenIterator& it) {
-          if (it->type == TokenType::BitwiseOr)
-          {
-            std::advance(it, 1);
-            return true;
-          }
-          return false;
-        });
+  auto parser_inclusive_or_expr =
+    parser_left_associate(parser_exclusive_or_expression,
+                          parser_inclusive_or_operator,
+                          parser_exclusive_or_expression);
 
-  add_state(state, std::move(bitor_state));
-
-  return ParserResult(it, std::move(state));
+  return parser_inclusive_or_expr(parser, begin, end);
 }
 
-// logicalAndExpression
-//  :   inclusiveOrExpression
-//  |   logicalAndExpression '&&' inclusiveOrExpression
-//  ;
+// logical-and-expression:
+//    inclusive-or-expression
+//    logical-and-expression '&&' inclusive-or-expression
 
 auto parser_logical_and_expression(ParserContext& parser, TokenIterator begin, TokenIterator end)
   -> ParserResult
@@ -900,30 +1042,22 @@ auto parser_logical_and_expression(ParserContext& parser, TokenIterator begin, T
   if (begin == end)
     return ParserResult(end, make_error(ParserStatus::PlainWrong, end));
 
-  ParserState state = ParserSuccess(std::make_unique<SyntaxTree>(NodeType::LogicalAndExpression));
+  auto parser_logical_and_operator =
+    parser_make_operator(NodeType::LogicalAndExpression, [] (TokenIterator it) {
+        return it->type == TokenType::LogicalAnd;
+      });
 
-  auto [it, and_state] =
-    parser_take_repeat(
-        parser, begin, end,
-        parser_inclusive_or_expression,
-        [] (TokenIterator& it) {
-          if (it->type == TokenType::LogicalAnd)
-          {
-            std::advance(it, 1);
-            return true;
-          }
-          return false;
-        });
+  auto parser_logical_and_expr =
+    parser_left_associate(parser_inclusive_or_expression,
+                          parser_logical_and_operator,
+                          parser_inclusive_or_expression);
 
-  add_state(state, std::move(and_state));
-
-  return ParserResult(it, std::move(state));
+  return parser_logical_and_expr(parser, begin, end);
 }
 
-// logicalOrExpression
-//  : logicalAndExpression
-//  | logicalOrExpression '||' logicalAndExpression
-//  ;
+// logical-or-expression:
+//    logical-and-expression
+//    logical-or-expression '||' logical-and-expression
 
 auto parser_logical_or_expression(ParserContext& parser, TokenIterator begin, TokenIterator end)
   -> ParserResult
@@ -931,29 +1065,21 @@ auto parser_logical_or_expression(ParserContext& parser, TokenIterator begin, To
   if (begin == end)
     return ParserResult(end, make_error(ParserStatus::PlainWrong, end));
 
-  ParserState state = ParserSuccess(std::make_unique<SyntaxTree>(NodeType::LogicalOrExpression));
+  auto parser_logical_or_operator =
+    parser_make_operator(NodeType::LogicalOrExpression, [] (TokenIterator it) {
+        return it->type == TokenType::LogicalOr;
+      });
 
-  auto [it, or_state] =
-    parser_take_repeat(
-        parser, begin, end,
-        parser_logical_and_expression,
-        [] (TokenIterator& it) {
-          if (it->type == TokenType::LogicalOr)
-          {
-            std::advance(it, 1);
-            return true;
-          }
-          return false;
-        });
+  auto parser_logical_or_expr =
+    parser_left_associate(parser_logical_and_expression,
+                          parser_logical_or_operator,
+                          parser_logical_and_expression);
 
-  add_state(state, std::move(or_state));
-
-  return ParserResult(it, std::move(state));
+  return parser_logical_or_expr(parser, begin, end);
 }
 
-// conditionalExpression
-//  :   logicalOrExpression ('?' expression ':' conditionalExpression)?
-//  ;
+// conditional-expression:
+//    logical-or-expression ('?' expression ':' conditional-expression)?
 
 auto parser_conditional_expression(ParserContext& parser, TokenIterator begin, TokenIterator end)
   -> ParserResult
@@ -983,14 +1109,12 @@ auto parser_conditional_expression(ParserContext& parser, TokenIterator begin, T
   return ParserResult(it, std::move(state));
 }
 
-// assignmentExpression
-//  :   conditionalExpression
-//  |   unaryExpression assignmentOperator assignmentExpression
-//  ;
+// assignment-expression:
+//    conditional-expression
+//    unary-expression assignment-operator assignment-expression
 //
-// assignmentOperator
-//  :   '=' | '*=' | '/=' | '%=' | '+=' | '-=' | '<<=' | '>>=' | '&=' | '^=' | '|='
-//  ;
+// assignment-operator: one of
+//    = *= /= %= += -= <<= >>= &= ^= |=
 
 auto parser_assignment_expression(ParserContext& parser, TokenIterator begin, TokenIterator end)
   -> ParserResult
@@ -999,7 +1123,7 @@ auto parser_assignment_expression(ParserContext& parser, TokenIterator begin, To
     return ParserResult(end, make_error(ParserStatus::PlainWrong, end));
 
   auto parser_assign_operator =
-    make_parser_operator(NodeType::AssignmentOperator, [] (TokenIterator t) {
+    parser_make_operator(NodeType::AssignmentExpression, [] (TokenIterator t) {
           switch (t->type)
           {
             case TokenType::Assign:
@@ -1020,10 +1144,8 @@ auto parser_assignment_expression(ParserContext& parser, TokenIterator begin, To
           }
         });
 
-  ParserState state = ParserSuccess(std::make_unique<SyntaxTree>(NodeType::AssignmentExpression));
-
   auto parser_binary_expr = 
-    make_parser_binary_expr(
+    make_binary_expr(
       parser_unary_expression,
       parser_assign_operator,
       parser_assignment_expression);
@@ -1033,15 +1155,12 @@ auto parser_assignment_expression(ParserContext& parser, TokenIterator begin, To
                               parser_binary_expr);
 
   expect_one_of(result.state, NodeType::AssignmentExpression);
-  add_state(state, std::move(result.state));
-
-  return ParserResult(result.next_token, std::move(state));
+  return result;
 }
 
-// expression
-//  :   assignmentExpression
-//  |   expression ',' assignmentExpression
-//  ;
+// expression:
+//    assignment-expression
+//    expression ',' assignment-expression
 
 auto parser_expression(ParserContext& parser, TokenIterator begin, TokenIterator end)
   -> ParserResult
@@ -1049,34 +1168,19 @@ auto parser_expression(ParserContext& parser, TokenIterator begin, TokenIterator
   if (begin == end)
     return ParserResult(end, make_error(ParserStatus::PlainWrong, end));
 
-  ParserState state = ParserSuccess(std::make_unique<SyntaxTree>(NodeType::Expression));
+  auto parser_expr_list =
+    parser_make_sequence_list(NodeType::Expression, parser_assignment_expression, TokenType::Comma);
 
-  auto [it, expr_state] = parser_take_repeat(
-      parser, begin, end,
-      parser_assignment_expression,
-      [] (TokenIterator& it) {
-        if (it->type == TokenType::Comma)
-        {
-          std::advance(it, 1);
-          return true;
-        }
-
-        return false;
-      });
-
-  add_state(state, std::move(expr_state));
-
-  return ParserResult(it, std::move(state));
+  return parser_expr_list(parser, begin, end);
 }
 
-// primaryExpression
-//  :   Identifier
-//  |   Constant
-//  |   StringLiteral+
-//  |   '(' expression ')'
-//  ;
+// primary-expression:
+//    identifier
+//    constant
+//    string-literal+
+//    '(' expression ')'
 //
-// TODO: genericSelection
+// TODO: generic-selection
 
 auto parser_primary_expression(ParserContext& parser, TokenIterator begin, TokenIterator end)
   -> ParserResult
@@ -1084,41 +1188,19 @@ auto parser_primary_expression(ParserContext& parser, TokenIterator begin, Token
   if (begin == end)
     return ParserResult(end, make_error(ParserStatus::PlainWrong, end));
 
-  ParserState state = ParserSuccess(std::make_unique<SyntaxTree>(NodeType::PrimaryExpression));
+  auto parser_parens_expression =
+    parser_make_inside_brackets(TokenType::LeftParen,
+                                parser_expression,
+                                TokenType::RightParen);
 
-  auto parser_parens_expression = [] (ParserContext& parser, TokenIterator begin, TokenIterator end) -> ParserResult
-  {
-    ParserState state = ParserSuccess(nullptr);
-    auto it = begin;
+  auto result = parser_one_of(parser, begin, end,
+                              parser_identifier,
+                              parser_constant,
+                              parser_string_literal_list,
+                              parser_parens_expression);
 
-    if (expect_token(state, it, end, TokenType::LeftParen))
-    {
-      std::advance(it, 1);
-
-      auto [expr_it, expr_state] = parser_expression(parser, it, end);
-
-      it = expr_it;
-      add_state(state, std::move(expr_state));
-
-      if (expect_end_token(state, begin, end, it, TokenType::RightParen))
-      {
-        std::advance(it, 1);
-      }
-    }
-
-    return ParserResult(it, std::move(state));
-  };
-
-  auto [it, expr_state] = parser_one_of(parser, begin, end, 
-                                        parser_identifier,
-                                        parser_constant,
-                                        parser_string_literal_list,
-                                        parser_parens_expression);
-
-  expect_one_of(expr_state, NodeType::PrimaryExpression);
-  add_state(state, std::move(expr_state));
-
-  return ParserResult(it, std::move(state));
+  expect_one_of(result.state, NodeType::PrimaryExpression);
+  return result;
 }
 
 // End of rules
@@ -1135,7 +1217,9 @@ auto SyntaxTree::parse(ProgramContext& program, const TokenStream& tokens)
 
   if (is<ParserSuccess>(result.state))
   {
-    return get<ParserSuccess>(std::move(result.state)).tree;
+    auto tree = std::move(get<ParserSuccess>(std::move(result.state)).tree);
+
+    return tree;
   }
   else
   {
@@ -1143,15 +1227,17 @@ auto SyntaxTree::parse(ProgramContext& program, const TokenStream& tokens)
     {
       if (fail.where == tokens.end())
       {
-        parser.program.error(nocontext(), fail.error.c_str());
-      }
-      else if (fail.status == ParserStatus::ErrorNote)
-      {
-        parser.note(fail.where, fail.error.c_str());
+        if (fail.status == ParserStatus::ErrorNote)
+          parser.program.note(no_context, "{}", fail.error.c_str());
+        else
+          parser.program.error(no_context, "{}", fail.error.c_str());
       }
       else
       {
-        parser.error(fail.where, fail.error.c_str());
+        if (fail.status == ParserStatus::ErrorNote)
+          parser.note(fail.where, "{}", fail.error.c_str());
+        else
+          parser.error(fail.where, "{}", fail.error.c_str());
       }
     }
 
@@ -1208,16 +1294,10 @@ auto to_string(const NodeType node_type) -> const char*
       return "additive expression";
     case NodeType::ShiftExpression:
       return "shift expression";
-    case NodeType::ShiftOperator:
-      return "shift operator";
     case NodeType::RelationalExpression:
       return "relatioal expression";
-    case NodeType::RelationalOperator:
-      return "relatioal operator";
     case NodeType::EqualityExpression:
       return "equality expression";
-    case NodeType::EqualityOperator:
-      return "equality operator";
     case NodeType::AndExpression:
       return "and expression";
     case NodeType::ExclusiveOrExpression:
@@ -1232,8 +1312,6 @@ auto to_string(const NodeType node_type) -> const char*
       return "conditional expression";
     case NodeType::AssignmentExpression:
       return "assignment expression";
-    case NodeType::AssignmentOperator:
-      return "assignment operator";
     case NodeType::Expression:
       return "expression";
     case NodeType::ConstantExpression:
@@ -1358,6 +1436,8 @@ auto to_string(const NodeType node_type) -> const char*
       return "enumeration constant";
     case NodeType::CharacterConstant:
       return "character constant";
+    case NodeType::EncodingPrefix:
+      return "encoding prefix";
     case NodeType::StringLiteral:
       return "string literal";
     case NodeType::StringLiteralList:

@@ -38,8 +38,11 @@ target_compile_options(ccompiler
     -stdlib=libc++
     -Wall
     -Wextra
+#   -Weverything
     -pedantic-errors
     -Wno-c++98-compat
+    -Wno-c++98-compat-pedantic
+    -Wno-gnu-statement-expression
 )
 
 # Enable LTO (Link Time Optimization)
