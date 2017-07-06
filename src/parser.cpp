@@ -97,34 +97,6 @@ struct ParserResult
   {}
 };
 
-// Reduces a tree containing one child to its own child.
-//
-// If tree has only one child, unattaches it and turn tree into
-// that child.
-//
-// E.g. the following tree:
-//
-//     Tree(A):
-//       Tree(B):
-//         Tree(B1)
-//         Tree(B2)
-//
-// Turns into:
-//
-//     Tree(A):
-//       Tree(B1)
-//       Tree(B2)
-//
-// `Tree(A)`'s parent is kept untouched.
-void reduce_one_child_node(std::unique_ptr<SyntaxTree>& tree)
-{
-  if (!tree->has_text() && tree->child_count() == 1)
-  {
-    auto child = tree->pop_child();
-    tree->become_tree(std::move(child));
-  }
-}
-
 // Constructs a state with a ParserFailure containing one error.
 //
 // Useful for adding an error to a ParserState.
@@ -216,8 +188,6 @@ void add_node(ParserState& state, std::unique_ptr<SyntaxTree> node)
   {
     auto& tree = get<ParserSuccess>(state).tree;
 
-    reduce_one_child_node(node);
-
     if (tree == nullptr)
     {
       state = ParserSuccess(std::move(node));
@@ -230,8 +200,6 @@ void add_node(ParserState& state, std::unique_ptr<SyntaxTree> node)
     {
       tree->add_child(std::move(node));
     }
-
-    reduce_one_child_node(tree);
   }
 }
 
@@ -544,7 +512,6 @@ auto parser_make_sequence_list(NodeType node_type, Rule rule, TokenType token)
 {
   return [=] (ParserContext& parser, TokenIterator begin, TokenIterator end) -> ParserResult
   {
-    ParserState state = ParserSuccess(std::make_unique<SyntaxTree>(node_type));
     auto [it, list_state] = parser_take_repeat(parser, begin, end, rule, [token] (TokenIterator& it) {
         if (it->type == token)
         {
@@ -554,6 +521,18 @@ auto parser_make_sequence_list(NodeType node_type, Rule rule, TokenType token)
         return false;
       });
 
+    if (is<ParserSuccess>(list_state))
+    {
+      auto& tree = get<ParserSuccess>(list_state).tree;
+
+      if (tree->child_count() == 1)
+      {
+        auto child = tree->pop_child();
+        return ParserResult(it, ParserSuccess(std::move(child)));
+      }
+    }
+
+    ParserState state = ParserSuccess(std::make_unique<SyntaxTree>(node_type));
     add_state(state, std::move(list_state));
 
     return ParserResult(it, std::move(state));
@@ -1087,22 +1066,27 @@ auto parser_conditional_expression(ParserContext& parser, TokenIterator begin, T
   if (begin == end)
     return ParserResult(end, make_error(ParserStatus::PlainWrong, end));
 
-  ParserState state = ParserSuccess(std::make_unique<SyntaxTree>(NodeType::ConditionalExpression));
+  ParserState state = ParserSuccess(nullptr);
   auto [it, or_state] = parser_logical_or_expression(parser, begin, end);
 
   add_state(state, std::move(or_state));
 
   if (it != end && it->type == TokenType::QuestionMark)
   {
-    auto expr = parser_expression(parser, std::next(it), end);
-    add_state(state, std::move(expr.state));
-    it = expr.next_token;
+    // Parse a ternary operator.
+    ParserState if_state = ParserSuccess(std::make_unique<SyntaxTree>(NodeType::ConditionalExpression));
+    std::swap(if_state, state);
+    add_state(state, std::move(if_state));
+
+    auto then_branch = parser_expression(parser, std::next(it), end);
+    add_state(state, std::move(then_branch.state));
+    it = then_branch.next_token;
 
     if (expect_token(state, it, end, TokenType::Colon))
     {
-      auto cond_expr = parser_conditional_expression(parser, std::next(it), end);
-      add_state(state, std::move(cond_expr.state));
-      it = cond_expr.next_token;
+      auto else_branch = parser_conditional_expression(parser, std::next(it), end);
+      add_state(state, std::move(else_branch.state));
+      it = else_branch.next_token;
     }
   }
 
@@ -1144,15 +1128,15 @@ auto parser_assignment_expression(ParserContext& parser, TokenIterator begin, To
           }
         });
 
-  auto parser_binary_expr = 
+  auto parser_assignment_expr =
     make_binary_expr(
       parser_unary_expression,
       parser_assign_operator,
       parser_assignment_expression);
 
   auto result = parser_one_of(parser, begin, end,
-                              parser_conditional_expression,
-                              parser_binary_expr);
+                              parser_assignment_expr,
+                              parser_conditional_expression);
 
   expect_one_of(result.state, NodeType::AssignmentExpression);
   return result;
