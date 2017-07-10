@@ -21,7 +21,6 @@ enum class NodeType
   PostfixExpression,
   ArgumentExpressionList,
   UnaryExpression,
-  UnaryOperator,
   CastExpression,
   MultiplicativeExpression,
   AdditiveExpression,
@@ -132,7 +131,7 @@ struct SyntaxTree
     other.node_parent.reset();
   }
 
-  // Unattaches the last child (parent is reset)
+  // Detaches the last child (parent is reset)
   // and returns it.
   auto pop_child() -> std::unique_ptr<SyntaxTree>
   {
@@ -144,7 +143,7 @@ struct SyntaxTree
   }
 
   // Takes the `tree`'s children, type, token
-  // and data, but keeps own parent untouched.
+  // and data, but keeps its own parent untouched.
   void become_tree(std::unique_ptr<SyntaxTree> tree)
   {
     Expects(this->child_count() == 0);
