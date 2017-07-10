@@ -98,6 +98,15 @@ static const std::pair<TokenType, string_view> TOKEN_RESERVED_NAMES[] = {
   {TokenType::Struct, "struct"},
   {TokenType::Switch, "switch"},
   {TokenType::Union, "union"},
+  {TokenType::Alignas, "_Alignas"},
+  {TokenType::Alignof, "_Alignof"},
+  {TokenType::Atomic, "_Atomic"},
+  {TokenType::Complex, "_Complex"},
+  {TokenType::Generic, "_Generic"},
+  {TokenType::Imaginary, "_Imaginary"},
+  {TokenType::Noreturn, "_Noreturn"},
+  {TokenType::StaticAssert, "_StaticAssert"},
+  {TokenType::ThreadLocal, "_ThreadLocal"},
 
   // Types.
   {TokenType::CharType, "char"},
@@ -111,6 +120,7 @@ static const std::pair<TokenType, string_view> TOKEN_RESERVED_NAMES[] = {
   {TokenType::Unsigned, "unsigned"},
   {TokenType::Volatile, "volatile"},
   {TokenType::Const, "const"},
+  {TokenType::Bool, "_Bool"},
 };
 
 constexpr auto is_operator(char c) -> bool
@@ -859,6 +869,24 @@ auto to_string(TokenType token) -> const char*
       return "switch";
     case TokenType::Union:
       return "union";
+    case TokenType::Alignas:
+      return "_Alignas";
+    case TokenType::Alignof:
+      return "_Alignof";
+    case TokenType::Atomic:
+      return "_Atomic";
+    case TokenType::Complex:
+      return "_Complex";
+    case TokenType::Generic:
+      return "_Generic";
+    case TokenType::Imaginary:
+      return "_Imaginary";
+    case TokenType::Noreturn:
+      return "_Noreturn";
+    case TokenType::StaticAssert:
+      return "_StaticAssert";
+    case TokenType::ThreadLocal:
+      return "_ThreadLocal";
     case TokenType::CharType:
       return "char";
     case TokenType::ShortType:
@@ -881,6 +909,8 @@ auto to_string(TokenType token) -> const char*
       return "volatile";
     case TokenType::Const:
       return "const";
+    case TokenType::Bool:
+      return "_Bool";
     default:
       Unreachable();
   }

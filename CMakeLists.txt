@@ -43,6 +43,7 @@ target_compile_options(ccompiler
     -Wno-c++98-compat
     -Wno-c++98-compat-pedantic
     -Wno-gnu-statement-expression
+    -fno-limit-debug-info
 )
 
 # Enable LTO (Link Time Optimization)

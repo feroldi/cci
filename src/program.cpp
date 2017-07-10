@@ -120,7 +120,7 @@ auto base_format_error(const char* from, DiagLevel level, const optional<LineInf
   }
   else
   {
-    message += "cc:";
+    message += "ccompiler:";
   }
 
   if (line_info)

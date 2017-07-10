@@ -105,16 +105,16 @@ enum class TokenType
   Struct,
   Switch,
   Union,
-  // Alignas,
-  // Alignof,
-  // Atomic,
-  // Bool,
-  // Complex,
-  // Generic,
-  // Imaginary,
-  // Noreturn,
-  // StaticAssert,
-  // ThreadLocal,
+
+  Alignas,
+  Alignof,
+  Atomic,
+  Complex,
+  Generic,
+  Imaginary,
+  Noreturn,
+  StaticAssert,
+  ThreadLocal,
 
   // Types
   CharType,
@@ -128,6 +128,7 @@ enum class TokenType
   Unsigned,
   Volatile,
   Const,
+  Bool,
 };
 
 auto to_string(TokenType) -> const char*;
