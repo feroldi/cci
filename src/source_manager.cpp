@@ -9,16 +9,29 @@ namespace ccompiler
 
 SourceManager::SourceLineCache::SourceLineCache(SourceRange range)
 {
+  //Expects(*std::prev(range.end()) == '\n');
   auto line_begin = range.begin();
-  auto line_end = range.begin();
+  auto line_end = std::find_if(range.begin(), range.end(), [](char c) { return c == '\n'; });
 
-  while (line_end != range.end())
+  if (line_end == range.end())
   {
-    line_end =
-      std::find_if(line_end, range.end(), [](char c) { return c == '\n'; });
     this->offsets.emplace_back(line_begin, line_end);
-    line_begin = line_end + 1;
-    std::advance(line_end, 1);
+  }
+  else
+  {
+    while (line_end != range.end())
+    {
+      this->offsets.emplace_back(line_begin, line_end);
+      std::advance(line_end, 1);
+      line_begin = line_end;
+      line_end = std::find_if(line_end, range.end(), [](char c) { return c == '\n'; });
+
+      if (line_end == range.end())
+      {
+        this->offsets.emplace_back(line_begin, line_end);
+        break;
+      }
+    }
   }
 }
 

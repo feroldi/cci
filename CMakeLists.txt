@@ -8,21 +8,24 @@ set(CXX_EXTENSIONS OFF)
 
 add_executable(ccompiler src/main.cpp)
 
+#add_library(fmt deps/fmt/fmt/format.cc)
+
 target_sources(ccompiler
   PUBLIC
-    "src/parser.hpp"
-    "src/lexer.hpp"
-    "src/program.hpp"
-    "src/source_manager.hpp"
-    "src/cpp/format.hpp"
-    "src/utils/stream.hpp"
+    src/parser.hpp
+    src/lexer.hpp
+    src/program.hpp
+    src/source_manager.hpp
+    src/utils/stream.hpp
+    src/cpp/format.hpp
+    src/cpp/variant.hpp
   PRIVATE
-    "src/parser.cpp"
-    "src/lexer.cpp"
-    "src/program.cpp"
-    "src/source_manager.cpp"
-    "src/cpp/format.cpp"
-    "src/utils/stream.cpp"
+    src/parser.cpp
+    src/lexer.cpp
+    src/program.cpp
+    src/source_manager.cpp
+    src/utils/stream.cpp
+    deps/fmt/fmt/format.cc
 )
 
 target_link_libraries(ccompiler

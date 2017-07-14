@@ -111,8 +111,8 @@ struct SourceManager
   SourceManager(const SourceManager&) = delete;
   SourceManager& operator= (const SourceManager&) = delete;
 
-  SourceManager(SourceManager&&) = default;
-  SourceManager& operator= (SourceManager&&) = default;
+  SourceManager(SourceManager&&) = delete;
+  SourceManager& operator= (SourceManager&&) = delete;
 
   auto linecol_from_location(SourceLocation) const -> LineColumn;
   auto line_range_from_location(SourceLocation) const -> SourceRange;
