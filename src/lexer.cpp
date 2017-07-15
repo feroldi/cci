@@ -666,46 +666,58 @@ auto TokenStream::parse(ProgramContext& program, const SourceManager& source) ->
 {
   auto lexer = LexerContext(program, source);
   auto range = source.range();
+
+  if (!is_newline(*std::prev(range.end())))
+  {
+    lexer.pedantic(SourceRange(std::prev(range.end())), "there should be a new line at the end of the file [-pedantic]");
+  }
+
   auto it = std::find_if_not(range.begin(), range.end(), is_space);
 
-  while (it != range.end())
+  if (!program.has_errors())
   {
-    if (*it == '/' && std::next(it) != range.end() &&
-        (*std::next(it) == '/' || *std::next(it) == '*'))
+    while (it != range.end())
     {
-      it = lexer_parse_comments(lexer, it, range.end());
-    }
-    else if (is_char_literal_match(*it) || is_string_literal_match(*it))
-    {
-      it = lexer_parse_constant(lexer, it, range.end());
-    }
-    else if (*it == '.')
-    {
-      // Don't parse a floating literal if the next character is a digit.
-      if (std::next(it) != range.end() && is_digit(*std::next(it)))
+      if (*it == '/' && std::next(it) != range.end() &&
+          (*std::next(it) == '/' || *std::next(it) == '*'))
+      {
+        it = lexer_parse_comments(lexer, it, range.end());
+      }
+      else if (is_char_literal_match(*it) || is_string_literal_match(*it))
+      {
         it = lexer_parse_constant(lexer, it, range.end());
-      else
+      }
+      else if (*it == '.')
+      {
+        // Don't parse a floating literal if the next character is a digit.
+        if (std::next(it) != range.end() && is_digit(*std::next(it)))
+          it = lexer_parse_constant(lexer, it, range.end());
+        else
+          it = lexer_parse_operator(lexer, it, range.end());
+      }
+      else if (is_digit(*it))
+      {
+        it = lexer_parse_constant(lexer, it, range.end());
+      }
+      else if (is_alpha(*it))
+      {
+        it = lexer_parse_identifier(lexer, it, range.end());
+      }
+      else if (is_operator(*it))
+      {
         it = lexer_parse_operator(lexer, it, range.end());
-    }
-    else if (is_digit(*it))
-    {
-      it = lexer_parse_constant(lexer, it, range.end());
-    }
-    else if (is_alpha(*it))
-    {
-      it = lexer_parse_identifier(lexer, it, range.end());
-    }
-    else if (is_operator(*it))
-    {
-      it = lexer_parse_operator(lexer, it, range.end());
-    }
-    else
-    {
-      lexer.error(SourceRange(it), "unknown symbol '{}'", *it);
-      std::advance(it, 1);
+      }
+      else
+      {
+        lexer.error(SourceRange(it), "unknown symbol '{}'", *it);
+        std::advance(it, 1);
+      }
+
+      it = std::find_if_not(it, range.end(), is_space);
     }
 
-    it = std::find_if_not(it, range.end(), is_space);
+    // `End of input` is represented by the last new line in the input.
+    lexer.add_token(TokenType::Eof, SourceRange(std::prev(range.end())));
   }
 
   return TokenStream(std::move(lexer.tokens), source);
@@ -911,6 +923,8 @@ auto to_string(TokenType token) -> const char*
       return "const";
     case TokenType::Bool:
       return "_Bool";
+    case TokenType::Eof:
+      return "end of file";
     default:
       Unreachable();
   }

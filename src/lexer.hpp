@@ -53,7 +53,7 @@ enum class TokenType
   BitwiseRightShiftAssign,
   BitwiseLeftShiftAssign,
 
-  // Matches
+  // Brackets
   LeftParen,
   RightParen,
   LeftBraces,
@@ -129,6 +129,12 @@ enum class TokenType
   Volatile,
   Const,
   Bool,
+
+  // Pre/postfixes
+  EncodingPrefix,
+
+  // End of tokens
+  Eof,
 };
 
 auto to_string(TokenType) -> const char*;
