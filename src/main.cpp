@@ -4,6 +4,8 @@
 #include "cpp/contracts.hpp"
 #include "utils/args.hpp"
 #include "program.hpp"
+#include "lexer.hpp"
+#include "parser.hpp"
 
 namespace cc = ccompiler;
 
@@ -34,6 +36,16 @@ int main(int argc, char** argv)
     {
       auto source = cc::SourceManager::from_path(filename);
       auto token_stream = cc::TokenStream::parse(program, source);
+
+      if (program.has_errors())
+        return 1;
+
+      auto tree = cc::SyntaxTree::parse(program, token_stream);
+
+      if (tree)
+      {
+        tree->dump();
+      }
     }
 
     if (opts.syntax_only)
@@ -43,6 +55,6 @@ int main(int argc, char** argv)
   }
   catch (const std::exception& e)
   {
-    fmt::print(stderr, "ccompiler: error: {}\n", e.what());
+    fmt::print(stderr, "ccompiler: fatal: {}\n", e.what());
   }
 }
