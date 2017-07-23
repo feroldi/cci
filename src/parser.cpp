@@ -152,7 +152,7 @@ auto is_giveup(const ParserState& state) -> bool
   }
 }
 
-auto giveup_to_expected(ParserState state, string_view what, bool prefer_error = false) -> ParserState
+auto giveup_to_expected(ParserState state, string_view what, [[maybe_unused]] bool prefer_error = false) -> ParserState
 {
   if (is<ParserFailure>(state))
   {
@@ -162,11 +162,10 @@ auto giveup_to_expected(ParserState state, string_view what, bool prefer_error =
     {
       if (e.status == ParserStatus::GiveUp)
       {
-        auto msg = prefer_error && !e.error.empty()
-          ? e.error.data()
-          : what.data();
+        add_error(new_state, ParserError(ParserStatus::Error, e.where, fmt::format("expected {}", what.data())));
 
-        add_error(new_state, ParserError(ParserStatus::Error, e.where, fmt::format("expected {}", msg)));
+        if (!e.error.empty())
+          add_error(new_state, ParserError(ParserStatus::ErrorNote, e.where, fmt::format("{}", e.error)));
       }
       else
         add_error(new_state, std::move(e));
@@ -387,6 +386,7 @@ auto parser_left_binary_operator(LhsRule lhs_rule, OpRule op_rule, RhsRule rhs_r
       {
         auto [rhs_it, rhs_state] = rhs_rule(parser, op_it, end);
         auto op_token = lhs_it;
+        lhs_it = op_it;
 
         if (is<ParserSuccess>(rhs_state))
           lhs_it = rhs_it;
@@ -718,9 +718,7 @@ auto parser_static_assert_declaration(ParserContext& parser, TokenIterator begin
 
     auto [const_it, const_expr] = parser_constant_expression(parser, it, end);
     add_state(args, giveup_to_expected(std::move(const_expr)));
-
-    if (is<ParserSuccess>(args))
-      it = const_it;
+    //it = const_it;
 
     if (expect_token(args, it, end, TokenType::Comma))
       std::advance(it, 1);
