@@ -32,6 +32,8 @@ target_link_libraries(ccompiler
   PUBLIC
     c++
     c++abi
+
+    -fsanitize=address
 )
 
 target_compile_features(ccompiler PUBLIC cxx_std_17)
@@ -41,12 +43,25 @@ target_compile_options(ccompiler
     -stdlib=libc++
     -Wall
     -Wextra
-#   -Weverything
+    -Weverything
+    -Werror
     -pedantic-errors
     -Wno-c++98-compat
     -Wno-c++98-compat-pedantic
     -Wno-gnu-statement-expression
+    -Wno-padded
+    -Wno-weak-vtables
+    -Wno-documentation
+    -Wno-shadow
+    -Wno-missing-variable-declarations
+    -Wno-switch-enum
+    -Wno-covered-switch-default
+    -Wno-global-constructors
+    -Wno-format-nonliteral # for fmtlib
     -fno-limit-debug-info
+
+    -fsanitize=address
+    -ftrapv
 )
 
 # Enable LTO (Link Time Optimization)

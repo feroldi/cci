@@ -23,10 +23,10 @@ auto open_stream(string_view path) -> UniqueStream
 auto stream_size(const UniqueStream& stream) -> size_t
 {
   std::fseek(stream.get(), 0, SEEK_END);
-  size_t length = std::ftell(stream.get());
+  long length = std::ftell(stream.get());
   std::rewind(stream.get());
 
-  return length;
+  return static_cast<size_t>(length);
 }
 
 } // namespace

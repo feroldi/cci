@@ -39,7 +39,9 @@ auto Options::parse_arguments([[maybe_unused]] int argc, char**& argv) -> Option
     else if (auto level = opt_get(argv, "-O", "--optimization-level"); !level.empty())
     {
       // FIXME should use exception-free `std::from_chars`
-      opts.optimization_level = std::stoi(std::string(level.begin(), level.end()));
+      int lvl = std::stoi(std::string(level.begin(), level.end()));
+      assert(lvl > 0);
+      opts.optimization_level = static_cast<uint32_t>(lvl);
     }
     else if (auto warn_opt = opt_get(argv, "-W", ""); !warn_opt.empty())
     {
@@ -154,7 +156,7 @@ auto base_format_error(const char* from, DiagLevel level, const optional<LineInf
     std::string highlight;
     highlight.reserve(pos.column_no + range.size());
 
-    for (size_t i = 0; i < pos.column_no; ++i)
+    for (int i = 0; i < static_cast<int>(pos.column_no); ++i)
     {
       highlight.push_back(*std::next(line.begin(), i) == '\t' ? '\t' : ' ');
     }

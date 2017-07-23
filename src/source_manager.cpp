@@ -47,8 +47,8 @@ auto SourceManager::linecol_from_location(SourceLocation loc) const -> LineColum
 
     if (range.contains(loc))
     {
-      size_t lineno = std::distance(this->line_cache.offsets.begin(), it) + 1;
-      size_t colno = std::distance(range.begin(), loc) + 1;
+      auto lineno = static_cast<size_t>(std::distance(this->line_cache.offsets.begin(), it)) + 1;
+      auto colno = static_cast<size_t>(std::distance(range.begin(), loc)) + 1;
 
       return LineColumn{lineno, colno};
     }

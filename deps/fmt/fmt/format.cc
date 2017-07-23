@@ -130,7 +130,7 @@ int safe_strerror(
     void operator=(const StrError &) {}
 
     // Handle the result of XSI-compliant version of strerror_r.
-    int handle(int result) {
+    [[maybe_unused]] int handle(int result) {
       // glibc versions before 2.13 return result in errno.
       return result == -1 ? errno : result;
     }
@@ -145,12 +145,12 @@ int safe_strerror(
     }
 
     // Handle the case when strerror_r is not available.
-    int handle(internal::Null<>) {
+    [[maybe_unused]] int handle(internal::Null<>) {
       return fallback(strerror_s(buffer_, buffer_size_, error_code_));
     }
 
     // Fallback to strerror_s when strerror_r is not available.
-    int fallback(int result) {
+    [[maybe_unused]] int fallback(int result) {
       // If the buffer is full then the message is probably truncated.
       return result == 0 && strlen(buffer_) == buffer_size_ - 1 ?
             ERANGE : result;
@@ -214,7 +214,7 @@ namespace internal {
 
 // This method is used to preserve binary compatibility with fmt 3.0.
 // It can be removed in 4.0.
-FMT_FUNC void format_system_error(
+FMT_FUNC inline void format_system_error(
   Writer &out, int error_code, StringRef message) FMT_NOEXCEPT {
   fmt::format_system_error(out, error_code, message);
 }
