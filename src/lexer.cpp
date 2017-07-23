@@ -105,8 +105,8 @@ static const std::pair<TokenType, string_view> TOKEN_RESERVED_NAMES[] = {
   {TokenType::Generic, "_Generic"},
   {TokenType::Imaginary, "_Imaginary"},
   {TokenType::Noreturn, "_Noreturn"},
-  {TokenType::StaticAssert, "_StaticAssert"},
-  {TokenType::ThreadLocal, "_ThreadLocal"},
+  {TokenType::StaticAssert, "_Static_assert"},
+  {TokenType::ThreadLocal, "_Thread_local"},
 
   // Types.
   {TokenType::CharType, "char"},

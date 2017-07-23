@@ -395,10 +395,10 @@ auto parser_left_binary_operator(LhsRule lhs_rule, OpRule op_rule, RhsRule rhs_r
 
         add_state(op_state, giveup_to_expected(std::move(lhs_state),
                                                fmt::format("expression for operator '{}'",
-                                                           string_ref(op_token->data))));
+                                                           string_ref(op_token->data)), true));
         add_state(op_state, giveup_to_expected(std::move(rhs_state),
                                                fmt::format("expression for operator '{}'",
-                                                           string_ref(op_token->data))));
+                                                           string_ref(op_token->data)), true));
 
         lhs_state = std::move(op_state);
       }
@@ -443,6 +443,17 @@ auto parser_right_binary_operator(LhsRule lhs_rule, OpRule op_rule, RhsRule rhs_
   };
 }
 
+auto expect_token(ParserState& state, TokenIterator it, TokenIterator end, TokenType token)
+  -> bool
+{
+  if (it != end && it->type != token)
+  {
+    add_error(state, make_error(ParserStatus::Error, it, fmt::format("expected '{}'", to_string(token))));
+    return false;
+  }
+  return it != end;
+}
+
 auto expect_end_token(ParserState& state, TokenIterator begin, TokenIterator end, TokenIterator it, TokenType token)
   -> bool
 {
@@ -476,16 +487,16 @@ auto parser_parens(Rule rule, TokenType left_brace = TokenType::LeftParen,
     {
       auto [it, state] = rule(parser, std::next(begin), end);
 
-      if (is<ParserSuccess>(state))
+      if (!is_giveup(state))
       {
-        if (expect_end_token(state, begin, end, it, right_brace))
+        if (it != end && expect_end_token(state, begin, end, it, right_brace))
           std::advance(it, 1);
       }
 
       return ParserResult(it, std::move(state));
     }
 
-    return ParserResult(end, make_error(ParserStatus::GiveUp, begin, "parser_parens"));
+    return ParserResult(end, make_error(ParserStatus::GiveUp, begin, fmt::format("'{}'", to_string(left_brace))));
   };
 }
 
@@ -690,6 +701,54 @@ auto parser_constant_expression(ParserContext& parser, TokenIterator begin, Toke
   -> ParserResult
 {
   return parser_conditional_expression(parser, begin, end);
+}
+
+// static-assert-declaration:
+//   '_Static_assert' '(' constant-expression ',' string-literal+ ')' ';'
+
+auto parser_static_assert_declaration(ParserContext& parser, TokenIterator begin, TokenIterator end)
+  -> ParserResult
+{
+  // constant-expression ',' string-literal+
+  //  -> ^(None constant-expression string-literal+)
+  auto static_assert_args_production = [] (ParserContext& parser, TokenIterator begin, TokenIterator end) -> ParserResult
+  {
+    ParserState args = ParserSuccess(std::make_unique<SyntaxTree>());
+    auto it = begin;
+
+    auto [const_it, const_expr] = parser_constant_expression(parser, it, end);
+    add_state(args, giveup_to_expected(std::move(const_expr)));
+
+    if (is<ParserSuccess>(args))
+      it = const_it;
+
+    if (expect_token(args, it, end, TokenType::Comma))
+      std::advance(it, 1);
+
+    auto [strings_it, strings] = parser_string_literal_list(parser, it, end);
+    add_state(args, giveup_to_expected(std::move(strings)));
+    it = strings_it;
+
+    return ParserResult(it, std::move(args));
+  };
+
+  if (begin != end && begin->type == TokenType::StaticAssert)
+  {
+    auto [it, arguments] = parser_parens(static_assert_args_production)(parser, std::next(begin), end);
+
+    if (is<ParserSuccess>(arguments))
+    {
+      if (expect_end_token(arguments, begin, end, it, TokenType::Semicolon))
+        std::advance(it, 1);
+    }
+
+    ParserState static_assert_decl = ParserSuccess(std::make_unique<SyntaxTree>(NodeType::StaticAssertDeclaration));
+    add_state(static_assert_decl, std::move(arguments));
+
+    return ParserResult(it, std::move(static_assert_decl));
+  }
+
+  return ParserResult(end, make_error(ParserStatus::GiveUp, begin, "static assert declaration"));
 }
 
 // initializer:
@@ -1681,8 +1740,8 @@ auto SyntaxTree::parse(ProgramContext& program, const TokenStream& tokens)
 {
   ParserContext parser{program, tokens};
 
-  auto result = parser_primary_expression(parser, tokens.begin(), tokens.end());
-  result.state = giveup_to_expected(std::move(result.state), "primary expression");
+  auto result = parser_static_assert_declaration(parser, tokens.begin(), tokens.end());
+  result.state = giveup_to_expected(std::move(result.state));
 
   if (is<ParserSuccess>(result.state))
   {
