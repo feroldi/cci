@@ -152,7 +152,7 @@ auto is_giveup(const ParserState& state) -> bool
   }
 }
 
-auto giveup_to_expected(ParserState state, string_view what, bool use_default = false) -> ParserState
+auto giveup_to_expected(ParserState state, string_view what, bool prefer_error = false) -> ParserState
 {
   if (is<ParserFailure>(state))
   {
@@ -162,7 +162,7 @@ auto giveup_to_expected(ParserState state, string_view what, bool use_default = 
     {
       if (e.status == ParserStatus::GiveUp)
       {
-        auto msg = use_default && !e.error.empty()
+        auto msg = prefer_error && !e.error.empty()
           ? e.error.data()
           : what.data();
 
@@ -201,6 +201,8 @@ auto giveup_to_expected(ParserState state) -> ParserState
 // Adds a node to state's tree if it's a `ParserSuccess`.
 void add_node(ParserState& state, std::unique_ptr<SyntaxTree> node)
 {
+  Expects(node != nullptr);
+
   if (is<ParserSuccess>(state))
   {
     auto& tree = get<ParserSuccess>(state).tree;
@@ -284,7 +286,7 @@ private:
 // is "expected one of" GiveUp error.
 template <typename Rule, typename... Rules>
 auto parser_one_of(ParserContext& parser, TokenIterator begin, TokenIterator end,
-                   Rule rule, Rules&&... rules)
+                   string_view expected_what, Rule rule, Rules&&... rules)
   -> ParserResult
 {
   auto [it, state] = rule(parser, begin, end);
@@ -294,17 +296,17 @@ auto parser_one_of(ParserContext& parser, TokenIterator begin, TokenIterator end
 
   if constexpr (sizeof...(rules) > 0)
   {
-    return parser_one_of(parser, begin, end, std::forward<Rules>(rules)...);
+    return parser_one_of(parser, begin, end, expected_what, std::forward<Rules>(rules)...);
   }
   else
   {
-    return ParserResult(end, make_error(ParserStatus::GiveUp, begin, ""));
+    return ParserResult(end, make_error(ParserStatus::GiveUp, begin, expected_what.data()));
   }
 }
 
 template <typename Rule, typename Predicate>
 auto parser_many_of(ParserContext& parser, TokenIterator begin, TokenIterator end,
-                 Rule rule, Predicate pred)
+                    Rule rule, Predicate pred)
   -> ParserResult
 {
   ParserState state = ParserSuccess(std::make_unique<SyntaxTree>());
@@ -323,7 +325,7 @@ auto parser_many_of(ParserContext& parser, TokenIterator begin, TokenIterator en
 
 template <typename Rule, typename Predicate>
 auto parser_one_many_of(ParserContext& parser, TokenIterator begin, TokenIterator end,
-                     Rule rule, Predicate pred)
+                        string_view expected_what, Rule rule, Predicate pred)
   -> ParserResult
 {
   if (begin != end)
@@ -343,7 +345,7 @@ auto parser_one_many_of(ParserContext& parser, TokenIterator begin, TokenIterato
     return ParserResult(it, std::move(state));
   }
 
-  return ParserResult(end, make_error(ParserStatus::GiveUp, begin, ""));
+  return ParserResult(end, make_error(ParserStatus::GiveUp, begin, expected_what.data()));
 }
 
 template <typename OpMatch>
@@ -392,11 +394,11 @@ auto parser_left_binary_operator(LhsRule lhs_rule, OpRule op_rule, RhsRule rhs_r
           std::advance(lhs_it, 1);
 
         add_state(op_state, giveup_to_expected(std::move(lhs_state),
-                                               fmt::format("left-hand side for operator '{}'",
-                                                           string_ref(op_token->data)), true));
+                                               fmt::format("expression for operator '{}'",
+                                                           string_ref(op_token->data))));
         add_state(op_state, giveup_to_expected(std::move(rhs_state),
-                                               fmt::format("right-hand side for operator '{}'",
-                                                           string_ref(op_token->data)), true));
+                                               fmt::format("expression for operator '{}'",
+                                                           string_ref(op_token->data))));
 
         lhs_state = std::move(op_state);
       }
@@ -429,7 +431,7 @@ auto parser_right_binary_operator(LhsRule lhs_rule, OpRule op_rule, RhsRule rhs_
 
           add_state(op_state, std::move(lhs_state));
           add_state(op_state, giveup_to_expected(std::move(rhs_state),
-                                                 fmt::format("right-hand side for operator '{}'",
+                                                 fmt::format("expression for operator '{}'",
                                                              string_ref(op_token->data)), true));
 
           return ParserResult(rhs_it, std::move(op_state));
@@ -463,9 +465,81 @@ auto expect_end_token(ParserState& state, TokenIterator begin, TokenIterator end
   }
 }
 
+template <typename Rule>
+auto parser_parens(Rule rule, TokenType left_brace = TokenType::LeftParen,
+                   TokenType right_brace = TokenType::RightParen)
+{
+  return [=] (ParserContext& parser, TokenIterator begin, TokenIterator end)
+    -> ParserResult
+  {
+    if (begin != end && begin->type == left_brace)
+    {
+      auto [it, state] = rule(parser, std::next(begin), end);
+
+      if (is<ParserSuccess>(state))
+      {
+        if (expect_end_token(state, begin, end, it, right_brace))
+          std::advance(it, 1);
+      }
+
+      return ParserResult(it, std::move(state));
+    }
+
+    return ParserResult(end, make_error(ParserStatus::GiveUp, begin, "parser_parens"));
+  };
+}
+
+template <typename Rule>
+auto parser_list_of(Rule rule, bool allow_trailing_comma = false)
+{
+  return [=] (ParserContext& parser, TokenIterator begin, TokenIterator end)
+    -> ParserResult
+  {
+    if (begin != end)
+    {
+      ParserState state = ParserSuccess(std::make_unique<SyntaxTree>());
+      auto it = begin;
+
+      while (it != end)
+      {
+        auto [r_it, r_state] = rule(parser, it, end);
+
+        Ensures(r_it <= end);
+
+        add_state(state, giveup_to_expected(std::move(r_state)));
+        it = r_it;
+
+        if (it != end && it->type == TokenType::Comma)
+          std::advance(it, 1);
+
+        if (allow_trailing_comma)
+        {
+          if (it != end &&
+              (it->type == TokenType::RightCurlyBraces ||
+               it->type == TokenType::RightBraces ||
+               it->type == TokenType::RightParen))
+          {
+            break;
+          }
+
+        }
+
+        if (r_it == end || r_it->type != TokenType::Comma)
+          break;
+      }
+
+      return ParserResult(it, std::move(state));
+    }
+
+    return ParserResult(end, make_error(ParserStatus::GiveUp, begin, "parser_list_of"));
+  };
+}
+
+
 auto parser_expression(ParserContext&, TokenIterator begin, TokenIterator end) -> ParserResult;
 auto parser_primary_expression(ParserContext&, TokenIterator begin, TokenIterator end) -> ParserResult;
 auto parser_cast_expression(ParserContext& parser, TokenIterator begin, TokenIterator end) -> ParserResult;
+auto parser_assignment_expression(ParserContext&, TokenIterator begin, TokenIterator end) -> ParserResult;
 
 // identifier:
 //    [a-zA-Z_$] ([a-zA-Z_$] | [0-9])*
@@ -532,7 +606,7 @@ auto parser_string_literal(ParserContext& /*parser*/, TokenIterator begin, Token
 auto parser_string_literal_list(ParserContext& parser, TokenIterator begin, TokenIterator end)
   -> ParserResult
 {
-  auto [it, strings] = parser_one_many_of(parser, begin, end, parser_string_literal, [] (TokenIterator t) {
+  auto [it, strings] = parser_one_many_of(parser, begin, end, "string literal", parser_string_literal, [] (TokenIterator t) {
     return t->type == TokenType::StringConstant;
   });
 
@@ -587,10 +661,7 @@ auto parser_constant(ParserContext& /*parser*/, TokenIterator begin, TokenIterat
 
   if (const_type != NodeType::None)
   {
-    ParserState state = ParserSuccess(std::make_unique<SyntaxTree>(NodeType::Constant));
-    add_node(state, std::make_unique<SyntaxTree>(const_type, *begin));
-
-    return ParserResult(std::next(begin), std::move(state));
+    return ParserResult(std::next(begin), ParserSuccess(std::make_unique<SyntaxTree>(const_type, *begin)));
   }
   else
   {
@@ -613,26 +684,392 @@ auto parser_type_name(ParserContext& /*parser*/, TokenIterator begin, TokenItera
   return ParserResult(end, make_error(ParserStatus::GiveUp, begin, "type name"));
 }
 
+auto parser_conditional_expression(ParserContext&, TokenIterator begin, TokenIterator end) -> ParserResult;
+
+auto parser_constant_expression(ParserContext& parser, TokenIterator begin, TokenIterator end)
+  -> ParserResult
+{
+  return parser_conditional_expression(parser, begin, end);
+}
+
+// initializer:
+//    assignment-expression
+//    '{' initializer-list '}'
+//    '{' initializer-list ',' '}'
+
+auto parser_initializer_list(ParserContext&, TokenIterator begin, TokenIterator end) -> ParserResult;
+auto parser_assignment_expression(ParserContext&, TokenIterator begin, TokenIterator end) -> ParserResult;
+
+auto parser_initializer(ParserContext& parser, TokenIterator begin, TokenIterator end)
+  -> ParserResult
+{
+  if (begin != end)
+  {
+    if (begin->type == TokenType::LeftCurlyBraces)
+    {
+      auto init_list_production = parser_parens(parser_initializer_list,
+                                                TokenType::LeftCurlyBraces,
+                                                TokenType::RightCurlyBraces);
+
+      return init_list_production(parser, begin, end);
+    }
+    else
+    {
+      return parser_assignment_expression(parser, begin, end);
+    }
+  }
+
+  return ParserResult(end, make_error(ParserStatus::GiveUp, begin, "initializer"));
+}
+
+// initializer-list:
+//    designation? initializer
+//    initializer-list ',' designation? initializer
+
+auto parser_initializer_list(ParserContext& parser, TokenIterator begin, TokenIterator end)
+  -> ParserResult
+{
+  // designator:
+  //    '[' constant-expression ']' -> ^(ArraySubscripting constant-expression)
+  //    '.' identifier              -> ^(MemberAccess identifier)
+
+  auto designator_production = [] (ParserContext& parser, TokenIterator begin, TokenIterator end)
+    -> ParserResult
+  {
+    if (begin != end)
+    {
+      if (begin->type == TokenType::LeftBraces)
+      {
+        auto subscript_production = parser_parens(parser_constant_expression,
+                                                  TokenType::LeftBraces,
+                                                  TokenType::RightBraces);
+
+        auto [it, subscript] = subscript_production(parser, begin, end);
+
+        ParserState designator = ParserSuccess(std::make_unique<SyntaxTree>(NodeType::ArraySubscripting));
+        add_state(designator, std::move(subscript));
+
+        return ParserResult(it, std::move(designator));
+      }
+      else if (begin->type == TokenType::Dot)
+      {
+        auto [it, identifier] = parser_identifier(parser, std::next(begin), end);
+
+        ParserState designator = ParserSuccess(std::make_unique<SyntaxTree>(NodeType::MemberAccess));
+        add_state(designator, giveup_to_expected(std::move(identifier), "identifier for designator"));
+
+
+        return ParserResult(it, std::move(designator));
+      }
+    }
+
+    return ParserResult(end, make_error(ParserStatus::GiveUp, begin, "designator"));
+  };
+
+
+  // designation:
+  //    designator+ '='
+  //  -> ^(Designation designator+)
+
+  auto designation_production = [designator_production] (ParserContext& parser, TokenIterator begin, TokenIterator end)
+    -> ParserResult
+  {
+    if (begin != end)
+    {
+      ParserState designation = ParserSuccess(std::make_unique<SyntaxTree>(NodeType::Designation));
+
+      auto [it, designator] = designator_production(parser, begin, end);
+
+      if (!is_giveup(designator))
+      {
+        add_state(designation, giveup_to_expected(std::move(designator), "designator"));
+
+        while (it != end && it->type != TokenType::Assign)
+        {
+          auto [des_it, designator] = designator_production(parser, it, end);
+
+          if (is_giveup(designator))
+          {
+            // Missing assignment operator.
+            add_error(designation, make_error(ParserStatus::Error, it, "expected assignment operator for designator"));
+            break;
+          }
+
+          add_state(designation, giveup_to_expected(std::move(designator), "designator"));
+          it = des_it;
+        }
+
+        if (it != end && it->type == TokenType::Assign)
+          return ParserResult(std::next(it), std::move(designation));
+        else
+          return ParserResult(it, std::move(designation));
+      }
+    }
+
+    return ParserResult(end, make_error(ParserStatus::GiveUp, begin, "designation"));
+  };
+
+  // initializer-list:
+  //    designation? initializer
+  //    initializer-list ',' designation? initializer
+  // -> ^(InitializerList (initializer | ^(designation initializer))+)
+
+  auto init_list_production = [designation_production] (ParserContext& parser, TokenIterator begin, TokenIterator end)
+    -> ParserResult
+  {
+    if (begin != end)
+    {
+      ParserState init_list = ParserSuccess(nullptr);
+      auto [des_it, designation] = designation_production(parser, begin, end);
+      auto it = des_it;
+
+      if (!is_giveup(designation))
+      {
+        auto [init_it, initializer] = parser_initializer(parser, des_it, end);
+
+        add_state(init_list, std::move(designation));
+        add_state(init_list, giveup_to_expected(std::move(initializer), "initializer"));
+        it = init_it;
+      }
+      else
+      {
+        auto [init_it, initializer] = parser_initializer(parser, begin, end);
+        add_state(init_list, std::move(initializer));
+        it = init_it;
+      }
+
+      return ParserResult(it, std::move(init_list));
+    }
+
+    return ParserResult(end, make_error(ParserStatus::GiveUp, begin, "initializer list"));
+  };
+
+  auto [it, inits] = parser_list_of(init_list_production, /*allow_trailing_comma=*/ true)(parser, begin, end);
+
+  // Do `parser_list_of` manually.
+  /*
+  ParserState inits = ParserSuccess(std::make_unique<SyntaxTree>());
+  auto it = begin;
+
+  while (it != end)
+  {
+    auto [il_it, init_list] = init_list_production(parser, it, end);
+
+    Ensures(il_it <= end);
+
+    add_state(inits, giveup_to_expected(std::move(init_list), "initializer list"));
+    it = il_it;
+
+    if (it != end && it->type == TokenType::Comma)
+      std::advance(it, 1);
+
+    if (it != end && it->type == TokenType::RightCurlyBraces)
+      break;
+
+    if (il_it == end || il_it->type != TokenType::Comma)
+      break;
+  }
+  */
+
+  if (!is_giveup(inits))
+  {
+    ParserState init_list = ParserSuccess(std::make_unique<SyntaxTree>(NodeType::InitializerList));
+    add_state(init_list, std::move(inits));
+
+    return ParserResult(it, std::move(init_list));
+  }
+
+  return ParserResult(end, make_error(ParserStatus::GiveUp, begin, "initializer list"));
+}
+
 // postfix-expression:
 //    primary-expression
+//    compound-literal
+//
 //    postfix-expression '[' expression ']'
+//      -> ^(ArraySubscripting expression postfix-expr)
+//
 //    postfix-expression '(' argument-expression-list? ')'
+//      -> ^(FunctionCall argument-list postfix-expr)
+//
 //    postfix-expression '.' identifier
+//      -> ^(MemberAccess ident postfix-expr)
+//
 //    postfix-expression '->' identifier
-//    postfix-expression '++'
-//    postfix-expression '--'
-//    '(' type-name ')' '{' initializer-list '}'
-//    '(' type-name ')' '{' initializer-list ',' '}'
-//    '__extension__' '(' type-name ')' '{' initializer-list '}'
-//    '__extension__' '(' type-name ')' '{' initializer-list ',' '}'
+//      -> ^(PointerMemberAccess ident postfix-expr)
+//
+//    postfix-expression '++' -> ^(PostfixIncrement postfix-expr)
+//    postfix-expression '--' -> ^(PostfixDecrement postfix-expr)
+//
+// compound-literal:
+//    '(' type-name ')' '{' initializer-list '}'     //< TODO
+//    '(' type-name ')' '{' initializer-list ',' '}' //< TODO
+//      -> ^(CompoundLiteral type init-list)
 
 // TODO
 auto parser_postfix_expression(ParserContext& parser, TokenIterator begin, TokenIterator end)
   -> ParserResult
 {
-  return parser_primary_expression(parser, begin, end);
-}
+  if (begin != end)
+  {
+    // compound-literal:
+    //    '(' type-name ')' '{' initializer-list '}'
+    //    '(' type-name ')' '{' initializer-list ',' '}'
 
+    auto compound_literal_production = [] (ParserContext& parser, TokenIterator begin, TokenIterator end)
+      -> ParserResult
+    {
+      if (begin != end)
+      {
+        auto [type_it, type_name] = parser_parens(parser_type_name)(parser, begin, end);
+
+        if (!is_giveup(type_name))
+        {
+          auto initializer_list_production =
+            parser_parens(parser_initializer_list,
+                          TokenType::LeftCurlyBraces,
+                          TokenType::RightCurlyBraces);
+
+          auto [init_it, initalizer_list] = initializer_list_production(parser, type_it, end);
+
+          if (!is_giveup(initalizer_list))
+          {
+            ParserState compound_literal = ParserSuccess(std::make_unique<SyntaxTree>(NodeType::CompoundLiteral));
+            add_state(compound_literal, std::move(type_name));
+            add_state(compound_literal, std::move(initalizer_list));
+
+            return ParserResult(init_it, std::move(compound_literal));
+          }
+        }
+      }
+
+      return ParserResult(end, make_error(ParserStatus::GiveUp, begin, "compound literal"));
+    };
+
+    if (begin->type != TokenType::LeftParen)
+    {
+      auto postfix_production = [] (ParserContext& parser, TokenIterator begin, TokenIterator end)
+        -> ParserResult
+      {
+        if (begin == end)
+          return ParserResult(end, make_error(ParserStatus::GiveUp, begin, "postfix operator"));
+
+        switch (begin->type)
+        {
+          // '[' expression ']' -> ^(ArraySubscripting expression)
+          case TokenType::LeftBraces:
+          {
+            auto [expr_it, expression] = parser_expression(parser, std::next(begin), end);
+
+            if (expect_end_token(expression, begin, end, expr_it, TokenType::RightBraces))
+            {
+              ParserState postfix_op =
+                ParserSuccess(std::make_unique<SyntaxTree>(NodeType::ArraySubscripting, *begin));
+
+              add_state(postfix_op, giveup_to_expected(std::move(expression), "expression"));
+
+              return ParserResult(std::next(expr_it), std::move(postfix_op));
+            }
+            else
+            {
+              return ParserResult(expr_it, std::move(expression));
+            }
+          }
+
+          // '(' argument-expression-list? ')' -> ^(FunctionCall arguments?)
+          case TokenType::LeftParen:
+          {
+            ParserState postfix_op =
+              ParserSuccess(std::make_unique<SyntaxTree>(NodeType::FunctionCall, *begin));
+
+            if (std::next(begin) != end && std::next(begin)->type == TokenType::RightParen)
+            {
+              // Empty argument list.
+              return ParserResult(std::next(begin, 2), std::move(postfix_op));
+            }
+
+            auto arg_list = parser_parens(parser_list_of(parser_assignment_expression));
+            auto [arg_it, argument_list] = arg_list(parser, begin, end);
+
+            ParserState arguments =
+              ParserSuccess(std::make_unique<SyntaxTree>(NodeType::ArgumentExpressionList));
+
+            add_state(arguments, giveup_to_expected(std::move(argument_list), "argument list"));
+            add_state(postfix_op, std::move(arguments));
+
+            return ParserResult(arg_it, std::move(postfix_op));
+          }
+
+          // '.' identifier  -> ^(MemberAccess identifier)
+          // '->' identifier -> ^(PointerMemberAccess identifier)
+          case TokenType::Dot:
+          case TokenType::RightArrow:
+          {
+            const auto node_type = begin->type == TokenType::Dot
+              ? NodeType::MemberAccess
+              : NodeType::PointerMemberAccess;
+
+            auto [ident_it, identifier] = parser_identifier(parser, std::next(begin), end);
+
+            ParserState postfix_op =
+              ParserSuccess(std::make_unique<SyntaxTree>(node_type, *begin));
+
+            add_state(postfix_op, giveup_to_expected(std::move(identifier)));
+
+            return ParserResult(ident_it, std::move(postfix_op));
+          }
+
+          // '++' -> ^(PostfixIncrement)
+          // '--' -> ^(PostfixDecrement)
+          case TokenType::Increment:
+          case TokenType::Decrement:
+          {
+            const auto node_type = begin->type == TokenType::Increment
+              ? NodeType::PostfixIncrement
+              : NodeType::PostfixDecrement;
+
+            auto tree = std::make_unique<SyntaxTree>(node_type, *begin);
+            return ParserResult(std::next(begin), ParserSuccess(std::move(tree)));
+          }
+
+          default:
+            return ParserResult(end, make_error(ParserStatus::GiveUp, begin, "postfix operator"));
+        }
+      };
+
+      // FIXME allow for the rest of postfix-expression.
+      auto [expr_it, expr] = parser_one_of(parser, begin, end, "compound literal, or expression",
+                                           compound_literal_production,
+                                           parser_primary_expression);
+      auto it = expr_it;
+
+      if (is_giveup(expr))
+        return ParserResult(end, std::move(expr));
+
+      while (true)
+      {
+        auto [op_it, postfix_op] = postfix_production(parser, it, end);
+
+        if (!is_giveup(postfix_op))
+        {
+          add_state(postfix_op, std::move(expr));
+          expr = std::move(postfix_op);
+          it = op_it;
+        }
+        else
+          break;
+      }
+
+      return ParserResult(it, std::move(expr));
+    }
+    else
+    {
+      return compound_literal_production(parser, begin, end);
+    }
+  }
+
+  return ParserResult(end, make_error(ParserStatus::GiveUp, begin, "postfix expression"));
+}
 
 // unary-expression:
 //    postfix-expression
@@ -698,7 +1135,7 @@ auto parser_unary_expression(ParserContext& parser, TokenIterator begin, TokenIt
           return true;
 
         default:
-          return true;
+          return false;
       }
     });
 
@@ -747,7 +1184,7 @@ auto parser_unary_expression(ParserContext& parser, TokenIterator begin, TokenIt
   {
     if (begin->type == TokenType::Sizeof)
     {
-      auto [it, unary_expr] = parser_one_of(parser, std::next(begin), end,
+      auto [it, unary_expr] = parser_one_of(parser, std::next(begin), end, "type name, or unary expression",
                                             parens_type_name,
                                             parser_unary_expression);
 
@@ -773,7 +1210,7 @@ auto parser_unary_expression(ParserContext& parser, TokenIterator begin, TokenIt
     return ParserResult(end, make_error(ParserStatus::GiveUp, begin, "sizeof/alignof expression"));
   };
 
-  return parser_one_of(parser, begin, end,
+  return parser_one_of(parser, begin, end, "unary expression",
                        parser_postfix_expression,
                        incremental_unary_production,
                        size_of_production,
@@ -787,9 +1224,10 @@ auto parser_unary_expression(ParserContext& parser, TokenIterator begin, TokenIt
 auto parser_cast_expression(ParserContext& parser, TokenIterator begin, TokenIterator end)
   -> ParserResult
 {
-  if (begin != end)
+  auto cast_production = [] (ParserContext& parser, TokenIterator begin, TokenIterator end)
+    -> ParserResult
   {
-    if (begin->type == TokenType::LeftParen)
+    if (begin != end && begin->type == TokenType::LeftParen)
     {
       auto [type_it, type_name] = parser_type_name(parser, std::next(begin), end);
 
@@ -798,22 +1236,27 @@ auto parser_cast_expression(ParserContext& parser, TokenIterator begin, TokenIte
         if (expect_end_token(type_name, begin, end, type_it, TokenType::RightParen))
         {
           auto [cast_it, cast_expr] = parser_cast_expression(parser, std::next(type_it), end);
-          ParserState cast = ParserSuccess(std::make_unique<SyntaxTree>(NodeType::CastExpression));
 
-          add_state(cast, std::move(type_name));
-          add_state(cast, giveup_to_expected(std::move(cast_expr), "cast expression"));
+          // Not a compound literal
+          if (cast_it != end && cast_it->type != TokenType::LeftCurlyBraces)
+          {
+            ParserState cast = ParserSuccess(std::make_unique<SyntaxTree>(NodeType::CastExpression));
 
-          return ParserResult(cast_it, std::move(cast));
+            add_state(cast, std::move(type_name));
+            add_state(cast, giveup_to_expected(std::move(cast_expr), "cast expression"));
+
+            return ParserResult(cast_it, std::move(cast));
+          }
         }
       }
     }
-    else
-    {
-      return parser_unary_expression(parser, begin, end);
-    }
-  }
 
-  return ParserResult(end, make_error(ParserStatus::GiveUp, begin, "cast expression"));
+    return ParserResult(end, make_error(ParserStatus::GiveUp, begin, "cast expression"));
+  };
+
+  return parser_one_of(parser, begin, end, "cast or unary expression",
+                       cast_production,
+                       parser_unary_expression);
 }
 
 // multiplicative-expression:
@@ -1169,7 +1612,7 @@ auto parser_assignment_expression(ParserContext& parser, TokenIterator begin, To
                                  assign_operator,
                                  parser_assignment_expression);
 
-  return parser_one_of(parser, begin, end,
+  return parser_one_of(parser, begin, end, "assignment or conditional expression",
                        assignment_expr_production,
                        parser_conditional_expression);
 }
@@ -1223,7 +1666,7 @@ auto parser_primary_expression(ParserContext& parser, TokenIterator begin, Token
     return ParserResult(end, make_error(ParserStatus::GiveUp, begin, "expression"));
   };
 
-  return parser_one_of(parser, begin, end,
+  return parser_one_of(parser, begin, end, "primary expression",
                        parser_identifier,
                        parser_constant,
                        parser_string_literal_list,
@@ -1251,20 +1694,14 @@ auto SyntaxTree::parse(ProgramContext& program, const TokenStream& tokens)
   {
     for (const auto& fail : get<ParserFailure>(result.state))
     {
-      if (fail.where == tokens.end())
-      {
-        if (fail.status == ParserStatus::ErrorNote)
-          parser.program.note(no_context, "{}", fail.error.c_str());
-        else
-          parser.program.error(no_context, "{}", fail.error.c_str());
-      }
+      TokenIterator context = fail.where == tokens.end()
+        ? std::prev(fail.where) //< std::prev(tokens.end())->type == TokenType::Eof
+        : fail.where;
+
+      if (fail.status == ParserStatus::ErrorNote)
+        parser.note(context, "{}", fail.error.c_str());
       else
-      {
-        if (fail.status == ParserStatus::ErrorNote)
-          parser.note(fail.where, "{}", fail.error.c_str());
-        else
-          parser.error(fail.where, "{}", fail.error.c_str());
-      }
+        parser.error(context, "{}", fail.error.c_str());
     }
 
     return nullptr;
@@ -1468,9 +1905,26 @@ auto to_string(const NodeType node_type) -> const char*
       return "string literal list";
     case NodeType::AsmBlock:
       return "asm block";
-    default:
+    case NodeType::CompoundLiteral:
+      return "compound literal";
+    case NodeType::ArraySubscripting:
+      return "array subscripting";
+    case NodeType::FunctionCall:
+      return "function call";
+    case NodeType::MemberAccess:
+      return "member access";
+    case NodeType::PointerMemberAccess:
+      return "pointer member access";
+    case NodeType::PostfixIncrement:
+      return "postfix increment";
+    case NodeType::PostfixDecrement:
+      return "postfix decrement";
+    case NodeType::None:
       Unreachable();
   }
+
+  throw std::logic_error(
+      fmt::format("missing implementation of enumerator '{}' for to_string(NodeType)", static_cast<int>(node_type)));
 }
 
 } // namespace ccompiler

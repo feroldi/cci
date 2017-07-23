@@ -550,7 +550,8 @@ auto lexer_parse_decimal(LexerContext& lexer, SourceLocation begin,
     if ((*it != 'f' && *it != 'F') || (std::next(it) != end && is_alphanum(*std::next(it))))
     {
       auto suffix_end = std::find_if_not(it, end, is_alphanum);
-      lexer.error({it, suffix_end}, "invalid suffix '{}' on floating constant", fmt::StringRef(it, std::distance(it, suffix_end)));
+      auto range = SourceRange(it, suffix_end);
+      lexer.error(range, "invalid suffix '{}' on floating constant", string_ref(range));
     }
 
     std::advance(it, 1);
@@ -597,8 +598,6 @@ auto lexer_parse_constant(LexerContext& lexer, SourceLocation begin,
   }
 
   Unreachable();
-
-  return end;
 }
 
 auto lexer_parse_identifier(LexerContext& lexer, SourceLocation begin,
@@ -715,10 +714,12 @@ auto TokenStream::parse(ProgramContext& program, const SourceManager& source) ->
 
       it = std::find_if_not(it, range.end(), is_space);
     }
-
-    // `End of input` is represented by the last new line in the input.
-    lexer.add_token(TokenType::Eof, SourceRange(std::prev(range.end())));
   }
+
+  // `End of input` is represented by the last new line in the input.
+  lexer.add_token(TokenType::Eof, SourceRange(std::prev(range.end())));
+
+  Ensures(std::prev(lexer.tokens.end())->type == TokenType::Eof);
 
   return TokenStream(std::move(lexer.tokens), source);
 }

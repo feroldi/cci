@@ -100,6 +100,15 @@ enum class NodeType
   StringLiteral,
   StringLiteralList,
   AsmBlock,
+
+  // Special nodes
+  CompoundLiteral,
+  ArraySubscripting,
+  FunctionCall,
+  MemberAccess,
+  PointerMemberAccess,
+  PostfixIncrement,
+  PostfixDecrement,
 };
 
 auto to_string(const NodeType node_type) -> const char*;
