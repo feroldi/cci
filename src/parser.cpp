@@ -706,6 +706,7 @@ auto parser_constant_expression(ParserContext& parser, TokenIterator begin, Toke
 // static-assert-declaration:
 //   '_Static_assert' '(' constant-expression ',' string-literal+ ')' ';'
 
+[[maybe_unused]]
 auto parser_static_assert_declaration(ParserContext& parser, TokenIterator begin, TokenIterator end)
   -> ParserResult
 {
@@ -1003,126 +1004,118 @@ auto parser_postfix_expression(ParserContext& parser, TokenIterator begin, Token
       return ParserResult(end, make_error(ParserStatus::GiveUp, begin, "compound literal"));
     };
 
-    if (begin->type != TokenType::LeftParen)
+    auto postfix_production = [] (ParserContext& parser, TokenIterator begin, TokenIterator end)
+      -> ParserResult
     {
-      auto postfix_production = [] (ParserContext& parser, TokenIterator begin, TokenIterator end)
-        -> ParserResult
+      if (begin == end)
+        return ParserResult(end, make_error(ParserStatus::GiveUp, begin, "postfix operator"));
+
+      switch (begin->type)
       {
-        if (begin == end)
+        // '[' expression ']' -> ^(ArraySubscripting expression)
+        case TokenType::LeftBraces:
+        {
+          auto [expr_it, expression] = parser_expression(parser, std::next(begin), end);
+
+          if (expect_end_token(expression, begin, end, expr_it, TokenType::RightBraces))
+          {
+            ParserState postfix_op =
+              ParserSuccess(std::make_unique<SyntaxTree>(NodeType::ArraySubscripting, *begin));
+
+            add_state(postfix_op, giveup_to_expected(std::move(expression), "expression"));
+
+            return ParserResult(std::next(expr_it), std::move(postfix_op));
+          }
+          else
+          {
+            return ParserResult(expr_it, std::move(expression));
+          }
+        }
+
+        // '(' argument-expression-list? ')' -> ^(FunctionCall arguments?)
+        case TokenType::LeftParen:
+        {
+          ParserState postfix_op =
+            ParserSuccess(std::make_unique<SyntaxTree>(NodeType::FunctionCall, *begin));
+
+          if (std::next(begin) != end && std::next(begin)->type == TokenType::RightParen)
+          {
+            // Empty argument list.
+            return ParserResult(std::next(begin, 2), std::move(postfix_op));
+          }
+
+          auto arg_list = parser_parens(parser_list_of(parser_assignment_expression));
+          auto [arg_it, argument_list] = arg_list(parser, begin, end);
+
+          ParserState arguments =
+            ParserSuccess(std::make_unique<SyntaxTree>(NodeType::ArgumentExpressionList));
+
+          add_state(arguments, giveup_to_expected(std::move(argument_list), "argument list"));
+          add_state(postfix_op, std::move(arguments));
+
+          return ParserResult(arg_it, std::move(postfix_op));
+        }
+
+        // '.' identifier  -> ^(MemberAccess identifier)
+        // '->' identifier -> ^(PointerMemberAccess identifier)
+        case TokenType::Dot:
+        case TokenType::RightArrow:
+        {
+          const auto node_type = begin->type == TokenType::Dot
+            ? NodeType::MemberAccess
+            : NodeType::PointerMemberAccess;
+
+          auto [ident_it, identifier] = parser_identifier(parser, std::next(begin), end);
+
+          ParserState postfix_op =
+            ParserSuccess(std::make_unique<SyntaxTree>(node_type, *begin));
+
+          add_state(postfix_op, giveup_to_expected(std::move(identifier)));
+
+          return ParserResult(ident_it, std::move(postfix_op));
+        }
+
+        // '++' -> ^(PostfixIncrement)
+        // '--' -> ^(PostfixDecrement)
+        case TokenType::Increment:
+        case TokenType::Decrement:
+        {
+          const auto node_type = begin->type == TokenType::Increment
+            ? NodeType::PostfixIncrement
+            : NodeType::PostfixDecrement;
+
+          auto tree = std::make_unique<SyntaxTree>(node_type, *begin);
+          return ParserResult(std::next(begin), ParserSuccess(std::move(tree)));
+        }
+
+        default:
           return ParserResult(end, make_error(ParserStatus::GiveUp, begin, "postfix operator"));
-
-        switch (begin->type)
-        {
-          // '[' expression ']' -> ^(ArraySubscripting expression)
-          case TokenType::LeftBraces:
-          {
-            auto [expr_it, expression] = parser_expression(parser, std::next(begin), end);
-
-            if (expect_end_token(expression, begin, end, expr_it, TokenType::RightBraces))
-            {
-              ParserState postfix_op =
-                ParserSuccess(std::make_unique<SyntaxTree>(NodeType::ArraySubscripting, *begin));
-
-              add_state(postfix_op, giveup_to_expected(std::move(expression), "expression"));
-
-              return ParserResult(std::next(expr_it), std::move(postfix_op));
-            }
-            else
-            {
-              return ParserResult(expr_it, std::move(expression));
-            }
-          }
-
-          // '(' argument-expression-list? ')' -> ^(FunctionCall arguments?)
-          case TokenType::LeftParen:
-          {
-            ParserState postfix_op =
-              ParserSuccess(std::make_unique<SyntaxTree>(NodeType::FunctionCall, *begin));
-
-            if (std::next(begin) != end && std::next(begin)->type == TokenType::RightParen)
-            {
-              // Empty argument list.
-              return ParserResult(std::next(begin, 2), std::move(postfix_op));
-            }
-
-            auto arg_list = parser_parens(parser_list_of(parser_assignment_expression));
-            auto [arg_it, argument_list] = arg_list(parser, begin, end);
-
-            ParserState arguments =
-              ParserSuccess(std::make_unique<SyntaxTree>(NodeType::ArgumentExpressionList));
-
-            add_state(arguments, giveup_to_expected(std::move(argument_list), "argument list"));
-            add_state(postfix_op, std::move(arguments));
-
-            return ParserResult(arg_it, std::move(postfix_op));
-          }
-
-          // '.' identifier  -> ^(MemberAccess identifier)
-          // '->' identifier -> ^(PointerMemberAccess identifier)
-          case TokenType::Dot:
-          case TokenType::RightArrow:
-          {
-            const auto node_type = begin->type == TokenType::Dot
-              ? NodeType::MemberAccess
-              : NodeType::PointerMemberAccess;
-
-            auto [ident_it, identifier] = parser_identifier(parser, std::next(begin), end);
-
-            ParserState postfix_op =
-              ParserSuccess(std::make_unique<SyntaxTree>(node_type, *begin));
-
-            add_state(postfix_op, giveup_to_expected(std::move(identifier)));
-
-            return ParserResult(ident_it, std::move(postfix_op));
-          }
-
-          // '++' -> ^(PostfixIncrement)
-          // '--' -> ^(PostfixDecrement)
-          case TokenType::Increment:
-          case TokenType::Decrement:
-          {
-            const auto node_type = begin->type == TokenType::Increment
-              ? NodeType::PostfixIncrement
-              : NodeType::PostfixDecrement;
-
-            auto tree = std::make_unique<SyntaxTree>(node_type, *begin);
-            return ParserResult(std::next(begin), ParserSuccess(std::move(tree)));
-          }
-
-          default:
-            return ParserResult(end, make_error(ParserStatus::GiveUp, begin, "postfix operator"));
-        }
-      };
-
-      // FIXME allow for the rest of postfix-expression.
-      auto [expr_it, expr] = parser_one_of(parser, begin, end, "compound literal, or expression",
-                                           compound_literal_production,
-                                           parser_primary_expression);
-      auto it = expr_it;
-
-      if (is_giveup(expr))
-        return ParserResult(end, std::move(expr));
-
-      while (true)
-      {
-        auto [op_it, postfix_op] = postfix_production(parser, it, end);
-
-        if (!is_giveup(postfix_op))
-        {
-          add_state(postfix_op, std::move(expr));
-          expr = std::move(postfix_op);
-          it = op_it;
-        }
-        else
-          break;
       }
+    };
 
-      return ParserResult(it, std::move(expr));
-    }
-    else
+    auto [expr_it, expr] = parser_one_of(parser, begin, end, "compound literal or expression",
+                                         compound_literal_production,
+                                         parser_primary_expression);
+    auto it = expr_it;
+
+    if (is_giveup(expr))
+      return ParserResult(end, std::move(expr));
+
+    while (true)
     {
-      return compound_literal_production(parser, begin, end);
+      auto [op_it, postfix_op] = postfix_production(parser, it, end);
+
+      if (!is_giveup(postfix_op))
+      {
+        add_state(postfix_op, std::move(expr));
+        expr = std::move(postfix_op);
+        it = op_it;
+      }
+      else
+        break;
     }
+
+    return ParserResult(it, std::move(expr));
   }
 
   return ParserResult(end, make_error(ParserStatus::GiveUp, begin, "postfix expression"));
@@ -1738,7 +1731,7 @@ auto SyntaxTree::parse(ProgramContext& program, const TokenStream& tokens)
 {
   ParserContext parser{program, tokens};
 
-  auto result = parser_static_assert_declaration(parser, tokens.begin(), tokens.end());
+  auto result = parser_primary_expression(parser, tokens.begin(), tokens.end());
   result.state = giveup_to_expected(std::move(result.state));
 
   if (is<ParserSuccess>(result.state))
