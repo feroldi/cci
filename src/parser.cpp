@@ -152,7 +152,7 @@ auto is_giveup(const ParserState& state) -> bool
   }
 }
 
-auto giveup_to_expected(ParserState state, string_view what, [[maybe_unused]] bool prefer_error = false) -> ParserState
+auto giveup_to_expected(ParserState state, string_view what) -> ParserState
 {
   if (is<ParserFailure>(state))
   {
@@ -384,8 +384,8 @@ auto parser_left_binary_operator(LhsRule lhs_rule, OpRule op_rule, RhsRule rhs_r
 
       if (!is_giveup(op_state))
       {
+        auto op_token = string_ref(lhs_it->data);
         auto [rhs_it, rhs_state] = rhs_rule(parser, op_it, end);
-        auto op_token = lhs_it;
         lhs_it = op_it;
 
         if (is<ParserSuccess>(rhs_state))
@@ -393,12 +393,8 @@ auto parser_left_binary_operator(LhsRule lhs_rule, OpRule op_rule, RhsRule rhs_r
         else if (lhs_it != end)
           std::advance(lhs_it, 1);
 
-        add_state(op_state, giveup_to_expected(std::move(lhs_state),
-                                               fmt::format("expression for operator '{}'",
-                                                           string_ref(op_token->data)), true));
-        add_state(op_state, giveup_to_expected(std::move(rhs_state),
-                                               fmt::format("expression for operator '{}'",
-                                                           string_ref(op_token->data)), true));
+        add_state(op_state, giveup_to_expected(std::move(lhs_state), fmt::format("expression for operator '{}'", op_token)));
+        add_state(op_state, giveup_to_expected(std::move(rhs_state), fmt::format("expression for operator '{}'", op_token)));
 
         lhs_state = std::move(op_state);
       }
@@ -426,13 +422,11 @@ auto parser_right_binary_operator(LhsRule lhs_rule, OpRule op_rule, RhsRule rhs_
 
         if (!is_giveup(op_state))
         {
+          auto op_token = string_ref(lhs_it->data);
           auto [rhs_it, rhs_state] = rhs_rule(parser, op_it, end);
-          auto op_token = lhs_it;
 
           add_state(op_state, std::move(lhs_state));
-          add_state(op_state, giveup_to_expected(std::move(rhs_state),
-                                                 fmt::format("expression for operator '{}'",
-                                                             string_ref(op_token->data)), true));
+          add_state(op_state, giveup_to_expected(std::move(rhs_state), fmt::format("expression for operator '{}'", op_token)));
 
           return ParserResult(rhs_it, std::move(op_state));
         }
