@@ -744,6 +744,124 @@ auto parser_static_assert_declaration(ParserContext& parser, TokenIterator begin
   return ParserResult(end, make_error(ParserStatus::GiveUp, begin, "static assert declaration"));
 }
 
+// enum-specifier:
+//   'enum' identifier? '{' enumerator-list ','opt '}'
+//      -> ^(EnumSpecifier identifier? enumerator-list)
+//
+//   'enum' identifier
+//      -> ^(EnumSpecifier identifier)
+//
+// enumerator-list:
+//   enumerator
+//   enumerator-list ',' enumerator
+//
+// enumerator:
+//   enumeration-constant
+//   enumeration-constant '=' constant-expression
+//
+// enumeration-constant:
+//   identifier
+
+auto parser_enumeration_constant(ParserContext& /*parser*/, TokenIterator begin, TokenIterator end)
+  -> ParserResult
+{
+  // TODO register enumerations in symbol table.
+
+  if (begin != end && begin->type == TokenType::Identifier)
+  {
+    auto tree = std::make_unique<SyntaxTree>(NodeType::Enumerator, *begin);
+    return ParserResult(std::next(begin), ParserSuccess(std::move(tree)));
+  }
+
+  return ParserResult(end, make_error(ParserStatus::GiveUp, begin, "enumerator"));
+}
+
+auto parser_enum_specifier(ParserContext& parser, TokenIterator begin, TokenIterator end)
+  -> ParserResult
+{
+  if (begin != end && begin->type == TokenType::Enum)
+  {
+    // enumerator:
+    //   enumeration-constant
+    //   enumeration-constant '=' constant-expression
+    //
+    //   -> ^(Enumerator const-expr?)
+
+    auto enumerator_production = [] (ParserContext& parser, TokenIterator begin, TokenIterator end)
+      -> ParserResult
+    {
+      if (begin != end && begin->type == TokenType::Identifier)
+      {
+        auto [it, enumerator] = parser_enumeration_constant(parser, begin, end);
+
+        if (it != end && it->type == TokenType::Assign)
+        {
+          auto [const_it, const_expr] = parser_constant_expression(parser, std::next(it), end);
+          add_state(enumerator, giveup_to_expected(std::move(const_expr), "constant expression"));
+          it = const_it;
+        }
+
+        return ParserResult(it, std::move(enumerator));
+      }
+
+      return ParserResult(end, make_error(ParserStatus::GiveUp, begin, "enumerator"));
+    };
+
+    // enumerator-list:
+    //   enumerator
+    //   enumerator-list ',' enumerator
+    //
+    //  -> ^(EnumeratorList enumerator+)
+
+    auto enumerator_list_production = parser_list_of(enumerator_production, /*allow_trailing_comma=*/ true);
+
+    // '{' enumerator-list ','opt '}' -> enumerator-list
+
+    auto enum_body_production = parser_parens(enumerator_list_production,
+                                              TokenType::LeftCurlyBraces,
+                                              TokenType::RightCurlyBraces);
+
+    ParserState enum_spec = ParserSuccess(std::make_unique<SyntaxTree>(NodeType::EnumSpecifier, *begin));
+    auto it = std::next(begin); //< Skips TokenType::Enum.
+
+    // enum-specifier:
+    //   'enum' identifier? '{' enumerator-list ','opt '}' -> ^(EnumSpecifier identifier? enumerator-list)
+    //   'enum' identifier                                 -> ^(EnumSpecifier identifier)
+
+    if (it != end)
+    {
+      if (it->type == TokenType::Identifier)
+      {
+        auto [ident_it, identifier] = parser_identifier(parser, it, end);
+        add_state(enum_spec, std::move(identifier));
+        it = ident_it;
+
+        if (it != end && it->type == TokenType::LeftCurlyBraces)
+        {
+          auto [body_it, enum_body] = enum_body_production(parser, it, end);
+          add_state(enum_spec, giveup_to_expected(std::move(enum_body)));
+          it = body_it;
+        }
+      }
+      else if (it->type == TokenType::LeftCurlyBraces)
+      {
+        auto [body_it, enum_body] = enum_body_production(parser, it, end);
+        add_state(enum_spec, giveup_to_expected(std::move(enum_body)));
+        it = body_it;
+      }
+      else
+      {
+        add_error(enum_spec, make_error(ParserStatus::Error, it, "expected identifier or '{'"));
+        add_error(enum_spec, make_error(ParserStatus::ErrorNote, begin, "for this enumerator specifier"));
+      }
+
+      return ParserResult(it, std::move(enum_spec));
+    }
+  }
+
+  return ParserResult(end, make_error(ParserStatus::GiveUp, begin, "enumerator specifier"));
+}
+
 // initializer:
 //    assignment-expression
 //    '{' initializer-list '}'
