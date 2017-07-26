@@ -69,6 +69,7 @@ enum class TokenType
   Colon,
   Semicolon,
   QuestionMark,
+  Ellipsis,
 
   // Constants
   CharConstant,
@@ -129,6 +130,9 @@ enum class TokenType
   Volatile,
   Const,
   Bool,
+  VectorM128,
+  VectorM128d,
+  VectorM128i,
 
   // Pre/postfixes
   EncodingPrefix,

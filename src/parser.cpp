@@ -674,6 +674,203 @@ auto parser_constant(ParserContext& /*parser*/, TokenIterator begin, TokenIterat
   }
 }
 
+// typedef-name:
+//   identifier
+//  -> ^(TypedefName)
+
+auto parser_type_name(ParserContext&, TokenIterator begin, TokenIterator end) -> ParserResult;
+
+auto parser_typedef_name(ParserContext& /*parser*/, TokenIterator begin, TokenIterator end)
+  -> ParserResult
+{
+  // TODO check if typedef-name is valid.
+  if (begin != end && begin->type == TokenType::Identifier)
+  {
+    return ParserResult(std::next(begin), ParserSuccess(std::make_unique<SyntaxTree>(NodeType::TypedefName, *begin)));
+  }
+
+  return ParserResult(end, make_error(ParserStatus::GiveUp, begin, "typedef name"));
+}
+
+// atomic-type-specifier:
+//   '_Atomic' '(' type-name ')'
+//  -> ^(AtomicTypeSpecifier type-name)
+
+auto parser_atomic_type_specifier(ParserContext& parser, TokenIterator begin, TokenIterator end)
+  -> ParserResult
+{
+  if (begin != end && std::next(begin) != end)
+  {
+    if (begin->type == TokenType::Atomic &&
+        std::next(begin)->type == TokenType::LeftParen)
+    {
+      auto [it, type_name] = parser_parens(parser_type_name)(parser, std::next(begin), end);
+      ParserState atomic_type_spec = ParserSuccess(std::make_unique<SyntaxTree>(NodeType::AtomicTypeSpecifier, *begin));
+      add_state(atomic_type_spec, giveup_to_expected(std::move(type_name), "type name for atomic type specifier"));
+
+      return ParserResult(it, std::move(atomic_type_spec));
+    }
+  }
+
+  return ParserResult(end, make_error(ParserStatus::GiveUp, begin, "atomic type specifier"));
+}
+
+// type-specifier:
+//   'void'
+//   'char'
+//   'short'
+//   'int'
+//   'long'
+//   'float'
+//   'double'
+//   'signed'
+//   'unsigned'
+//   '_Bool'
+//   '_Complex'
+//   '__m128'
+//   '__m128d'
+//   '__m128i'
+//  -> ^(TypeSpecifier)
+//
+//   atomic-type-specifier
+//   struct-or-union-specifier
+//   enum-specifier
+//   typedef-name
+//  -> ^(TypeSpecifier sub-type-specifier)
+
+auto parser_struct_or_union_specifier(ParserContext&, TokenIterator begin, TokenIterator end) -> ParserResult;
+auto parser_enum_specifier(ParserContext&, TokenIterator begin, TokenIterator end) -> ParserResult;
+
+auto parser_type_specifier(ParserContext& parser, TokenIterator begin, TokenIterator end)
+  -> ParserResult
+{
+  if (begin != end)
+  {
+    ParserState type_spec = ParserSuccess(nullptr);
+    auto it = begin;
+
+    switch (begin->type)
+    {
+      case TokenType::VoidType:
+      case TokenType::CharType:
+      case TokenType::ShortType:
+      case TokenType::IntType:
+      case TokenType::LongType:
+      case TokenType::FloatType:
+      case TokenType::DoubleType:
+      case TokenType::Signed:
+      case TokenType::Unigned:
+      case TokenType::Bool:
+      case TokenType::Complex:
+      case TokenType::VectorM128:
+      case TokenType::VectorM128d:
+      case TokenType::VectorM128i:
+      {
+        add_node(type_spec, std::make_unique<SyntaxTree>(NodeType::TypeSpecifier, *begin));
+        it = std::next(begin);
+        break;
+      }
+
+      default:
+      {
+        auto [type_it, sub_type_spec] =
+          parser_one_of(parser, begin, end, "type specifier",
+                        parser_atomic_type_specifier,
+                        parser_struct_or_union_specifier,
+                        parser_enum_specifier,
+                        parser_typedef_name);
+
+        if (is<ParserSuccess>(sub_type_spec))
+          add_node(type_spec, std::make_unique<SyntaxTree>(NodeType::TypeSpecifier));
+
+        add_state(type_spec, std::move(sub_type_spec));
+        it = type_it;
+      }
+    }
+
+    return ParserResult(it, std::move(type_spec));
+  }
+
+  return ParserResult(end, make_error(ParserStatus::GiveUp, begin, "type specifier"));
+}
+
+// type-qualifier:
+//   'const'
+//   'restrict'
+//   'volatile'
+//   '_Atomic'
+//  -> ^(TypeQualifier)
+
+auto parser_type_qualifier(ParserContext& /*parser*/, TokenIterator begin, TokenIterator end)
+  -> ParserResult
+{
+  if (begin != end)
+  {
+    switch (begin->type)
+    {
+      case TokenType::Const:
+      case TokenType::Restrict:
+      case TokenType::Volatile:
+      case TokenType::Atomic:
+        return ParserResult(std::next(begin), ParserSuccess(std::make_unique<SyntaxTree>(NodeType::TypeQualifier, *begin)));
+
+      default:
+        break;
+    }
+  }
+
+  return ParserResult(end, make_error(ParserStatus::GiveUp, begin, "type qualifier"));
+}
+
+// type-qualifier-list:
+//   type-qualifier+
+
+auto parser_type_qualifier_list(ParserContext& parser, TokenIterator begin, TokenIterator end)
+  -> ParserResult
+{
+  return parser_one_many_of(parser, begin, end, "type qualifier list", parser_type_qualifier, [] (TokenIterator t) {
+    return t->type == TokenType::Const    ||
+           t->type == TokenType::Restrict ||
+           t->type == TokenType::Volatile ||
+           t->type == TokenType::Atomic;
+  });
+}
+
+// pointer:
+//   '*' type-qualifier-list?
+//  -> ^(Pointer type-qualifier-list?)
+//
+//   '*' type-qualifier-list? pointer
+//  -> ^(Pointer type-qualifier-list? Pointer?)
+
+auto parser_pointer(ParserContext& parser, TokenIterator begin, TokenIterator end)
+  -> ParserResult
+{
+  if (begin != end && begin->type == TokenType::Times)
+  {
+    ParserState pointer = ParserSuccess(std::make_unique<SyntaxTree>(NodeType::Pointer, *begin));
+    auto it = std::next(begin);
+
+    if (auto [qual_it, qual_list] = parser_type_qualifier_list(parser, it, end);
+        !is_giveup(qual_list))
+    {
+      add_state(pointer, giveup_to_expected(std::move(qual_list), "type qualifier list for pointer type"));
+      it = qual_it;
+    }
+
+    if (it != end && it->type == TokenType::Times)
+    {
+      auto [sub_ptr_it, sub_pointer] = parser_pointer(parser, it, end);
+      add_state(pointer, giveup_to_expected(std::move(sub_pointer), "nested pointer"));
+      it = sub_ptr_it;
+    }
+
+    return ParserResult(it, std::move(pointer));
+  }
+
+  return ParserResult(end, make_error(ParserStatus::GiveUp, begin, "pointer"));
+}
+
 // type-name:
 //    specifier-qualifier-list abstract-declarator?
 

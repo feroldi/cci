@@ -71,6 +71,7 @@ static const std::pair<TokenType, string_view> TOKEN_SYMBOLS[] = {
   {TokenType::Colon, ":"},
   {TokenType::Semicolon, ";"},
   {TokenType::QuestionMark, "?"},
+  {TokenType::Ellipsis, "..."},
 };
 
 static const std::pair<TokenType, string_view> TOKEN_RESERVED_NAMES[] = {
@@ -121,6 +122,9 @@ static const std::pair<TokenType, string_view> TOKEN_RESERVED_NAMES[] = {
   {TokenType::Volatile, "volatile"},
   {TokenType::Const, "const"},
   {TokenType::Bool, "_Bool"},
+  {TokenType::VectorM128, "__m128"},
+  {TokenType::VectorM128d, "__m128d"},
+  {TokenType::VectorM128i, "__m128i"},
 };
 
 constexpr auto is_operator(char c) -> bool
