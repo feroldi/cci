@@ -700,7 +700,6 @@ auto parser_constant_expression(ParserContext& parser, TokenIterator begin, Toke
 // static-assert-declaration:
 //   '_Static_assert' '(' constant-expression ',' string-literal+ ')' ';'
 
-[[maybe_unused]]
 auto parser_static_assert_declaration(ParserContext& parser, TokenIterator begin, TokenIterator end)
   -> ParserResult
 {
@@ -817,7 +816,7 @@ auto parser_enum_specifier(ParserContext& parser, TokenIterator begin, TokenIter
 
     // '{' enumerator-list ','opt '}' -> enumerator-list
 
-    auto enum_body_production = parser_parens(enumerator_list_production,
+    auto enum_list_production = parser_parens(enumerator_list_production,
                                               TokenType::LeftCurlyBraces,
                                               TokenType::RightCurlyBraces);
 
@@ -838,16 +837,16 @@ auto parser_enum_specifier(ParserContext& parser, TokenIterator begin, TokenIter
 
         if (it != end && it->type == TokenType::LeftCurlyBraces)
         {
-          auto [body_it, enum_body] = enum_body_production(parser, it, end);
-          add_state(enum_spec, giveup_to_expected(std::move(enum_body)));
-          it = body_it;
+          auto [enum_list_it, enum_list] = enum_list_production(parser, it, end);
+          add_state(enum_spec, giveup_to_expected(std::move(enum_list)));
+          it = enum_list_it;
         }
       }
       else if (it->type == TokenType::LeftCurlyBraces)
       {
-        auto [body_it, enum_body] = enum_body_production(parser, it, end);
-        add_state(enum_spec, giveup_to_expected(std::move(enum_body)));
-        it = body_it;
+        auto [enum_list_it, enum_list] = enum_list_production(parser, it, end);
+        add_state(enum_spec, giveup_to_expected(std::move(enum_list)));
+        it = enum_list_it;
       }
       else
       {
@@ -860,6 +859,180 @@ auto parser_enum_specifier(ParserContext& parser, TokenIterator begin, TokenIter
   }
 
   return ParserResult(end, make_error(ParserStatus::GiveUp, begin, "enumerator specifier"));
+}
+
+// struct-or-union-specifier:
+//   struct-or-union identifier? '{' struct-declaration-list '}'
+//    -> ^(StructOrUnionSpecifier identifier? struct-declaration-list)
+//
+//   struct-or-union identifier
+//    -> ^(StructOrUnionSpecifier identifier)
+//
+// struct-or-union:
+//   'struct'
+//   'union'
+//
+// struct-declaration-list:
+//   struct-declaration
+//   struct-declaration-list struct-declaration
+//
+// struct-declaration:
+//   specifier-qualifier-list struct-declarator-list? ';'
+//   static-assert-declaration
+//
+// struct-declarator-list:
+//   struct-declarator
+//   struct-declarator-list ',' struct-declarator
+//
+// struct-declarator:
+//   declarator
+//   declarator? ':' constant-expression
+
+auto parser_struct_or_union_specifier(ParserContext& parser, TokenIterator begin, TokenIterator end)
+  -> ParserResult
+{
+  // TODO make error messages issue struct or union depending on the current token.
+
+  if (begin != end && (begin->type == TokenType::Struct || begin->type == TokenType::Union))
+  {
+    // struct-declarator:
+    //   declarator                           -> ^(StructDeclarator declarator)
+    //   declarator? ':' constant-expression  -> ^(StructDeclarator declarator? constant-expression)
+
+    auto struct_declarator = [] (ParserContext& parser, TokenIterator begin, TokenIterator end)
+      -> ParserResult
+    {
+      if (begin != end)
+      {
+        ParserState struct_decl = ParserSuccess(std::make_unique<SyntaxTree>(NodeType::StructDeclarator));
+        auto it = begin;
+
+        // declarator
+        if (begin->type != TokenType::Colon)
+        {
+          auto [decl_it, declarator] = parser_declarator(parser, begin, end);
+          add_state(struct_decl, giveup_to_expected(std::move(declarator), "declarator"));
+          it = decl_it;
+
+          if (it != end && it->type == TokenType::Colon)
+          {
+            auto [const_expr_it, const_expr] = parser_constant_expression(parser, std::next(it), end);
+            add_state(struct_decl, giveup_to_expected(std::move(const_expr), "constant expression"));
+            it = const_expr_it;
+          }
+        }
+        else
+        {
+          auto [const_expr_it, const_expr] = parser_constant_expression(parser, std::next(it), end);
+          add_state(struct_decl, giveup_to_expected(std::move(const_expr), "constant expression"));
+          it = const_expr_it;
+        }
+
+        return ParserResult(it, std::move(struct_decl));
+      }
+
+      return ParserResult(end, make_error(ParserStatus::GiveUp, begin, "struct declarator"));
+    };
+
+    // struct-declarator-list:
+    //   struct-declarator
+    //   struct-declarator-list ',' struct-declarator
+
+    auto struct_declarator_list = parser_list_of(struct_declarator);
+
+    // struct-declaration:
+    //   specifier-qualifier-list struct-declarator-list? ';'
+    //   static-assert-declaration
+
+    auto struct_declaration = [struct_declarator_list] (ParserContext& parser, TokenIterator begin, TokenIterator end)
+      -> ParserResult
+    {
+      if (begin != end)
+      {
+        if (begin->type == TokenType::StaticAssert)
+        {
+          return parser_static_assert_declaration(parser, begin, end);
+        }
+        else
+        {
+          ParserState struct_decl = ParserSuccess(std::make_unique<SyntaxTree>(NodeType::StructDeclaration));
+          auto it = begin;
+
+          auto [spec_qual_it, spec_qual_list] = parser_specifier_qualifier_list(parser, begin, end);
+          add_state(struct_decl, giveup_to_expected(std::move(spec_qual_list), "specifier qualifier list"));
+          it = spec_qual_it;
+
+          auto [decl_it, decl_list] = struct_declarator_list(parser, spec_qual_it, end);
+
+          if (!is_giveup(decl_list))
+          {
+            add_state(struct_decl, std::move(decl_list));
+            it = decl_it;
+          }
+
+          if (expect_token(struct_decl, it, end, TokenType::Semicolon))
+            std::advance(it, 1);
+
+          return ParserResult(it, std::move(struct_decl));
+        }
+      }
+
+      return ParserResult(end, make_error(ParserStatus::GiveUp, begin, "struct declaration"));
+    };
+
+    // struct-declaration-list:
+    //   struct-declaration
+    //   struct-declaration-list struct-declaration
+
+    auto struct_declaration_list = [struct_declaration] (ParserContext& parser, TokenIterator begin, TokenIterator end)
+      -> ParserResult
+    {
+      return parser_one_many_of(parser, begin, end, "struct declaration list", struct_declaration, [] (TokenIterator t) {
+        return t->type != TokenType::RightCurlyBraces;
+      });
+    };
+
+    // '{' struct-declaration-list '}'
+
+    auto struct_decl_list_production = parser_parens(struct_declaration_list,
+                                                     TokenType::LeftCurlyBraces,
+                                                     TokenType::RightCurlyBraces);
+
+    ParserState struct_spec = ParserSuccess(std::make_unique<SyntaxTree>(NodeType::StructOrUnionSpecifier, *begin));
+    auto it = std::next(begin);
+
+    if (it != end)
+    {
+      if (it->type == TokenType::Identifier)
+      {
+        auto [ident_it, identifier] = parser_identifier(parser, it, end);
+        add_state(struct_spec, std::move(identifier));
+        it = ident_it;
+
+        if (it != end && it->type == TokenType::LeftCurlyBraces)
+        {
+          auto [decl_list_it, decl_list] = struct_decl_list_production(parser, it, end);
+          add_state(struct_spec, giveup_to_expected(std::move(decl_list)));
+          it = decl_list_it;
+        }
+      }
+      else if (it->type == TokenType::LeftCurlyBraces)
+      {
+        auto [decl_list_it, decl_list] = struct_decl_list_production(parser, it, end);
+        add_state(struct_spec, giveup_to_expected(std::move(decl_list)));
+        it = decl_list_it;
+      }
+      else
+      {
+        add_error(struct_spec, make_error(ParserStatus::Error, it, "expected identifier or '{'"));
+        add_error(struct_spec, make_error(ParserStatus::ErrorNote, begin, fmt::format("for this {} specifier", to_string(begin->type))));
+      }
+
+      return ParserResult(it, std::move(struct_spec));
+    }
+  }
+
+  return ParserResult(end, make_error(ParserStatus::GiveUp, begin, "struct or union specifier"));
 }
 
 // initializer:
