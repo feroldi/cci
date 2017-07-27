@@ -674,6 +674,13 @@ auto parser_constant(ParserContext& /*parser*/, TokenIterator begin, TokenIterat
   }
 }
 
+// TODO
+auto parser_parameter_type_list(ParserContext& parser, TokenIterator begin, TokenIterator end)
+  -> ParserResult
+{
+  return parser_identifier(parser, begin, end);
+}
+
 // typedef-name:
 //   identifier
 //  -> ^(TypedefName)
@@ -684,7 +691,7 @@ auto parser_typedef_name(ParserContext& /*parser*/, TokenIterator begin, TokenIt
   -> ParserResult
 {
   // TODO check if typedef-name is valid.
-  if (begin != end && begin->type == TokenType::Identifier)
+  if (/*DISABLE CODE*/ (false) && begin != end && begin->type == TokenType::Identifier)
   {
     return ParserResult(std::next(begin), ParserSuccess(std::make_unique<SyntaxTree>(NodeType::TypedefName, *begin)));
   }
@@ -759,7 +766,7 @@ auto parser_type_specifier(ParserContext& parser, TokenIterator begin, TokenIter
       case TokenType::FloatType:
       case TokenType::DoubleType:
       case TokenType::Signed:
-      case TokenType::Unigned:
+      case TokenType::Unsigned:
       case TokenType::Bool:
       case TokenType::Complex:
       case TokenType::VectorM128:
@@ -828,27 +835,36 @@ auto parser_type_qualifier(ParserContext& /*parser*/, TokenIterator begin, Token
 auto parser_type_qualifier_list(ParserContext& parser, TokenIterator begin, TokenIterator end)
   -> ParserResult
 {
-  return parser_one_many_of(parser, begin, end, "type qualifier list", parser_type_qualifier, [] (TokenIterator t) {
+  auto [it, quals] = parser_one_many_of(parser, begin, end, "type qualifier list", parser_type_qualifier, [] (TokenIterator t) {
     return t->type == TokenType::Const    ||
            t->type == TokenType::Restrict ||
            t->type == TokenType::Volatile ||
            t->type == TokenType::Atomic;
   });
+
+  ParserState qualifiers = ParserSuccess(nullptr);
+
+  if (is<ParserSuccess>(quals))
+    qualifiers = ParserSuccess(std::make_unique<SyntaxTree>(NodeType::TypeQualifierList));
+
+  add_state(qualifiers, std::move(quals));
+
+  return ParserResult(it, std::move(qualifiers));
 }
 
 // pointer:
 //   '*' type-qualifier-list?
-//  -> ^(Pointer type-qualifier-list?)
+//  -> ^(PointerDeclarator type-qualifier-list?)
 //
 //   '*' type-qualifier-list? pointer
-//  -> ^(Pointer type-qualifier-list? Pointer?)
+//  -> ^(PointerDeclarator type-qualifier-list? PointerDeclarator?)
 
 auto parser_pointer(ParserContext& parser, TokenIterator begin, TokenIterator end)
   -> ParserResult
 {
   if (begin != end && begin->type == TokenType::Times)
   {
-    ParserState pointer = ParserSuccess(std::make_unique<SyntaxTree>(NodeType::Pointer, *begin));
+    ParserState pointer = ParserSuccess(std::make_unique<SyntaxTree>(NodeType::PointerDeclarator, *begin));
     auto it = std::next(begin);
 
     if (auto [qual_it, qual_list] = parser_type_qualifier_list(parser, it, end);
@@ -871,16 +887,268 @@ auto parser_pointer(ParserContext& parser, TokenIterator begin, TokenIterator en
   return ParserResult(end, make_error(ParserStatus::GiveUp, begin, "pointer"));
 }
 
+// direct-abstract-declarator:
+//   '[' ']'
+//  -> ^(ArrayVLADeclarator)
+//
+//   '[' type-qualifier-list? assignment-expression? ']'
+//  -> ^(ArrayDeclarator TypeQualifierList? AssignmentExpression?)
+//
+//   '[' 'static' type-qualifier-list? assignment-expression ']'
+//  -> ^(ArrayStaticDeclarator TypeQualifierList? AssignmentExpression)
+//
+//   '[' type-qualifier-list 'static' assignment-expression ']'
+//  -> ^(ArrayStaticDeclarator TypeQualifierList AssignmentExpression)
+//
+//   '[' type-qualifier-list? '*' ']'
+//  -> ^(ArrayVLADeclarator TypeQualifierList?)
+//
+//   direct-abstract-declarator '[' type-qualifier-list? assignment-expression? ']'
+//   direct-abstract-declarator '[' 'static' type-qualifier-list? assignment-expression ']'
+//   direct-abstract-declarator '[' type-qualifier-list 'static' assignment-expression ']'
+//   direct-abstract-declarator '[' '*' ']'
+//   direct-abstract-declarator '(' parameter-type-list? ')'
+
+auto parser_direct_abstract_declarator(ParserContext& parser, TokenIterator begin, TokenIterator end)
+  -> ParserResult
+{
+  auto array_declarator = [] (ParserContext& parser, TokenIterator begin, TokenIterator end)
+    -> ParserResult
+  {
+    if (begin != end)
+    {
+      auto array_token = *std::prev(begin);
+      auto it = begin;
+
+      // '[' ']'
+      if (it->type == TokenType::RightBraces)
+      {
+        return ParserResult(it, ParserSuccess(std::make_unique<SyntaxTree>(NodeType::ArrayVLADeclarator, array_token)));
+      }
+
+      // '[' '*' ']'
+      if (it->type == TokenType::Times && std::next(it) != end && std::next(it)->type == TokenType::RightBraces)
+      {
+        return ParserResult(std::next(it), ParserSuccess(std::make_unique<SyntaxTree>(NodeType::ArrayVLADeclarator, array_token)));
+      }
+
+      // '[' 'static' type-qualifier-list? assignment-expression ']'
+      if (it->type == TokenType::Static)
+      {
+        ParserState decl = ParserSuccess(std::make_unique<SyntaxTree>(NodeType::ArrayStaticDeclarator, array_token));
+        std::advance(it, 1);
+
+        if (auto [qual_it, qual_list] = parser_type_qualifier_list(parser, it, end);
+            !is_giveup(qual_list))
+        {
+          add_state(decl, giveup_to_expected(std::move(qual_list), "qualifiers for array declarator"));
+          it = qual_it;
+        }
+
+        auto [assign_it, assign_expr] = parser_assignment_expression(parser, it, end);
+        add_state(decl, giveup_to_expected(std::move(assign_expr), "expression for array length"));
+        it = assign_it;
+
+        return ParserResult(it, std::move(decl));
+      }
+      else
+      {
+        auto [qual_it, qualifiers] = parser_type_qualifier_list(parser, it, end);
+
+        // '[' type-qualifier-list 'static' assignment-expression ']'
+        //  -> ^(ArrayStaticDeclarator TypeQualifierList AssignmentExpression)
+        if (!is_giveup(qualifiers) && qual_it != end && qual_it->type == TokenType::Static)
+        {
+          auto [assign_it, assign_expr] = parser_assignment_expression(parser, /*skip 'static'*/ std::next(qual_it), end);
+          ParserState decl = ParserSuccess(nullptr);
+          it = assign_it;
+
+          if (is<ParserSuccess>(assign_expr))
+            decl = ParserSuccess(std::make_unique<SyntaxTree>(NodeType::ArrayStaticDeclarator, array_token));
+
+          add_state(decl, giveup_to_expected(std::move(qualifiers), "qualifiers for array declarator"));
+          add_state(decl, giveup_to_expected(std::move(assign_expr), "expression for array length"));
+
+          return ParserResult(it, std::move(decl));
+        }
+
+        // '[' type-qualifier-list? '*' ']'
+        if (qual_it != end && qual_it->type == TokenType::Times)
+        {
+          ParserState decl = ParserSuccess(std::make_unique<SyntaxTree>(NodeType::ArrayVLADeclarator, array_token));
+          it = /*skip '*'*/ std::next(qual_it);
+
+          if (!is_giveup(qualifiers))
+            add_state(decl, std::move(qualifiers));
+
+          return ParserResult(it, std::move(decl));
+        }
+
+        // '[' type-qualifier-list? assignment-expression? ']'
+        auto [assign_it, assign_expr] = parser_assignment_expression(parser, (qual_it != end)? qual_it : it, end);
+
+        ParserState decl = ParserSuccess(std::make_unique<SyntaxTree>(NodeType::ArrayDeclarator, array_token));
+
+        if (!is_giveup(qualifiers))
+        {
+          add_state(decl, std::move(qualifiers));
+          it = qual_it;
+        }
+
+        if (!is_giveup(assign_expr))
+        {
+          add_state(decl, std::move(assign_expr));
+          it = assign_it;
+        }
+
+        return ParserResult(it, std::move(decl));
+      }
+    }
+
+    return ParserResult(end, make_error(ParserStatus::GiveUp, begin, "direct abstract declarator"));
+  };
+
+  if (begin != end)
+  {
+    auto array_declarator_production = parser_parens(array_declarator, TokenType::LeftBraces, TokenType::RightBraces);
+    auto [it, array_decl] = array_declarator_production(parser, begin, end);
+
+    if (is_giveup(array_decl))
+      return ParserResult(it, std::move(array_decl));
+
+    while (it != end)
+    {
+      // direct-abstract-declarator '(' parameter-type-list? ')'
+      if (it->type == TokenType::LeftParen)
+      {
+        auto [params_it, parameters] = parser_parens(parser_parameter_type_list)(parser, it, end);
+
+        ParserState func_decl = ParserSuccess(std::make_unique<SyntaxTree>(NodeType::FunctionDeclarator));
+
+        add_state(func_decl, giveup_to_expected(std::move(array_decl), "array declarator"));
+        add_state(func_decl, giveup_to_expected(std::move(parameters), "parameter type list"));
+
+        array_decl = std::move(func_decl);
+        it = params_it;
+      }
+      else if (it->type == TokenType::LeftBraces)
+      {
+        auto [decl_it, declarator] = array_declarator_production(parser, it, end);
+        ParserState direct_decl = ParserSuccess(std::make_unique<SyntaxTree>(NodeType::DirectAbstractDeclarator));
+
+        add_state(direct_decl, giveup_to_expected(std::move(array_decl), "array declarator"));
+        add_state(direct_decl, giveup_to_expected(std::move(declarator), "array declarator"));
+
+        array_decl = std::move(direct_decl);
+        it = decl_it;
+      }
+      else
+        break;
+    }
+
+    return ParserResult(it, std::move(array_decl));
+  }
+
+  return ParserResult(end, make_error(ParserStatus::GiveUp, begin, "direct abstract declarator"));
+}
+
+// abstract-declarator:
+//   pointer
+//   pointer? direct-abstract-declarator
+
+auto parser_abstract_declarator(ParserContext& parser, TokenIterator begin, TokenIterator end)
+  -> ParserResult
+{
+  if (begin != end)
+  {
+    // pointer
+    if (begin->type == TokenType::Times)
+    {
+      auto [ptr_it, pointer_decl] = parser_pointer(parser, begin, end);
+
+      // direct-abstract-declarator
+      if (ptr_it != end && ptr_it->type == TokenType::LeftBraces)
+      {
+        ParserState abstract_decl = ParserSuccess(nullptr);
+        auto [decl_it, decl] = parser_direct_abstract_declarator(parser, ptr_it, end);
+
+        if (!is_giveup(decl))
+          add_node(abstract_decl, std::make_unique<SyntaxTree>(NodeType::AbstractDeclarator));
+
+        add_state(abstract_decl, giveup_to_expected(std::move(pointer_decl)));
+        add_state(abstract_decl, giveup_to_expected(std::move(decl)));
+
+        return ParserResult(decl_it, std::move(abstract_decl));
+      }
+
+      return ParserResult(ptr_it, std::move(pointer_decl));
+    }
+    else if (begin->type == TokenType::LeftBraces)
+    {
+      return parser_direct_abstract_declarator(parser, begin, end);
+    }
+  }
+
+  return ParserResult(end, make_error(ParserStatus::GiveUp, begin, "abstract declarator"));
+}
+
+// specifier-qualifier-list:
+//   (type-specifier | type-qualifier)+
+
+auto parser_specifier_qualifier_list(ParserContext& parser, TokenIterator begin, TokenIterator end)
+  -> ParserResult
+{
+  if (begin != end)
+  {
+    ParserState qualifiers = ParserSuccess(std::make_unique<SyntaxTree>(NodeType::SpecifierQualifierList));
+    auto it = begin;
+
+    while (true)
+    {
+      auto [s_it, spec_qual] = parser_one_of(parser, it, end, "type specifier or qualifier",
+                                             parser_type_specifier,
+                                             parser_type_qualifier);
+
+      if (!is_giveup(spec_qual))
+      {
+        add_state(qualifiers, std::move(spec_qual));
+        it = s_it;
+      }
+      else
+        break;
+    }
+
+    return ParserResult(it, std::move(qualifiers));
+  }
+
+  return ParserResult(end, make_error(ParserStatus::GiveUp, begin, "specifier qualifier list"));
+}
+
 // type-name:
 //    specifier-qualifier-list abstract-declarator?
 
-// TODO
-auto parser_type_name(ParserContext& /*parser*/, TokenIterator begin, TokenIterator end)
+auto parser_type_name(ParserContext& parser, TokenIterator begin, TokenIterator end)
   -> ParserResult
 {
-  if (begin != end && begin->type == TokenType::VoidType)
+  if (begin != end)
   {
-    return ParserResult(std::next(begin), ParserSuccess(std::make_unique<SyntaxTree>(NodeType::TypeName, *begin)));
+    auto [spec_it, spec_qual_list] = parser_specifier_qualifier_list(parser, begin, end);
+    auto it = spec_it;
+
+    if (is_giveup(spec_qual_list))
+      return ParserResult(spec_it, std::move(spec_qual_list));
+
+    ParserState type_name = ParserSuccess(std::make_unique<SyntaxTree>(NodeType::TypeName));
+    add_state(type_name, std::move(spec_qual_list));
+
+    if (auto [decl_it, abstract_decl] = parser_abstract_declarator(parser, it, end);
+        !is_giveup(abstract_decl))
+    {
+      add_state(type_name, std::move(abstract_decl));
+      it = decl_it;
+    }
+
+    return ParserResult(it, std::move(type_name));
   }
 
   return ParserResult(end, make_error(ParserStatus::GiveUp, begin, "type name"));
@@ -1084,6 +1352,13 @@ auto parser_enum_specifier(ParserContext& parser, TokenIterator begin, TokenIter
 // struct-declarator:
 //   declarator
 //   declarator? ':' constant-expression
+
+// TODO
+auto parser_declarator(ParserContext& parser, TokenIterator begin, TokenIterator end)
+  -> ParserResult
+{
+  return parser_identifier(parser, begin, end);
+}
 
 auto parser_struct_or_union_specifier(ParserContext& parser, TokenIterator begin, TokenIterator end)
   -> ParserResult
@@ -2451,6 +2726,16 @@ auto to_string(const NodeType node_type) -> const char*
       return "postfix increment";
     case NodeType::PostfixDecrement:
       return "postfix decrement";
+    case NodeType::PointerDeclarator:
+      return "pointer declarator";
+    case NodeType::ArrayDeclarator:
+      return "array declarator";
+    case NodeType::ArrayStaticDeclarator:
+      return "array (with static) declarator";
+    case NodeType::ArrayVLADeclarator:
+      return "variable length array declarator";
+    case NodeType::FunctionDeclarator:
+      return "function declarator";
     case NodeType::None:
       Unreachable();
   }

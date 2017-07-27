@@ -109,6 +109,12 @@ enum class NodeType
   PointerMemberAccess,
   PostfixIncrement,
   PostfixDecrement,
+
+  PointerDeclarator,
+  ArrayDeclarator,
+  ArrayStaticDeclarator,
+  ArrayVLADeclarator,
+  FunctionDeclarator,
 };
 
 auto to_string(const NodeType node_type) -> const char*;
