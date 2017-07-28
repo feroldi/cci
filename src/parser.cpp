@@ -1382,6 +1382,25 @@ auto parser_alignment_specifier(ParserContext& parser, TokenIterator begin, Toke
   return ParserResult(end, make_error(ParserStatus::GiveUp, begin, "alignment specifier"));
 }
 
+
+// declaration-specifier:
+//   storage-class-specifier
+//   type-specifier
+//   type-qualifier
+//   function-specifier
+//   alignment-specifier
+
+auto parser_declaration_specifier(ParserContext& parser, TokenIterator begin, TokenIterator end)
+  -> ParserResult
+{
+  return parser_one_of(parser, begin, end, "declaration specifier",
+                       parser_storage_class_specifier,
+                       parser_type_specifier,
+                       parser_type_qualifier,
+                       parser_function_specifier,
+                       parser_alignment_specifier);
+}
+
 // enum-specifier:
 //   'enum' identifier? '{' enumerator-list ','opt '}'
 //      -> ^(EnumSpecifier identifier? enumerator-list)
