@@ -598,6 +598,29 @@ auto parser_identifier(ParserContext& /*parser*/, TokenIterator begin, TokenIter
   return ParserResult(end, make_error(ParserStatus::GiveUp, begin, "identifier"));
 }
 
+// identifier-list:
+//   identifier
+//   identifier-list ',' identifier
+
+auto parser_identifier_list(ParserContext& parser, TokenIterator begin, TokenIterator end)
+  -> ParserResult
+{
+  if (begin != end && begin->type == TokenType::Identifier)
+  {
+    auto [it, idents] = parser_list_of(parser_identifier)(parser, begin, end);
+    ParserState ident_list = ParserSuccess(nullptr);
+
+    if (is<ParserSuccess>(idents))
+      add_node(ident_list, std::make_unique<SyntaxTree>(NodeType::IdentifierList));
+
+    add_state(ident_list, giveup_to_expected(std::move(idents), "identifiers separated by comma"));
+
+    return ParserResult(it, std::move(ident_list));
+  }
+
+  return ParserResult(end, make_error(ParserStatus::GiveUp, begin, "identifier list"));
+}
+
 // string-literal:
 //    encoding-prefix? '"' schar-sequence? '"'
 //
@@ -1257,7 +1280,7 @@ auto parser_declarator(ParserContext& parser, TokenIterator begin, TokenIterator
     auto [ptr_it, pointer_decl] = parser_pointer(parser, begin, end);
 
     if (!is_giveup(pointer_decl))
-      add_node(declarator, std::move(pointer_decl));
+      add_state(declarator, std::move(pointer_decl));
 
     auto it = ptr_it != end
       ? ptr_it
