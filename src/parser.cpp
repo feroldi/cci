@@ -322,6 +322,41 @@ auto parser_many_of(ParserContext& parser, TokenIterator begin, TokenIterator en
   return ParserResult(it, std::move(state));
 }
 
+template <typename Rule>
+auto parser_one_many_of(ParserContext& parser, TokenIterator begin, TokenIterator end,
+                        string_view expected_what, Rule rule)
+  -> ParserResult
+{
+  if (begin != end)
+  {
+    ParserState state = ParserSuccess(std::make_unique<SyntaxTree>());
+    auto it = begin;
+
+    if (auto [r_it, r_state] = rule(parser, it, end); !is_giveup(r_state))
+    {
+      add_state(state, std::move(r_state));
+      it = r_it;
+    }
+    else
+      return ParserResult(end, make_error(ParserStatus::GiveUp, begin, expected_what.data()));
+
+    while (it != end)
+    {
+      if (auto [r_it, r_state] = rule(parser, it, end); !is_giveup(r_state))
+      {
+        add_state(state, std::move(r_state));
+        it = r_it;
+      }
+      else
+        break;
+    }
+
+    return ParserResult(it, std::move(state));
+  }
+
+  return ParserResult(end, make_error(ParserStatus::GiveUp, begin, expected_what.data()));
+}
+
 template <typename Rule, typename Predicate>
 auto parser_one_many_of(ParserContext& parser, TokenIterator begin, TokenIterator end,
                         string_view expected_what, Rule rule, Predicate pred)
@@ -1218,7 +1253,7 @@ auto parser_declarator(ParserContext& parser, TokenIterator begin, TokenIterator
 {
   if (begin != end)
   {
-    ParserStatus declarator = ParserSuccess(std::make_unique<SyntaxTree>(NodeType::Declarator));
+    ParserState declarator = ParserSuccess(std::make_unique<SyntaxTree>(NodeType::Declarator));
     auto [ptr_it, pointer_decl] = parser_pointer(parser, begin, end);
 
     if (!is_giveup(pointer_decl))
@@ -1261,7 +1296,7 @@ auto parser_init_declarator(ParserContext& parser, TokenIterator begin, TokenIte
         auto [init_it, initializer] = parser_initializer(parser, std::next(decl_it), end);
         it = init_it;
 
-        add_state(init_decl, giveup_to_expected(stD::move(initializer), "initializer for init declarator"));
+        add_state(init_decl, giveup_to_expected(std::move(initializer), "initializer for init declarator"));
       }
 
       return ParserResult(it, std::move(init_decl));
@@ -1289,7 +1324,7 @@ auto parser_init_declarator_list(ParserContext& parser, TokenIterator begin, Tok
 //   'auto'
 //   'register'
 
-auto parser_storage_class_specifier(ParserContext& parser, TokenIterator begin, TokenIterator end)
+auto parser_storage_class_specifier(ParserContext& /*parser*/, TokenIterator begin, TokenIterator end)
   -> ParserResult
 {
   if (begin != end)
@@ -1369,10 +1404,10 @@ auto parser_alignment_specifier(ParserContext& parser, TokenIterator begin, Toke
     };
 
     auto [it, alignas_arg] = parser_parens(alignas_arg_production)(parser, std::next(begin), end);
-    ParserStatus alignas_spec = ParserSuccess(nullptr);
+    ParserState alignas_spec = ParserSuccess(nullptr);
 
     if (is<ParserSuccess>(alignas_spec))
-      add_node(alignas_spec, std::make_unique<SyntaxTree>(NodeType::Alignas, *begin));
+      add_node(alignas_spec, std::make_unique<SyntaxTree>(NodeType::AlignmentSpecifier, *begin));
 
     add_state(alignas_spec, giveup_to_expected(std::move(alignas_arg), "alignas argument"));
 
@@ -1399,6 +1434,65 @@ auto parser_declaration_specifier(ParserContext& parser, TokenIterator begin, To
                        parser_type_qualifier,
                        parser_function_specifier,
                        parser_alignment_specifier);
+}
+
+// declaration-specifiers:
+//   declaration-specifier+
+
+auto parser_declaration_specifiers(ParserContext& parser, TokenIterator begin, TokenIterator end)
+  -> ParserResult
+{
+  auto [it, decl_spec] = parser_one_many_of(parser, begin, end, "declaration specifiers", parser_declaration_specifier);
+  ParserState decl_specs = ParserSuccess(nullptr);
+
+  if (is<ParserSuccess>(decl_spec))
+    add_node(decl_specs, std::make_unique<SyntaxTree>(NodeType::DeclarationSpecifiers));
+
+  add_state(decl_specs, std::move(decl_spec));
+
+  return ParserResult(it, std::move(decl_specs));
+}
+
+// declaration:
+//   declaration-specifiers init-declarator-list ';'
+//   declaration-specifiers ';'
+//   static-assert-declaration
+
+auto parser_declaration(ParserContext& parser, TokenIterator begin, TokenIterator end)
+  -> ParserResult
+{
+  if (begin != end)
+  {
+    if (begin->type == TokenType::StaticAssert)
+    {
+      return parser_static_assert_declaration(parser, begin, end);
+    }
+
+    ParserState declaration = ParserSuccess(nullptr);
+    auto it = begin;
+
+    if (auto [decl_it, decl_specs] = parser_declaration_specifiers(parser, begin, end);
+        !is_giveup(decl_specs))
+    {
+      add_node(declaration, std::make_unique<SyntaxTree>(NodeType::Declaration));
+      add_state(declaration, std::move(decl_specs));
+      it = decl_it;
+
+      if (decl_it != end && decl_it->type != TokenType::Semicolon)
+      {
+        auto [init_it, init_decl_list] = parser_init_declarator_list(parser, decl_it, end);
+        it = init_it;
+        add_state(declaration, giveup_to_expected(std::move(init_decl_list)));
+      }
+
+      if (expect_token(declaration, it, end, TokenType::Semicolon))
+        std::advance(it, 1);
+
+      return ParserResult(it, std::move(declaration));
+    }
+  }
+
+  return ParserResult(end, make_error(ParserStatus::GiveUp, begin, "declaration"));
 }
 
 // enum-specifier:
