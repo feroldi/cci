@@ -1208,6 +1208,45 @@ auto parser_static_assert_declaration(ParserContext& parser, TokenIterator begin
   return ParserResult(end, make_error(ParserStatus::GiveUp, begin, "static assert declaration"));
 }
 
+// function-specifier:
+//   ('inline'
+//   '_Noreturn'
+//   '__stdcall')
+//   '__declspec' '(' identifier ')'
+
+auto parser_function_specifier(ParserContext& parser, TokenIterator begin, TokenIterator end)
+  -> ParserResult
+{
+  if (begin != end)
+  {
+    switch (begin->type)
+    {
+      case TokenType::Inline:
+      case TokenType::Noreturn:
+      case TokenType::Stdcall:
+        return ParserResult(std::next(begin), ParserSuccess(std::make_unique<SyntaxTree>(NodeType::FunctionSpecifier, *begin)));
+
+      case TokenType::Declspec:
+      {
+        auto [it, identifier] = parser_parens(parser_identifier)(parser, std::next(begin), end);
+        ParserState func_spec = ParserSuccess(nullptr);
+
+        if (is<ParserSuccess>(identifier))
+          func_spec = ParserSuccess(std::make_unique<SyntaxTree>(NodeType::FunctionSpecifier, *begin));
+
+        add_state(func_spec, giveup_to_expected(std::move(identifier), "declspec argument"));
+
+        return ParserResult(it, std::move(func_spec));
+      }
+
+      default:
+        break;
+    }
+  }
+
+  return ParserResult(end, make_error(ParserStatus::GiveUp, begin, "function specifier"));
+}
+
 // alignment-specifier:
 //   '_Alignas' '(' type-name ')'
 //   '_Alignas' '(' constant-expression ')'
