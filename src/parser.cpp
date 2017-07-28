@@ -1238,6 +1238,39 @@ auto parser_declarator(ParserContext& parser, TokenIterator begin, TokenIterator
   return ParserResult(end, make_error(ParserStatus::GiveUp, begin, "declarator"));
 }
 
+// init-declarator:
+//   declarator
+//   declarator '=' initializer
+
+auto parser_init_declarator(ParserContext& parser, TokenIterator begin, TokenIterator end)
+  -> ParserResult
+{
+  if (begin != end)
+  {
+    auto [decl_it, declarator] = parser_declarator(parser, begin, end);
+
+    if (!is_giveup(declarator))
+    {
+      ParserState init_decl = ParserSuccess(std::make_unique<SyntaxTree>(NodeType::InitDeclarator));
+      auto it = decl_it;
+
+      add_state(init_decl, std::move(declarator));
+
+      if (it != end && it->type == TokenType::Assign)
+      {
+        auto [init_it, initializer] = parser_initializer(parser, std::next(decl_it), end);
+        it = init_it;
+
+        add_state(init_decl, giveup_to_expected(stD::move(initializer), "initializer for init declarator"));
+      }
+
+      return ParserResult(it, std::move(init_decl));
+    }
+  }
+
+  return ParserResult(end, make_error(ParserStatus::GiveUp, begin, "init declarator"));
+}
+
 // storage-class-specifier:
 //   'typedef'
 //   'extern'
