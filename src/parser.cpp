@@ -1271,6 +1271,16 @@ auto parser_init_declarator(ParserContext& parser, TokenIterator begin, TokenIte
   return ParserResult(end, make_error(ParserStatus::GiveUp, begin, "init declarator"));
 }
 
+// init-declarator-list:
+//   init-declarator
+//   init-declarator-list ',' init-declarator
+
+auto parser_init_declarator_list(ParserContext& parser, TokenIterator begin, TokenIterator end)
+  -> ParserResult
+{
+  return parser_list_of(parser_init_declarator)(parser, begin, end);
+}
+
 // storage-class-specifier:
 //   'typedef'
 //   'extern'
