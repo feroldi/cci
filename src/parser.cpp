@@ -1208,6 +1208,36 @@ auto parser_static_assert_declaration(ParserContext& parser, TokenIterator begin
   return ParserResult(end, make_error(ParserStatus::GiveUp, begin, "static assert declaration"));
 }
 
+// declarator:
+//   pointer? direct-declarator
+
+auto parser_pointer(ParserContext& parser, TokenIterator begin, TokenIterator end) -> ParserResult;
+
+auto parser_declarator(ParserContext& parser, TokenIterator begin, TokenIterator end)
+  -> ParserResult
+{
+  if (begin != end)
+  {
+    ParserStatus declarator = ParserSuccess(std::make_unique<SyntaxTree>(NodeType::Declarator));
+    auto [ptr_it, pointer_decl] = parser_pointer(parser, begin, end);
+
+    if (!is_giveup(pointer_decl))
+      add_node(declarator, std::move(pointer_decl));
+
+    auto it = ptr_it != end
+      ? ptr_it
+      : begin;
+
+    auto [dir_it, direct_decl] = parser_direct_declarator(parser, it, end);
+
+    add_state(declarator, giveup_to_expected(std::move(direct_decl), "direct declarator for declarator"));
+
+    return ParserResult(dir_it, std::move(declarator));
+  }
+
+  return ParserResult(end, make_error(ParserStatus::GiveUp, begin, "declarator"));
+}
+
 // storage-class-specifier:
 //   'typedef'
 //   'extern'
