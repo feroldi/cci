@@ -114,6 +114,8 @@ enum class TokenType
   Generic,
   Imaginary,
   Noreturn,
+  Stdcall,
+  Declspec,
   StaticAssert,
   ThreadLocal,
 

@@ -1208,6 +1208,37 @@ auto parser_static_assert_declaration(ParserContext& parser, TokenIterator begin
   return ParserResult(end, make_error(ParserStatus::GiveUp, begin, "static assert declaration"));
 }
 
+// alignment-specifier:
+//   '_Alignas' '(' type-name ')'
+//   '_Alignas' '(' constant-expression ')'
+
+auto parser_alignment_specifier(ParserContext& parser, TokenIterator begin, TokenIterator end)
+  -> ParserResult
+{
+  if (begin != end && begin->type == TokenType::Alignas)
+  {
+    auto alignas_arg_production = [] (ParserContext& parser, TokenIterator begin, TokenIterator end)
+      -> ParserResult
+    {
+      return parser_one_of(parser, begin, end, "type name or constant expression",
+                           parser_type_name,
+                           parser_constant_expression);
+    };
+
+    auto [it, alignas_arg] = parser_parens(alignas_arg_production)(parser, std::next(begin), end);
+    ParserStatus alignas_spec = ParserSuccess(nullptr);
+
+    if (is<ParserSuccess>(alignas_spec))
+      add_node(alignas_spec, std::make_unique<SyntaxTree>(NodeType::Alignas, *begin));
+
+    add_state(alignas_spec, giveup_to_expected(std::move(alignas_arg), "alignas argument"));
+
+    return ParserResult(it, std::move(alignas_spec));
+  }
+
+  return ParserResult(end, make_error(ParserStatus::GiveUp, begin, "alignment specifier"));
+}
+
 // enum-specifier:
 //   'enum' identifier? '{' enumerator-list ','opt '}'
 //      -> ^(EnumSpecifier identifier? enumerator-list)
@@ -1352,13 +1383,6 @@ auto parser_enum_specifier(ParserContext& parser, TokenIterator begin, TokenIter
 // struct-declarator:
 //   declarator
 //   declarator? ':' constant-expression
-
-// TODO
-auto parser_declarator(ParserContext& parser, TokenIterator begin, TokenIterator end)
-  -> ParserResult
-{
-  return parser_identifier(parser, begin, end);
-}
 
 auto parser_struct_or_union_specifier(ParserContext& parser, TokenIterator begin, TokenIterator end)
   -> ParserResult

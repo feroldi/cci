@@ -106,6 +106,8 @@ static const std::pair<TokenType, string_view> TOKEN_RESERVED_NAMES[] = {
   {TokenType::Generic, "_Generic"},
   {TokenType::Imaginary, "_Imaginary"},
   {TokenType::Noreturn, "_Noreturn"},
+  {TokenType::Stdcall, "__stdcall"},
+  {TokenType::Declspec, "__declspec"},
   {TokenType::StaticAssert, "_Static_assert"},
   {TokenType::ThreadLocal, "_Thread_local"},
 
@@ -900,6 +902,10 @@ auto to_string(TokenType token) -> const char*
       return "_Imaginary";
     case TokenType::Noreturn:
       return "_Noreturn";
+    case TokenType::Stdcall:
+      return "__stdcall";
+    case TokenType::Declspec:
+      return "__declspec";
     case TokenType::StaticAssert:
       return "_StaticAssert";
     case TokenType::ThreadLocal:
