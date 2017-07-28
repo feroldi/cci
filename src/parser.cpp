@@ -1208,6 +1208,37 @@ auto parser_static_assert_declaration(ParserContext& parser, TokenIterator begin
   return ParserResult(end, make_error(ParserStatus::GiveUp, begin, "static assert declaration"));
 }
 
+// storage-class-specifier:
+//   'typedef'
+//   'extern'
+//   'static'
+//   '_Thread_local'
+//   'auto'
+//   'register'
+
+auto parser_storage_class_specifier(ParserContext& parser, TokenIterator begin, TokenIterator end)
+  -> ParserResult
+{
+  if (begin != end)
+  {
+    switch (begin->type)
+    {
+      case TokenType::Typedef:
+      case TokenType::Extern:
+      case TokenType::Static:
+      case TokenType::ThreadLocal:
+      case TokenType::Auto:
+      case TokenType::Register:
+        return ParserResult(std::next(begin), ParserSuccess(std::make_unique<SyntaxTree>(NodeType::StorageClassSpecifier, *begin)));
+
+      default:
+        break;
+    }
+  }
+
+  return ParserResult(end, make_error(ParserStatus::GiveUp, begin, "storage class specifier"));
+}
+
 // function-specifier:
 //   ('inline'
 //   '_Noreturn'
