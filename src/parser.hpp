@@ -115,6 +115,7 @@ enum class NodeType
   ArrayStaticDeclarator,
   ArrayVLADeclarator,
   FunctionDeclarator,
+  VariadicParameter,
 };
 
 auto to_string(const NodeType node_type) -> const char*;
