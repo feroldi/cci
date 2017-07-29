@@ -81,7 +81,7 @@ using ParserFailure = std::vector<ParserError>;
 using ParserState = variant<ParserFailure, ParserSuccess>;
 
 // Return type of a parser.
-struct ParserResult
+struct [[nodiscard]] ParserResult
 {
   TokenIterator next_token; //< AST is parsed until `next_token`.
   ParserState state;        //< Result of a parser.
@@ -561,7 +561,6 @@ auto parser_list_of(Rule rule, bool allow_trailing_comma = false)
           {
             break;
           }
-
         }
 
         if (r_it == end || r_it->type != TokenType::Comma)
@@ -732,11 +731,47 @@ auto parser_constant(ParserContext& /*parser*/, TokenIterator begin, TokenIterat
   }
 }
 
-// TODO
+// parameter-type-list:
+//   parameter-list
+//   parameter-list ',' '...'
+
 auto parser_parameter_type_list(ParserContext& parser, TokenIterator begin, TokenIterator end)
   -> ParserResult
 {
-  return parser_identifier(parser, begin, end);
+  if (begin != end)
+  {
+    ParserState parameters = ParserSuccess(std::make_unique<SyntaxTree>(NodeType::ParameterList));
+    auto it = begin;
+
+    // parameter-list:
+    //   parameter-declaration
+    //   parameter-list ',' parameter-declaration
+
+    while (it != end)
+    {
+      auto [next_it, param] = parser_parameter_declaration(parser, it, end);
+
+      add_state(parameters, giveup_to_expected(std::move(param)));
+      it = next_it;
+
+      if (it != end && it->type == TokenType::Comma)
+        std::advance(it, 1);
+
+      if (it != end && it->type == TokenType::Ellipsis)
+      {
+        add_node(parameters, std::make_unique<SyntaxTree>(NodeType::VariadicParameter, *it));
+        std::advance(it, 1);
+        break;
+      }
+
+      if (r_it == end || r_it->type != TokenType::Comma)
+        break;
+    }
+
+    return ParserResult(it, std::move(parameters));
+  }
+
+  return ParserResult(end, make_error(ParserStatus::GiveUp, begin, "parameter type list"));
 }
 
 // typedef-name:
@@ -958,8 +993,8 @@ auto parser_pointer(ParserContext& parser, TokenIterator begin, TokenIterator en
 //   '[' type-qualifier-list 'static' assignment-expression ']'
 //  -> ^(ArrayStaticDeclarator TypeQualifierList AssignmentExpression)
 //
-//   '[' type-qualifier-list? '*' ']'
-//  -> ^(ArrayVLADeclarator TypeQualifierList?)
+//   '[' '*' ']'
+//  -> ^(ArrayVLADeclarator)
 //
 //   direct-abstract-declarator '[' type-qualifier-list? assignment-expression? ']'
 //   direct-abstract-declarator '[' 'static' type-qualifier-list? assignment-expression ']'
@@ -1026,18 +1061,6 @@ auto parser_direct_abstract_declarator(ParserContext& parser, TokenIterator begi
 
           add_state(decl, giveup_to_expected(std::move(qualifiers), "qualifiers for array declarator"));
           add_state(decl, giveup_to_expected(std::move(assign_expr), "expression for array length"));
-
-          return ParserResult(it, std::move(decl));
-        }
-
-        // '[' type-qualifier-list? '*' ']'
-        if (qual_it != end && qual_it->type == TokenType::Times)
-        {
-          ParserState decl = ParserSuccess(std::make_unique<SyntaxTree>(NodeType::ArrayVLADeclarator, array_token));
-          it = /*skip '*'*/ std::next(qual_it);
-
-          if (!is_giveup(qualifiers))
-            add_state(decl, std::move(qualifiers));
 
           return ParserResult(it, std::move(decl));
         }
@@ -1282,6 +1305,102 @@ auto parser_declarator(ParserContext& parser, TokenIterator begin, TokenIterator
 auto parser_direct_declarator(ParserContext& parser, TokenIterator begin, TokenIterator end)
   -> ParserResult
 {
+  auto array_declarator_production = [] (ParserContext& parser, TokenIterator begin, TokenIterator end)
+    -> ParserResult
+  {
+    if (begin != end)
+    {
+      auto array_token = *std::prev(begin);
+      auto it = begin;
+
+      // '[' ']'
+      if (it->type == TokenType::RightBraces)
+      {
+        return ParserResult(it, ParserSuccess(std::make_unique<SyntaxTree>(NodeType::ArrayVLADeclarator, array_token)));
+      }
+
+      // '[' '*' ']'
+      if (it->type == TokenType::Times && std::next(it) != end && std::next(it)->type == TokenType::RightBraces)
+      {
+        return ParserResult(std::next(it), ParserSuccess(std::make_unique<SyntaxTree>(NodeType::ArrayVLADeclarator, array_token)));
+      }
+
+      // '[' 'static' type-qualifier-list? assignment-expression ']'
+      if (it->type == TokenType::Static)
+      {
+        ParserState decl = ParserSuccess(std::make_unique<SyntaxTree>(NodeType::ArrayStaticDeclarator, array_token));
+        std::advance(it, 1);
+
+        if (auto [qual_it, qual_list] = parser_type_qualifier_list(parser, it, end);
+            !is_giveup(qual_list))
+        {
+          add_state(decl, giveup_to_expected(std::move(qual_list), "qualifiers for array declarator in direct declarator"));
+          it = qual_it;
+        }
+
+        auto [assign_it, assign_expr] = parser_assignment_expression(parser, it, end);
+        add_state(decl, giveup_to_expected(std::move(assign_expr), "expression for array length in direct declarator"));
+        it = assign_it;
+
+        return ParserResult(it, std::move(decl));
+      }
+      else
+      {
+        auto [qual_it, qualifiers] = parser_type_qualifier_list(parser, it, end);
+
+        // '[' type-qualifier-list 'static' assignment-expression ']'
+        //  -> ^(ArrayStaticDeclarator TypeQualifierList AssignmentExpression)
+        if (!is_giveup(qualifiers) && qual_it != end && qual_it->type == TokenType::Static)
+        {
+          auto [assign_it, assign_expr] = parser_assignment_expression(parser, /*skip 'static'*/ std::next(qual_it), end);
+          ParserState decl = ParserSuccess(nullptr);
+          it = assign_it;
+
+          if (is<ParserSuccess>(assign_expr))
+            decl = ParserSuccess(std::make_unique<SyntaxTree>(NodeType::ArrayStaticDeclarator, array_token));
+
+          add_state(decl, giveup_to_expected(std::move(qualifiers), "qualifiers for array declarator in direct declarator"));
+          add_state(decl, giveup_to_expected(std::move(assign_expr), "expression for array length in direct declarator"));
+
+          return ParserResult(it, std::move(decl));
+        }
+
+        // '[' type-qualifier-list? '*' ']'
+        if (qual_it != end && qual_it->type == TokenType::Times)
+        {
+          ParserState decl = ParserSuccess(std::make_unique<SyntaxTree>(NodeType::ArrayVLADeclarator, array_token));
+          it = /*skip '*'*/ std::next(qual_it);
+
+          if (!is_giveup(qualifiers))
+            add_state(decl, std::move(qualifiers));
+
+          return ParserResult(it, std::move(decl));
+        }
+
+        // '[' type-qualifier-list? assignment-expression? ']'
+        auto [assign_it, assign_expr] = parser_assignment_expression(parser, (qual_it != end)? qual_it : it, end);
+
+        ParserState decl = ParserSuccess(std::make_unique<SyntaxTree>(NodeType::ArrayDeclarator, array_token));
+
+        if (!is_giveup(qualifiers))
+        {
+          add_state(decl, std::move(qualifiers));
+          it = qual_it;
+        }
+
+        if (!is_giveup(assign_expr))
+        {
+          add_state(decl, std::move(assign_expr));
+          it = assign_it;
+        }
+
+        return ParserResult(it, std::move(decl));
+      }
+    }
+
+    return ParserResult(end, make_error(ParserStatus::GiveUp, begin, "direct declarator"));
+  };
+
   if (begin != end && (begin->type == TokenType::Identifier || begin->type == TokenType::LeftParen))
   {
     auto ident_or_decl_production = [] (ParserContext& parser, TokenIterator begin, TokenIterator end)
@@ -1309,8 +1428,15 @@ auto parser_direct_declarator(ParserContext& parser, TokenIterator begin, TokenI
         // '[' type-qualifier-list? '*' ']'
         if (it->type == TokenType::LeftBraces)
         {
-          throw std::logic_error("missing implementation for parser_direct_declarator '['");
-          // ...
+          auto [arr_it, arr_decl] =
+            parser_parens(array_declarator_production, TokenType::LeftBraces, TokenType::RightBraces)(parser, it, end);
+
+          add_state(direct_decl, giveup_to_expected(std::move(arr_decl)));
+          it = arr_it;
+
+          ParserState super_decl = ParserSuccess(std::make_unique<SyntaxTree>(NodeType::DirectDeclarator));
+          add_state(super_decl, std::move(direct_decl));
+          direct_decl = std::move(super_decl);
         }
 
         // '(' parameter-type-list ')'
@@ -1327,7 +1453,6 @@ auto parser_direct_declarator(ParserContext& parser, TokenIterator begin, TokenI
           it = param_or_id_it;
 
           ParserState super_decl = ParserSuccess(std::make_unique<SyntaxTree>(NodeType::DirectDeclarator));
-
           add_state(super_decl, std::move(direct_decl));
           direct_decl = std::move(super_decl);
         }
@@ -2042,31 +2167,6 @@ auto parser_initializer_list(ParserContext& parser, TokenIterator begin, TokenIt
 
   auto [it, inits] = parser_list_of(init_list_production, /*allow_trailing_comma=*/ true)(parser, begin, end);
 
-  // Do `parser_list_of` manually.
-  /*
-  ParserState inits = ParserSuccess(std::make_unique<SyntaxTree>());
-  auto it = begin;
-
-  while (it != end)
-  {
-    auto [il_it, init_list] = init_list_production(parser, it, end);
-
-    Ensures(il_it <= end);
-
-    add_state(inits, giveup_to_expected(std::move(init_list), "initializer list"));
-    it = il_it;
-
-    if (it != end && it->type == TokenType::Comma)
-      std::advance(it, 1);
-
-    if (it != end && it->type == TokenType::RightCurlyBraces)
-      break;
-
-    if (il_it == end || il_it->type != TokenType::Comma)
-      break;
-  }
-  */
-
   if (!is_giveup(inits))
   {
     ParserState init_list = ParserSuccess(std::make_unique<SyntaxTree>(NodeType::InitializerList));
@@ -2098,11 +2198,10 @@ auto parser_initializer_list(ParserContext& parser, TokenIterator begin, TokenIt
 //    postfix-expression '--' -> ^(PostfixDecrement postfix-expr)
 //
 // compound-literal:
-//    '(' type-name ')' '{' initializer-list '}'     //< TODO
-//    '(' type-name ')' '{' initializer-list ',' '}' //< TODO
+//    '(' type-name ')' '{' initializer-list '}'
+//    '(' type-name ')' '{' initializer-list ',' '}'
 //      -> ^(CompoundLiteral type init-list)
 
-// TODO
 auto parser_postfix_expression(ParserContext& parser, TokenIterator begin, TokenIterator end)
   -> ParserResult
 {
@@ -2869,7 +2968,7 @@ auto SyntaxTree::parse(ProgramContext& program, const TokenStream& tokens)
 {
   ParserContext parser{program, tokens};
 
-  auto result = parser_declarator(parser, tokens.begin(), tokens.end());
+  auto result = parser_direct_declarator(parser, tokens.begin(), tokens.end());
   result.state = giveup_to_expected(std::move(result.state));
 
   if (is<ParserSuccess>(result.state))
@@ -3117,6 +3216,8 @@ auto to_string(const NodeType node_type) -> const char*
       return "variable length array declarator";
     case NodeType::FunctionDeclarator:
       return "function declarator";
+    case NodeType::VariadicParameter:
+      return "'...' (variadic parameter)";
     case NodeType::None:
       Unreachable();
   }
