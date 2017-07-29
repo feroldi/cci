@@ -3009,7 +3009,7 @@ auto parser_primary_expression(ParserContext& parser, TokenIterator begin, Token
 //   iteration-statement
 //   jump-statement
 
-
+auto parser_expression_statement(ParserContext& parser, TokenIterator begin, TokenIterator end) -> ParserResult;
 auto parser_selection_statement(ParserContext& parser, TokenIterator begin, TokenIterator end) -> ParserResult;
 auto parser_iteration_statement(ParserContext& parser, TokenIterator begin, TokenIterator end) -> ParserResult;
 auto parser_jump_statement(ParserContext& parser, TokenIterator begin, TokenIterator end) -> ParserResult;
@@ -3019,6 +3019,7 @@ auto parser_statement(ParserContext& parser, TokenIterator begin, TokenIterator 
   -> ParserResult
 {
   return parser_one_of(parser, begin, end, "statement",
+                       parser_expression_statement,
                        parser_selection_statement,
                        parser_iteration_statement,
                        parser_jump_statement);
@@ -3314,6 +3315,33 @@ auto parser_selection_statement(ParserContext& parser, TokenIterator begin, Toke
   }
 
   return ParserResult(end, make_error(ParserStatus::GiveUp, begin, "selection statement"));
+}
+
+// expression-statement:
+//   expression? ';'
+
+auto parser_expression_statement(ParserContext& parser, TokenIterator begin, TokenIterator end)
+  -> ParserResult
+{
+  if (begin != end)
+  {
+    if (begin->type == TokenType::Semicolon)
+    {
+      // Empty statement
+      return ParserResult(std::next(begin), ParserSuccess(std::make_unique<SyntaxTree>(NodeType::Nothing)));
+    }
+    else
+    {
+      auto [it, expr] = parser_expression(parser, begin, end);
+
+      if (expect_token(expr, it, end, TokenType::Semicolon))
+        std::advance(it, 1);
+
+      return ParserResult(it, std::move(expr));
+    }
+  }
+
+  return ParserResult(end, make_error(ParserStatus::GiveUp, begin, "expression statement"));
 }
 
 } // namespace
