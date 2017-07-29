@@ -1724,6 +1724,7 @@ auto parser_declaration_specifiers(ParserContext& parser, TokenIterator begin, T
 //   declaration-specifiers ';'
 //   static-assert-declaration
 
+[[maybe_unused]]
 auto parser_declaration(ParserContext& parser, TokenIterator begin, TokenIterator end)
   -> ParserResult
 {
@@ -2999,6 +3000,77 @@ auto parser_primary_expression(ParserContext& parser, TokenIterator begin, Token
                        parser_string_literal_list,
                        parser_parens_expr);
 }
+
+// jump-statement:
+//   'goto' identifier ';'
+//   'continue' ';'
+//   'break' ';'
+//   'return' expression? ';'
+
+auto parser_jump_statement(ParserContext& parser, TokenIterator begin, TokenIterator end)
+  -> ParserResult
+{
+  if (begin != end)
+  {
+    switch (begin->type)
+    {
+      case TokenType::Goto:
+      {
+        ParserState jump_stmt = ParserSuccess(nullptr);
+        auto [it, ident] = parser_identifier(parser, std::next(begin), end);
+
+        if (is<ParserSuccess>(ident))
+          add_node(jump_stmt, std::make_unique<SyntaxTree>(NodeType::JumpStatement, *begin));
+
+        add_state(jump_stmt, giveup_to_expected(std::move(ident), "label for goto statement"));
+
+        if (expect_token(jump_stmt, it, end, TokenType::Semicolon))
+          std::advance(it, 1);
+
+        return ParserResult(it, std::move(jump_stmt));
+      }
+
+      case TokenType::Continue:
+      case TokenType::Break:
+      {
+        ParserState jump_stmt = ParserSuccess(nullptr);
+        auto it = std::next(begin);
+
+        if (expect_token(jump_stmt, it, end, TokenType::Semicolon))
+          std::advance(it, 1);
+
+        if (is<ParserSuccess>(jump_stmt))
+          add_node(jump_stmt, std::make_unique<SyntaxTree>(NodeType::JumpStatement, *begin));
+
+        return ParserResult(it, std::move(jump_stmt));
+      }
+
+      case TokenType::Return:
+      {
+        ParserState jump_stmt = ParserSuccess(std::make_unique<SyntaxTree>(NodeType::JumpStatement, *begin));
+        auto [expr_it, expr] = parser_expression(parser, std::next(begin), end);
+        auto it = std::next(begin);
+
+        if (!is_giveup(expr))
+        {
+          add_state(jump_stmt, std::move(expr));
+          it = expr_it;
+        }
+
+        if (expect_token(jump_stmt, it, end, TokenType::Semicolon))
+          std::advance(it, 1);
+
+        return ParserResult(it, std::move(jump_stmt));
+      }
+
+      default:
+        break;
+    }
+  }
+
+  return ParserResult(end, make_error(ParserStatus::GiveUp, begin, "jump statement"));
+}
+
 
 } // namespace
 
