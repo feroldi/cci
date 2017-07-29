@@ -327,6 +327,11 @@ auto parser_one_many_of(ParserContext& parser, TokenIterator begin, TokenIterato
                         string_view expected_what, Rule rule)
   -> ParserResult
 {
+  auto is_empty_node = [] (ParserState& s) -> bool
+  {
+    return is<ParserSuccess>(s) && get<ParserSuccess>(s).tree->type() == NodeType::Nothing;
+  };
+
   if (begin != end)
   {
     ParserState state = ParserSuccess(std::make_unique<SyntaxTree>());
@@ -334,7 +339,10 @@ auto parser_one_many_of(ParserContext& parser, TokenIterator begin, TokenIterato
 
     if (auto [r_it, r_state] = rule(parser, it, end); !is_giveup(r_state))
     {
-      add_state(state, std::move(r_state));
+      if (!is_empty_node(r_state))
+        add_state(state, std::move(r_state));
+      else
+        parser.pedantic(it, "empty statement");
       it = r_it;
     }
     else
@@ -344,7 +352,10 @@ auto parser_one_many_of(ParserContext& parser, TokenIterator begin, TokenIterato
     {
       if (auto [r_it, r_state] = rule(parser, it, end); !is_giveup(r_state))
       {
-        add_state(state, std::move(r_state));
+        if (!is_empty_node(r_state))
+          add_state(state, std::move(r_state));
+        else if (parser.program.opts.pedantic)
+          parser.pedantic(it, "empty statement");
         it = r_it;
       }
       else
@@ -3009,6 +3020,7 @@ auto parser_primary_expression(ParserContext& parser, TokenIterator begin, Token
 //   iteration-statement
 //   jump-statement
 
+auto parser_compound_statement(ParserContext& parser, TokenIterator begin, TokenIterator end) -> ParserResult;
 auto parser_expression_statement(ParserContext& parser, TokenIterator begin, TokenIterator end) -> ParserResult;
 auto parser_selection_statement(ParserContext& parser, TokenIterator begin, TokenIterator end) -> ParserResult;
 auto parser_iteration_statement(ParserContext& parser, TokenIterator begin, TokenIterator end) -> ParserResult;
@@ -3019,6 +3031,7 @@ auto parser_statement(ParserContext& parser, TokenIterator begin, TokenIterator 
   -> ParserResult
 {
   return parser_one_of(parser, begin, end, "statement",
+                       parser_compound_statement,
                        parser_expression_statement,
                        parser_selection_statement,
                        parser_iteration_statement,
@@ -3318,7 +3331,7 @@ auto parser_selection_statement(ParserContext& parser, TokenIterator begin, Toke
 }
 
 // expression-statement:
-//   expression? ';'
+//   expression? ';' -> ^(Expression|Nothing)
 
 auto parser_expression_statement(ParserContext& parser, TokenIterator begin, TokenIterator end)
   -> ParserResult
@@ -3328,7 +3341,7 @@ auto parser_expression_statement(ParserContext& parser, TokenIterator begin, Tok
     if (begin->type == TokenType::Semicolon)
     {
       // Empty statement
-      return ParserResult(std::next(begin), ParserSuccess(std::make_unique<SyntaxTree>(NodeType::Nothing)));
+      return ParserResult(std::next(begin), ParserSuccess(std::make_unique<SyntaxTree>(NodeType::Nothing, *begin)));
     }
     else
     {
@@ -3342,6 +3355,64 @@ auto parser_expression_statement(ParserContext& parser, TokenIterator begin, Tok
   }
 
   return ParserResult(end, make_error(ParserStatus::GiveUp, begin, "expression statement"));
+}
+
+// compound-statement:
+//  '{' block-item-list? '}'
+//
+// block-item-list:
+//   block-item
+//   block-item-list block-item
+//
+// block-item:
+//   declaration
+//   statement
+//
+// -> ^(CompoundStatement (Declaration|Statement)*)
+
+auto parser_compound_statement(ParserContext& parser, TokenIterator begin, TokenIterator end)
+  -> ParserResult
+{
+  if (begin != end && begin->type == TokenType::LeftCurlyBraces)
+  {
+    auto block_item_list_production = [] (ParserContext& parser, TokenIterator begin, TokenIterator end)
+      -> ParserResult
+    {
+      auto decl_or_stmt = [] (ParserContext& parser, TokenIterator begin, TokenIterator end) -> ParserResult
+      {
+        return parser_one_of(parser, begin, end, "declaration or statement",
+                             parser_declaration,
+                             parser_statement);
+      };
+
+      auto [it, block_item_list] =
+        parser_one_many_of(parser, begin, end, "list of block items inside compound statement", decl_or_stmt);
+
+      if (is_giveup(block_item_list))
+      {
+        it = begin;
+        block_item_list = ParserSuccess(std::make_unique<SyntaxTree>(NodeType::Nothing));
+      }
+
+      return ParserResult(it, std::move(block_item_list));
+    };
+
+    // '{' block-item-list? '}'
+    auto [it, items] = parser_parens(block_item_list_production,
+                                     TokenType::LeftCurlyBraces,
+                                     TokenType::RightCurlyBraces)(parser, begin, end);
+
+    ParserState compound_stmt = ParserSuccess(nullptr);
+
+    if (is<ParserSuccess>(items))
+      add_node(compound_stmt, std::make_unique<SyntaxTree>(NodeType::CompoundStatement, *begin));
+
+    add_state(compound_stmt, giveup_to_expected(std::move(items)));
+
+    return ParserResult(it, std::move(compound_stmt));
+  }
+
+  return ParserResult(end, make_error(ParserStatus::GiveUp, begin, "compound statement"));
 }
 
 } // namespace
