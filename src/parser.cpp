@@ -1266,6 +1266,82 @@ auto parser_static_assert_declaration(ParserContext& parser, TokenIterator begin
   return ParserResult(end, make_error(ParserStatus::GiveUp, begin, "static assert declaration"));
 }
 
+// direct-declarator:
+//   identifier
+//   '(' declarator ')'
+//   direct-declarator '[' type-qualifier-list? assignment-expression? ']'
+//   direct-declarator '[' 'static' type-qualifier-list? assignment-expression ']'
+//   direct-declarator '[' type-qualifier-list 'static' assignment-expression ']'
+//   direct-declarator '[' type-qualifier-list? '*' ']'
+//   direct-declarator '(' parameter-type-list ')'
+//   direct-declarator '(' identifier-list? ')'
+
+auto parser_declarator(ParserContext& parser, TokenIterator begin, TokenIterator end) -> ParserResult;
+
+// TODO
+auto parser_direct_declarator(ParserContext& parser, TokenIterator begin, TokenIterator end)
+  -> ParserResult
+{
+  if (begin != end && (begin->type == TokenType::Identifier || begin->type == TokenType::LeftParen))
+  {
+    auto ident_or_decl_production = [] (ParserContext& parser, TokenIterator begin, TokenIterator end)
+      -> ParserResult
+    {
+      return parser_one_of(parser, begin, end, "identifier or declarator inside parentheses",
+                           parser_identifier,
+                           parser_parens(parser_declarator));
+    };
+
+    ParserState direct_decl = ParserSuccess(std::make_unique<SyntaxTree>(NodeType::DirectDeclarator));
+    auto it = begin;
+
+    if (auto [next_it, ident_or_decl] = ident_or_decl_production(parser, it, end);
+        !is_giveup(ident_or_decl))
+    {
+      add_state(direct_decl, giveup_to_expected(std::move(ident_or_decl)));
+      it = next_it;
+
+      while (it != end)
+      {
+        // '[' type-qualifier-list? assignment-expression? ']'
+        // '[' 'static' type-qualifier-list? assignment-expression ']'
+        // '[' type-qualifier-list 'static' assignment-expression ']'
+        // '[' type-qualifier-list? '*' ']'
+        if (it->type == TokenType::LeftBraces)
+        {
+          throw std::logic_error("missing implementation for parser_direct_declarator '['");
+          // ...
+        }
+
+        // '(' parameter-type-list ')'
+        // '(' identifier-list? ')'
+        else if (it->type == TokenType::LeftParen)
+        {
+          // FIXME swap rules
+          auto [param_or_id_it, param_or_id_list] =
+            parser_one_of(parser, it, end, "parameter type (or identifier) list",
+                          parser_parens(parser_identifier_list),
+                          parser_parens(parser_parameter_type_list));
+
+          add_state(direct_decl, giveup_to_expected(std::move(param_or_id_list)));
+          it = param_or_id_it;
+
+          ParserState super_decl = ParserSuccess(std::make_unique<SyntaxTree>(NodeType::DirectDeclarator));
+
+          add_state(super_decl, std::move(direct_decl));
+          direct_decl = std::move(super_decl);
+        }
+        else
+          break;
+      }
+
+      return ParserResult(it, std::move(direct_decl));
+    }
+  }
+
+  return ParserResult(end, make_error(ParserStatus::GiveUp, begin, "direct declarator"));
+}
+
 // declarator:
 //   pointer? direct-declarator
 
@@ -1299,6 +1375,8 @@ auto parser_declarator(ParserContext& parser, TokenIterator begin, TokenIterator
 // init-declarator:
 //   declarator
 //   declarator '=' initializer
+
+auto parser_initializer(ParserContext& parser, TokenIterator begin, TokenIterator end) -> ParserResult;
 
 auto parser_init_declarator(ParserContext& parser, TokenIterator begin, TokenIterator end)
   -> ParserResult
@@ -2791,7 +2869,7 @@ auto SyntaxTree::parse(ProgramContext& program, const TokenStream& tokens)
 {
   ParserContext parser{program, tokens};
 
-  auto result = parser_primary_expression(parser, tokens.begin(), tokens.end());
+  auto result = parser_declarator(parser, tokens.begin(), tokens.end());
   result.state = giveup_to_expected(std::move(result.state));
 
   if (is<ParserSuccess>(result.state))
