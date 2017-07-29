@@ -731,6 +731,49 @@ auto parser_constant(ParserContext& /*parser*/, TokenIterator begin, TokenIterat
   }
 }
 
+// parameter-declaration:
+//   declaration-specifiers declarator
+//   declaration-specifiers abstract-declarator?
+
+auto parser_declaration_specifiers(ParserContext& parser, TokenIterator begin, TokenIterator end) -> ParserResult;
+auto parser_declarator(ParserContext& parser, TokenIterator begin, TokenIterator end) -> ParserResult;
+auto parser_abstract_declarator(ParserContext& parser, TokenIterator begin, TokenIterator end) -> ParserResult;
+
+auto parser_parameter_declaration(ParserContext& parser, TokenIterator begin, TokenIterator end)
+  -> ParserResult
+{
+  if (begin != end)
+  {
+    if (auto [it, declspecs] = parser_declaration_specifiers(parser, begin, end);
+        !is_giveup(declspecs))
+    {
+      ParserState param_decl = ParserSuccess(nullptr);
+
+      if (is<ParserSuccess>(declspecs))
+        add_node(param_decl, std::make_unique<SyntaxTree>(NodeType::ParameterDeclaration));
+
+      add_state(param_decl, std::move(declspecs));
+
+      if (auto [decl_it, declarator] = parser_declarator(parser, it, end);
+          !is_giveup(declarator))
+      {
+        add_state(param_decl, std::move(declarator));
+        it = decl_it;
+      }
+      else if (auto [abs_it, abstract_decl] = parser_abstract_declarator(parser, it, end);
+               !is_giveup(abstract_decl))
+      {
+        add_state(param_decl, std::move(abstract_decl));
+        it = abs_it;
+      }
+
+      return ParserResult(it, std::move(param_decl));
+    }
+  }
+
+  return ParserResult(end, make_error(ParserStatus::GiveUp, begin, "parameter declaration"));
+}
+
 // parameter-type-list:
 //   parameter-list
 //   parameter-list ',' '...'
@@ -756,6 +799,8 @@ auto parser_parameter_type_list(ParserContext& parser, TokenIterator begin, Toke
 
       if (it != end && it->type == TokenType::Comma)
         std::advance(it, 1);
+      else
+        break;
 
       if (it != end && it->type == TokenType::Ellipsis)
       {
@@ -763,9 +808,6 @@ auto parser_parameter_type_list(ParserContext& parser, TokenIterator begin, Toke
         std::advance(it, 1);
         break;
       }
-
-      if (r_it == end || r_it->type != TokenType::Comma)
-        break;
     }
 
     return ParserResult(it, std::move(parameters));
@@ -1301,7 +1343,6 @@ auto parser_static_assert_declaration(ParserContext& parser, TokenIterator begin
 
 auto parser_declarator(ParserContext& parser, TokenIterator begin, TokenIterator end) -> ParserResult;
 
-// TODO
 auto parser_direct_declarator(ParserContext& parser, TokenIterator begin, TokenIterator end)
   -> ParserResult
 {
@@ -1443,7 +1484,6 @@ auto parser_direct_declarator(ParserContext& parser, TokenIterator begin, TokenI
         // '(' identifier-list? ')'
         else if (it->type == TokenType::LeftParen)
         {
-          // FIXME swap rules
           auto [param_or_id_it, param_or_id_list] =
             parser_one_of(parser, it, end, "parameter type (or identifier) list",
                           parser_parens(parser_identifier_list),
@@ -2968,7 +3008,7 @@ auto SyntaxTree::parse(ProgramContext& program, const TokenStream& tokens)
 {
   ParserContext parser{program, tokens};
 
-  auto result = parser_direct_declarator(parser, tokens.begin(), tokens.end());
+  auto result = parser_primary_expression(parser, tokens.begin(), tokens.end());
   result.state = giveup_to_expected(std::move(result.state));
 
   if (is<ParserSuccess>(result.state))
