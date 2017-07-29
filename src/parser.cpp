@@ -165,7 +165,7 @@ auto giveup_to_expected(ParserState state, string_view what) -> ParserState
         add_error(new_state, ParserError(ParserStatus::Error, e.where, fmt::format("expected {}", what.data())));
 
         if (!e.error.empty())
-          add_error(new_state, ParserError(ParserStatus::ErrorNote, e.where, fmt::format("{}", e.error)));
+          add_error(new_state, ParserError(ParserStatus::ErrorNote, e.where, fmt::format("{} instead of this", e.error)));
       }
       else
         add_error(new_state, std::move(e));
@@ -3001,6 +3001,27 @@ auto parser_primary_expression(ParserContext& parser, TokenIterator begin, Token
                        parser_parens_expr);
 }
 
+// statement:
+//   labeled-statement
+//   compound-statement
+//   expression-statement
+//   selection-statement
+//   iteration-statement
+//   jump-statement
+
+
+auto parser_jump_statement(ParserContext& parser, TokenIterator begin, TokenIterator end) -> ParserResult;
+auto parser_iteration_statement(ParserContext& parser, TokenIterator begin, TokenIterator end) -> ParserResult;
+
+// TODO
+auto parser_statement(ParserContext& parser, TokenIterator begin, TokenIterator end)
+  -> ParserResult
+{
+  return parser_one_of(parser, begin, end, "statement",
+                       parser_iteration_statement,
+                       parser_jump_statement);
+}
+
 // jump-statement:
 //   'goto' identifier ';'
 //   'continue' ';'
@@ -3071,6 +3092,159 @@ auto parser_jump_statement(ParserContext& parser, TokenIterator begin, TokenIter
   return ParserResult(end, make_error(ParserStatus::GiveUp, begin, "jump statement"));
 }
 
+// iteration-statement:
+//   'while' '(' expression ')' statement
+//   'do' statement 'while' '(' expression ')' ';'
+//   'for' '(' expression? ';' expression? ';' expression? ')' statement
+//   'for' '(' declaration expression? ';' expression? ')' statement
+
+auto parser_iteration_statement(ParserContext& parser, TokenIterator begin, TokenIterator end)
+  -> ParserResult
+{
+  // 'while' '(' expression ')' statement -> ^(IterationStatement Expression Statement)
+  auto while_statement = [] (ParserContext& parser, TokenIterator begin, TokenIterator end)
+    -> ParserResult
+  {
+    if (begin->type == TokenType::While)
+    {
+      ParserState iter_stmt = ParserSuccess(std::make_unique<SyntaxTree>(NodeType::IterationStatement, *begin));
+      auto it = std::next(begin);
+
+      auto [expr_it, expr] = parser_parens(parser_expression)(parser, it, end);
+      add_state(iter_stmt, giveup_to_expected(std::move(expr), "expression for while's condition"));
+      it = expr_it;
+
+      auto [stmt_it, statement] = parser_statement(parser, it, end);
+      add_state(iter_stmt, giveup_to_expected(std::move(statement), "statement for while's body"));
+      it = stmt_it;
+
+      return ParserResult(it, std::move(iter_stmt));
+    }
+
+    return ParserResult(end, make_error(ParserStatus::GiveUp, begin, ""));
+  };
+
+  // 'do' statement 'while' '(' expression ')' ';' -> ^(IterationStatement Statement Expression)
+  auto do_while_statement = [] (ParserContext& parser, TokenIterator begin, TokenIterator end)
+    -> ParserResult
+  {
+    if (begin->type == TokenType::Do)
+    {
+      ParserState iter_stmt = ParserSuccess(std::make_unique<SyntaxTree>(NodeType::IterationStatement, *begin));
+      auto it = std::next(begin);
+
+      auto [stmt_it, statement] = parser_statement(parser, it, end);
+      add_state(iter_stmt, giveup_to_expected(std::move(statement), "statement for do-while's body"));
+      it = stmt_it;
+
+      if (expect_token(iter_stmt, it, end, TokenType::While))
+        std::advance(it, 1);
+
+      auto [expr_it, expr] = parser_parens(parser_expression)(parser, it, end);
+      add_state(iter_stmt, giveup_to_expected(std::move(expr), "expression for do-while's condition"));
+      it = expr_it;
+
+      if (expect_token(iter_stmt, it, end, TokenType::Semicolon))
+        std::advance(it, 1);
+
+      return ParserResult(it, std::move(iter_stmt));
+    }
+
+    return ParserResult(end, make_error(ParserStatus::GiveUp, begin, ""));
+  };
+
+  // 'for' '(' expression? ';' expression? ';' expression? ')' statement
+  //    -> ^(IterationStatement (Expression|Nothing) (Expression|Nothing) (Expression|Nothing) Statement)
+  //
+  // 'for' '(' declaration expression? ';' expression? ')' statement
+  //    -> ^(IterationStatement Declaration (Expression|Nothing) (Expression|Nothing) Statement)
+  auto for_statement = [] (ParserContext& parser, TokenIterator begin, TokenIterator end)
+    -> ParserResult
+  {
+    if (begin->type == TokenType::For)
+    {
+      auto for_exprs_production = [] (ParserContext& parser, TokenIterator begin, TokenIterator end)
+        -> ParserResult
+      {
+        if (begin != end)
+        {
+          ParserState expressions = ParserSuccess(std::make_unique<SyntaxTree>());
+          auto it = begin;
+
+          // First expression, `for ( here ; ; )`
+          if (auto [decl_it, declaration] = parser_declaration(parser, it, end); !is_giveup(declaration))
+          {
+            add_state(expressions, std::move(declaration));
+            it = decl_it;
+          }
+          else
+          {
+            if (auto [expr_it, expr] = parser_expression(parser, it, end); !is_giveup(expr))
+            {
+              add_state(expressions, std::move(expr));
+              it = expr_it;
+            }
+            else
+              add_node(expressions, std::make_unique<SyntaxTree>(NodeType::Nothing));
+
+            if (expect_token(expressions, it, end, TokenType::Semicolon))
+              std::advance(it, 1);
+          }
+
+          // Second expression, `for ( ; here ; )`
+          if (auto [expr_it, expr] = parser_expression(parser, it, end); !is_giveup(expr))
+          {
+            add_state(expressions, std::move(expr));
+            it = expr_it;
+          }
+          else
+            add_node(expressions, std::make_unique<SyntaxTree>(NodeType::Nothing));
+
+          if (expect_token(expressions, it, end, TokenType::Semicolon))
+            std::advance(it, 1);
+
+          // Third expression, `for ( ; ; here )`
+          if (auto [expr_it, expr] = parser_expression(parser, it, end); !is_giveup(expr))
+          {
+            add_state(expressions, std::move(expr));
+            it = expr_it;
+          }
+          else
+            add_node(expressions, std::make_unique<SyntaxTree>(NodeType::Nothing));
+
+          return ParserResult(it, std::move(expressions));
+        }
+
+        return ParserResult(end, make_error(ParserStatus::GiveUp, begin, ""));
+      };
+
+      ParserState iter_stmt = ParserSuccess(std::make_unique<SyntaxTree>(NodeType::IterationStatement, *begin));
+      auto it = std::next(begin);
+
+      auto [exprs_it, expressions] = parser_parens(for_exprs_production)(parser, it, end);
+      add_state(iter_stmt, giveup_to_expected(std::move(expressions), "expressions separated by ';'"));
+      it = exprs_it;
+
+      auto [stmt_it, statement] = parser_statement(parser, it, end);
+      add_state(iter_stmt, giveup_to_expected(std::move(statement), "statement for for's body"));
+      it = stmt_it;
+
+      return ParserResult(it, std::move(iter_stmt));
+    }
+
+    return ParserResult(end, make_error(ParserStatus::GiveUp, begin, ""));
+  };
+
+  if (begin != end)
+  {
+    return parser_one_of(parser, begin, end, "iteration statement",
+                         while_statement,
+                         do_while_statement,
+                         for_statement);
+  }
+
+  return ParserResult(end, make_error(ParserStatus::GiveUp, begin, "iteration statement"));
+}
 
 } // namespace
 
@@ -3080,7 +3254,7 @@ auto SyntaxTree::parse(ProgramContext& program, const TokenStream& tokens)
 {
   ParserContext parser{program, tokens};
 
-  auto result = parser_primary_expression(parser, tokens.begin(), tokens.end());
+  auto result = parser_statement(parser, tokens.begin(), tokens.end());
   result.state = giveup_to_expected(std::move(result.state));
 
   if (is<ParserSuccess>(result.state))
@@ -3093,14 +3267,13 @@ auto SyntaxTree::parse(ProgramContext& program, const TokenStream& tokens)
   {
     for (const auto& fail : get<ParserFailure>(result.state))
     {
-      TokenIterator context = fail.where == tokens.end()
-        ? std::prev(fail.where) //< std::prev(tokens.end())->type == TokenType::Eof
-        : fail.where;
-
-      if (fail.status == ParserStatus::ErrorNote)
-        parser.note(context, "{}", fail.error.c_str());
-      else
-        parser.error(context, "{}", fail.error.c_str());
+      if (TokenIterator context = fail.where; context != tokens.end())
+      {
+        if (fail.status == ParserStatus::ErrorNote)
+          parser.note(context, "{}", fail.error.c_str());
+        else
+          parser.error(context, "{}", fail.error.c_str());
+      }
     }
 
     return nullptr;
@@ -3330,6 +3503,8 @@ auto to_string(const NodeType node_type) -> const char*
       return "function declarator";
     case NodeType::VariadicParameter:
       return "'...' (variadic parameter)";
+    case NodeType::Nothing:
+      return "empty";
     case NodeType::None:
       Unreachable();
   }
