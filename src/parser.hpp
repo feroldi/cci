@@ -13,7 +13,9 @@ namespace ccompiler
 
 enum class NodeType
 {
-  None,
+  None,    //< Node without a type
+  Nothing, //< Empty node
+
   PrimaryExpression,
   GenericSelection,
   GenericAssocList,
