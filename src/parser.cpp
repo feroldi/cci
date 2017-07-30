@@ -1311,7 +1311,7 @@ auto parser_static_assert_declaration(ParserContext& parser, TokenIterator begin
 
     auto [const_it, const_expr] = parser_constant_expression(parser, it, end);
     add_state(args, giveup_to_expected(std::move(const_expr)));
-    //it = const_it;
+    it = const_it;
 
     if (expect_token(args, it, end, TokenType::Comma))
       std::advance(it, 1);
