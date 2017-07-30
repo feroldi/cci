@@ -3020,17 +3020,18 @@ auto parser_primary_expression(ParserContext& parser, TokenIterator begin, Token
 //   iteration-statement
 //   jump-statement
 
+auto parser_labeled_statement(ParserContext& parser, TokenIterator begin, TokenIterator end) -> ParserResult;
 auto parser_compound_statement(ParserContext& parser, TokenIterator begin, TokenIterator end) -> ParserResult;
 auto parser_expression_statement(ParserContext& parser, TokenIterator begin, TokenIterator end) -> ParserResult;
 auto parser_selection_statement(ParserContext& parser, TokenIterator begin, TokenIterator end) -> ParserResult;
 auto parser_iteration_statement(ParserContext& parser, TokenIterator begin, TokenIterator end) -> ParserResult;
 auto parser_jump_statement(ParserContext& parser, TokenIterator begin, TokenIterator end) -> ParserResult;
 
-// TODO
 auto parser_statement(ParserContext& parser, TokenIterator begin, TokenIterator end)
   -> ParserResult
 {
   return parser_one_of(parser, begin, end, "statement",
+                       parser_labeled_statement,
                        parser_compound_statement,
                        parser_expression_statement,
                        parser_selection_statement,
@@ -3039,10 +3040,10 @@ auto parser_statement(ParserContext& parser, TokenIterator begin, TokenIterator 
 }
 
 // jump-statement:
-//   'goto' identifier ';'
-//   'continue' ';'
-//   'break' ';'
-//   'return' expression? ';'
+//   'goto' identifier ';' -> ^(JumpStatement Identifier)
+//   'continue' ';' -> ^(JumpStatement)
+//   'break' ';' -> ^(JumpStatement)
+//   'return' expression? ';' -> ^(JumpStatement (Expression)?)
 
 auto parser_jump_statement(ParserContext& parser, TokenIterator begin, TokenIterator end)
   -> ParserResult
@@ -3110,9 +3111,16 @@ auto parser_jump_statement(ParserContext& parser, TokenIterator begin, TokenIter
 
 // iteration-statement:
 //   'while' '(' expression ')' statement
+//      -> ^(IterationStatement Expression Statement)
+//
 //   'do' statement 'while' '(' expression ')' ';'
+//      -> ^(IterationStatement Statement Expression)
+//
 //   'for' '(' expression? ';' expression? ';' expression? ')' statement
+//      -> ^(IterationStatement (Expression|Nothing) (Expression|Nothing) (Expression|Nothing) Statement)
+//
 //   'for' '(' declaration expression? ';' expression? ')' statement
+//      -> ^(IterationStatement Declaration (Expression|Nothing) (Expression|Nothing) Statement)
 
 auto parser_iteration_statement(ParserContext& parser, TokenIterator begin, TokenIterator end)
   -> ParserResult
@@ -3263,8 +3271,11 @@ auto parser_iteration_statement(ParserContext& parser, TokenIterator begin, Toke
 }
 
 // selection-statement:
-//   'if' '(' expression ')' statement ('else' statement)? -> ^(SelectionStatement Expression Statement (Statement)?)
-//   'switch' '(' expression ')' statement -> ^(SelectionStatement Expression Statement)
+//   'if' '(' expression ')' statement ('else' statement)?
+//      -> ^(SelectionStatement Expression Statement (Statement)?)
+//
+//   'switch' '(' expression ')' statement
+//      -> ^(SelectionStatement Expression Statement)
 
 auto parser_selection_statement(ParserContext& parser, TokenIterator begin, TokenIterator end)
   -> ParserResult
@@ -3413,6 +3424,76 @@ auto parser_compound_statement(ParserContext& parser, TokenIterator begin, Token
   }
 
   return ParserResult(end, make_error(ParserStatus::GiveUp, begin, "compound statement"));
+}
+
+// labeled-statement:
+//   identifier ':' statement
+//      -> ^(LabeledStatement(identifier) Statement)
+//
+//   'case' constant-expression ':' statement
+//      -> ^(LabeledStatement ConstantExpression Statement)
+//
+//   'default' ':' statement
+//     -> ^(LabeledStatement Statement)
+
+auto parser_labeled_statement(ParserContext& parser, TokenIterator begin, TokenIterator end)
+  -> ParserResult
+{
+  if (begin != end)
+  {
+    // 'case' constant-expression ':' statement ^(LabeledStatement ConstantExpression Statement)
+    if (begin->type == TokenType::Case)
+    {
+      ParserState label_stmt = ParserSuccess(nullptr);
+
+      auto [expr_it, expr] = parser_constant_expression(parser, std::next(begin), end);
+
+      if (expect_token(expr, expr_it, end, TokenType::Colon))
+        std::advance(expr_it, 1);
+
+      auto [stmt_it, statement] = parser_statement(parser, expr_it, end);
+
+      if (is<ParserSuccess>(expr) && is<ParserSuccess>(statement))
+        add_node(label_stmt, std::make_unique<SyntaxTree>(NodeType::LabeledStatement, *begin));
+
+      add_state(label_stmt, giveup_to_expected(std::move(expr), "constant expression for case-label"));
+      add_state(label_stmt, giveup_to_expected(std::move(statement), "statement after case-label"));
+
+      return ParserResult(stmt_it, std::move(label_stmt));
+    }
+
+    // 'default' ':' statement -> ^(LabeledStatement Statement)
+    if (begin->type == TokenType::Default)
+    {
+      ParserState label_stmt = ParserSuccess(std::make_unique<SyntaxTree>(NodeType::LabeledStatement, *begin));
+      auto it = std::next(begin);
+
+      if (expect_token(label_stmt, it, end, TokenType::Colon))
+        std::advance(it, 1);
+
+      auto [stmt_it, statement] = parser_statement(parser, it, end);
+
+      add_state(label_stmt, giveup_to_expected(std::move(statement), "statement after default-label"));
+
+      return ParserResult(stmt_it, std::move(label_stmt));
+    }
+
+    // identifier ':' statement -> ^(LabeledStatement Identifier Statement)
+    if (begin->type == TokenType::Identifier && std::next(begin) != end && std::next(begin)->type == TokenType::Colon)
+    {
+      ParserState label_stmt = ParserSuccess(nullptr);
+      auto [stmt_it, statement] = parser_statement(parser, std::next(begin, 2), end);
+
+      if (is<ParserSuccess>(statement))
+        add_node(label_stmt, std::make_unique<SyntaxTree>(NodeType::LabeledStatement, *begin));
+
+      add_state(label_stmt, giveup_to_expected(std::move(statement), "statement after label"));
+
+      return ParserResult(stmt_it, std::move(label_stmt));
+    }
+  }
+
+  return ParserResult(end, make_error(ParserStatus::GiveUp, begin, "labeled statement"));
 }
 
 } // namespace
