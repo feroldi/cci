@@ -165,7 +165,10 @@ auto giveup_to_expected(ParserState state, string_view what) -> ParserState
         add_error(new_state, ParserError(ParserStatus::Error, e.where, fmt::format("expected {}", what.data())));
 
         if (!e.error.empty())
-          add_error(new_state, ParserError(ParserStatus::ErrorNote, e.where, fmt::format("{} instead of this", e.error)));
+        {
+          add_error(new_state, ParserError(ParserStatus::ErrorNote, e.where,
+                                           fmt::format("{} instead of this '{}'", e.error, to_string(e.where->type))));
+        }
       }
       else
         add_error(new_state, std::move(e));
@@ -210,7 +213,7 @@ void add_node(ParserState& state, std::unique_ptr<SyntaxTree> node)
     {
       state = ParserSuccess(std::move(node));
     }
-    else if (node->type() == NodeType::None)
+    else if (node->type() == NodeType::None || (!node->has_text() && node->child_count() == 1))
     {
       tree->take_children(std::move(node));
     }
@@ -483,12 +486,28 @@ auto parser_right_binary_operator(LhsRule lhs_rule, OpRule op_rule, RhsRule rhs_
   };
 }
 
+// Returns an empty (NodeType::Nothing) node on GiveUp.
+// Otherwise returns the rule's produced state.
+template <typename Rule>
+auto parser_opt(Rule rule)
+{
+  return [=] (ParserContext& parser, TokenIterator begin, TokenIterator end)
+    -> ParserResult
+  {
+    if (auto [it, state] = rule(parser, begin, end); !is_giveup(state))
+      return ParserResult(it, std::move(state));
+    else
+      return ParserResult(begin, ParserSuccess(std::make_unique<SyntaxTree>(NodeType::Nothing)));
+  };
+}
+
 auto expect_token(ParserState& state, TokenIterator it, TokenIterator end, TokenType token)
   -> bool
 {
   if (it != end && it->type != token)
   {
-    add_error(state, make_error(ParserStatus::Error, it, fmt::format("expected '{}'", to_string(token))));
+    add_error(state, make_error(ParserStatus::Error, it,
+                                fmt::format("expected '{}' before '{}'", to_string(token), to_string(it->type))));
     return false;
   }
   return it != end;
@@ -772,7 +791,7 @@ auto parser_parameter_declaration(ParserContext& parser, TokenIterator begin, To
         it = decl_it;
       }
       else if (auto [abs_it, abstract_decl] = parser_abstract_declarator(parser, it, end);
-               !is_giveup(abstract_decl))
+               is<ParserSuccess>(abstract_decl))
       {
         add_state(param_decl, std::move(abstract_decl));
         it = abs_it;
@@ -1034,8 +1053,7 @@ auto parser_pointer(ParserContext& parser, TokenIterator begin, TokenIterator en
 }
 
 // direct-abstract-declarator:
-//   '[' ']'
-//  -> ^(ArrayVLADeclarator)
+//   '(' abstract-declarator ')' // TODO
 //
 //   '[' type-qualifier-list? assignment-expression? ']'
 //  -> ^(ArrayDeclarator TypeQualifierList? AssignmentExpression?)
@@ -1048,6 +1066,8 @@ auto parser_pointer(ParserContext& parser, TokenIterator begin, TokenIterator en
 //
 //   '[' '*' ']'
 //  -> ^(ArrayVLADeclarator)
+//
+//  '(' parameter-type-list? ')' // TODO
 //
 //   direct-abstract-declarator '[' type-qualifier-list? assignment-expression? ']'
 //   direct-abstract-declarator '[' 'static' type-qualifier-list? assignment-expression ']'
@@ -1155,7 +1175,7 @@ auto parser_direct_abstract_declarator(ParserContext& parser, TokenIterator begi
       // direct-abstract-declarator '(' parameter-type-list? ')'
       if (it->type == TokenType::LeftParen)
       {
-        auto [params_it, parameters] = parser_parens(parser_parameter_type_list)(parser, it, end);
+        auto [params_it, parameters] = parser_parens(parser_opt(parser_parameter_type_list))(parser, it, end);
 
         ParserState func_decl = ParserSuccess(std::make_unique<SyntaxTree>(NodeType::FunctionDeclarator));
 
@@ -1497,8 +1517,8 @@ auto parser_direct_declarator(ParserContext& parser, TokenIterator begin, TokenI
         {
           auto [param_or_id_it, param_or_id_list] =
             parser_one_of(parser, it, end, "parameter type (or identifier) list",
-                          parser_parens(parser_identifier_list),
-                          parser_parens(parser_parameter_type_list));
+                          parser_parens(parser_parameter_type_list),
+                          parser_parens(parser_opt(parser_identifier_list)));
 
           add_state(direct_decl, giveup_to_expected(std::move(param_or_id_list)));
           it = param_or_id_it;
@@ -1540,7 +1560,7 @@ auto parser_declarator(ParserContext& parser, TokenIterator begin, TokenIterator
 
     auto [dir_it, direct_decl] = parser_direct_declarator(parser, it, end);
 
-    add_state(declarator, giveup_to_expected(std::move(direct_decl), "direct declarator for declarator"));
+    add_state(declarator, std::move(direct_decl));
 
     return ParserResult(dir_it, std::move(declarator));
   }
@@ -1735,7 +1755,6 @@ auto parser_declaration_specifiers(ParserContext& parser, TokenIterator begin, T
 //   declaration-specifiers ';'
 //   static-assert-declaration
 
-[[maybe_unused]]
 auto parser_declaration(ParserContext& parser, TokenIterator begin, TokenIterator end)
   -> ParserResult
 {
@@ -3496,18 +3515,146 @@ auto parser_labeled_statement(ParserContext& parser, TokenIterator begin, TokenI
   return ParserResult(end, make_error(ParserStatus::GiveUp, begin, "labeled statement"));
 }
 
+// function-definition:
+//   declaration-specifiers? declarator declaration-list? compound-statement
+//    -> ^(FunctionDefinition Declaration CompoundStatement DeclarationSpecifiers? DeclarationList?)
+//
+// declaration-list:
+//   declaration
+//   declaration-list declaration
+
+auto parser_function_definition(ParserContext& parser, TokenIterator begin, TokenIterator end)
+  -> ParserResult
+{
+  auto declaration_list = [] (ParserContext& parser, TokenIterator begin, TokenIterator end)
+    -> ParserResult
+  {
+    auto [it, decls] = parser_one_many_of(parser, begin, end, "declarations", parser_declaration);
+
+    if (is<ParserSuccess>(decls))
+    {
+      ParserState decl_list = ParserSuccess(std::make_unique<SyntaxTree>(NodeType::DeclarationList));
+      add_state(decl_list, std::move(decls));
+      decls = std::move(decl_list);
+    }
+
+    return ParserResult(it, std::move(decls));
+  };
+
+  if (begin != end)
+  {
+    ParserState func_def = ParserSuccess(nullptr);
+    optional<ParserState> declspecs;
+    optional<ParserState> declarations;
+    auto it = begin;
+
+    if (auto [specs_it, specs] = parser_declaration_specifiers(parser, it, end); !is_giveup(specs))
+    {
+      declspecs = std::move(specs);
+      it = specs_it;
+    }
+
+    auto [decl_it, declarator] = parser_declarator(parser, it, end);
+    it = decl_it;
+
+    if (is_giveup(declarator))
+      return ParserResult(it, std::move(declarator));
+
+    if (auto [decls_it, decls] = declaration_list(parser, it, end); !is_giveup(decls))
+    {
+      declarations = std::move(decls);
+      it = decls_it;
+    }
+
+    auto [comp_it, compound_stmt] = parser_compound_statement(parser, it, end);
+    it = comp_it;
+
+    if (is<ParserSuccess>(declarator) && is<ParserSuccess>(compound_stmt))
+      add_node(func_def, std::make_unique<SyntaxTree>(NodeType::FunctionDefinition));
+
+    add_state(func_def, std::move(declarator));
+    add_state(func_def, std::move(compound_stmt));
+
+    if (declspecs)
+      add_state(func_def, std::move(*declspecs));
+
+    if (declarations)
+      add_state(func_def, std::move(*declarations));
+
+    return ParserResult(it, std::move(func_def));
+  }
+
+  return ParserResult(end, make_error(ParserStatus::GiveUp, begin, "function definition"));
+}
+
+// compilation-unit:
+//   translation-unit? EOF
+//
+// translation-unit:
+//   external-declaration
+//   translation-unit external-declaration
+//
+// external-declaration:
+//   function-definition
+//   declaration
+//   ';'
+
+auto parser_compilation_unit(ParserContext& parser, TokenIterator begin, TokenIterator end)
+  -> ParserResult
+{
+  if (begin != end)
+  {
+    ParserState compilation_unit =
+      ParserSuccess(std::make_unique<SyntaxTree>(NodeType::CompilationUnit));
+    auto it = begin;
+
+    if (it->type != TokenType::Eof)
+    {
+      while (it != end)
+      {
+        if (it->type == TokenType::Eof)
+        {
+          std::advance(it, 1);
+          break;
+        }
+        else if (it->type == TokenType::Semicolon)
+        {
+          std::advance(it, 1);
+        }
+        else
+        {
+          auto [next_it, extern_decl] = parser_one_of(parser, it, end, "external declaration",
+                                                      parser_function_definition,
+                                                      parser_declaration);
+
+          add_state(compilation_unit, giveup_to_expected(std::move(extern_decl)));
+          it = next_it;
+        }
+      }
+    }
+    else
+    {
+      std::advance(it, 1);
+    }
+
+    return ParserResult(it, std::move(compilation_unit));
+  }
+
+
+  return ParserResult(end, make_error(ParserStatus::GiveUp, begin, "compilation unit"));
+}
+
 } // namespace
 
-// TODO
 auto SyntaxTree::parse(ProgramContext& program, const TokenStream& tokens)
   -> std::unique_ptr<SyntaxTree>
 {
   ParserContext parser{program, tokens};
 
-  auto [it, ast] = parser_statement(parser, tokens.begin(), tokens.end());
+  auto [it, ast] = parser_compilation_unit(parser, tokens.begin(), tokens.end());
   ast = giveup_to_expected(std::move(ast));
 
-  Ensures(it == tokens.end() || (it != tokens.end() && it->type == TokenType::Eof));
+  Ensures(it == tokens.end());
 
   if (is<ParserSuccess>(ast))
   {
