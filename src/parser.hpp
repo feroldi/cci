@@ -219,6 +219,28 @@ struct SyntaxTree
     return static_cast<string_view>(this->token.value().data);
   }
 
+  auto has_annotation() const -> bool
+  {
+    return !this->annotation_any().empty();
+  }
+
+  auto annotation_any() const -> const any&
+  {
+    return this->data;
+  }
+
+  template <typename T>
+  void set_annotation(T&& value)
+  {
+    this->data = std::forward<T>(value);
+  }
+
+  template <typename T>
+  auto annotation() -> T
+  {
+    return any_cast<T>(this->annotation_any());
+  }
+
   auto begin() noexcept -> iterator
   {
     return this->children.begin();

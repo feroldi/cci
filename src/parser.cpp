@@ -200,6 +200,53 @@ auto giveup_to_expected(ParserState state) -> ParserState
   return state;
 }
 
+// Checks if `node` is a candidate to node elision.
+auto should_elide(const SyntaxTree& node) -> bool
+{
+  // None nodes should be elided.
+  if (node.type() == NodeType::None)
+    return true;
+
+  // Nodes with annotation should not be elided.
+  if (node.has_annotation())
+    return false;
+
+  // List and higher-ground nodes should not be elided.
+  switch (node.type())
+  {
+    case NodeType::GenericAssocList:
+    case NodeType::ArgumentExpressionList:
+    case NodeType::Declaration:
+    case NodeType::DeclarationSpecifiers:
+    case NodeType::InitDeclaratorList:
+    case NodeType::StructDeclarationList:
+    case NodeType::SpecifierQualifierList:
+    case NodeType::StructDeclaratorList:
+    case NodeType::EnumeratorList:
+    case NodeType::FunctionSpecifier:
+    case NodeType::AlignmentSpecifier:
+    case NodeType::TypeQualifierList:
+    case NodeType::ParameterTypeList:
+    case NodeType::ParameterList:
+    case NodeType::IdentifierList:
+    case NodeType::InitializerList:
+    case NodeType::DesignatorList:
+    case NodeType::CompilationUnit:
+    case NodeType::TranslationUnit:
+    case NodeType::FunctionDeclarator:
+      return false;
+
+    default:
+      break;
+  }
+
+  // Nodes without text and containing only one child can be elided.
+  if (!node.has_text() && node.child_count() == 1)
+    return true;
+
+  return false;
+}
+
 // Adds a node to state's tree if it's a `ParserSuccess`.
 void add_node(ParserState& state, std::unique_ptr<SyntaxTree> node)
 {
@@ -213,7 +260,7 @@ void add_node(ParserState& state, std::unique_ptr<SyntaxTree> node)
     {
       state = ParserSuccess(std::move(node));
     }
-    else if (node->type() == NodeType::None || (!node->has_text() && node->child_count() == 1))
+    else if (node->type() == NodeType::None || should_elide(*node))
     {
       tree->take_children(std::move(node));
     }
@@ -631,6 +678,7 @@ auto parser_identifier(ParserContext& /*parser*/, TokenIterator begin, TokenIter
 //   identifier
 //   identifier-list ',' identifier
 
+[[maybe_unused]]
 auto parser_identifier_list(ParserContext& parser, TokenIterator begin, TokenIterator end)
   -> ParserResult
 {
@@ -791,7 +839,7 @@ auto parser_parameter_declaration(ParserContext& parser, TokenIterator begin, To
         it = decl_it;
       }
       else if (auto [abs_it, abstract_decl] = parser_abstract_declarator(parser, it, end);
-               is<ParserSuccess>(abstract_decl))
+               !is_giveup(abstract_decl))
       {
         add_state(param_decl, std::move(abstract_decl));
         it = abs_it;
@@ -819,6 +867,25 @@ auto parser_parameter_type_list(ParserContext& parser, TokenIterator begin, Toke
     // parameter-list:
     //   parameter-declaration
     //   parameter-list ',' parameter-declaration
+
+    {
+      auto [next_it, param] = parser_parameter_declaration(parser, it, end);
+
+      add_state(parameters, std::move(param));
+      it = next_it;
+
+      if (it != end && it->type == TokenType::Comma)
+        std::advance(it, 1);
+      else
+        return ParserResult(it, std::move(parameters));
+
+      if (it != end && it->type == TokenType::Ellipsis)
+      {
+        add_node(parameters, std::make_unique<SyntaxTree>(NodeType::VariadicParameter, *it));
+        std::advance(it, 1);
+        return ParserResult(it, std::move(parameters));
+      }
+    }
 
     while (it != end)
     {
@@ -1078,6 +1145,41 @@ auto parser_pointer(ParserContext& parser, TokenIterator begin, TokenIterator en
 auto parser_direct_abstract_declarator(ParserContext& parser, TokenIterator begin, TokenIterator end)
   -> ParserResult
 {
+  auto function_declarator = [] (ParserContext& parser, TokenIterator begin, TokenIterator end)
+    -> ParserResult
+  {
+    if (begin != end)
+    {
+      auto func_token = *std::prev(begin);
+      auto it = begin;
+
+      // '(' ')'
+      if (it->type == TokenType::RightParen)
+      {
+        return ParserResult(it, ParserSuccess(std::make_unique<SyntaxTree>(NodeType::FunctionDeclarator, func_token)));
+      }
+
+      else if (auto [ad_it, abs_decl] = parser_abstract_declarator(parser, it, end); !is_giveup(abs_decl))
+      {
+        return ParserResult(ad_it, std::move(abs_decl));
+      }
+      else
+      {
+        auto [param_it, params] = parser_parameter_type_list(parser, it, end);
+        ParserState func_decl = ParserSuccess(nullptr);
+
+        if (is<ParserSuccess>(params))
+          add_node(func_decl, std::make_unique<SyntaxTree>(NodeType::FunctionDeclarator, func_token));
+
+        add_state(func_decl, std::move(params));
+
+        return ParserResult(param_it, std::move(func_decl));
+      }
+    }
+
+    return ParserResult(end, make_error(ParserStatus::GiveUp, begin, "function declarator"));
+  };
+
   auto array_declarator = [] (ParserContext& parser, TokenIterator begin, TokenIterator end)
     -> ParserResult
   {
@@ -1164,8 +1266,11 @@ auto parser_direct_abstract_declarator(ParserContext& parser, TokenIterator begi
 
   if (begin != end)
   {
+    auto function_declarator_production = parser_parens(function_declarator);
     auto array_declarator_production = parser_parens(array_declarator, TokenType::LeftBraces, TokenType::RightBraces);
-    auto [it, array_decl] = array_declarator_production(parser, begin, end);
+    auto [it, array_decl] = parser_one_of(parser, begin, end, "function or array declarator",
+                                          function_declarator_production,
+                                          array_declarator_production);
 
     if (is_giveup(array_decl))
       return ParserResult(it, std::move(array_decl));
@@ -1512,13 +1617,9 @@ auto parser_direct_declarator(ParserContext& parser, TokenIterator begin, TokenI
         }
 
         // '(' parameter-type-list ')'
-        // '(' identifier-list? ')'
         else if (it->type == TokenType::LeftParen)
         {
-          auto [param_or_id_it, param_or_id_list] =
-            parser_one_of(parser, it, end, "parameter type (or identifier) list",
-                          parser_parens(parser_parameter_type_list),
-                          parser_parens(parser_opt(parser_identifier_list)));
+          auto [param_or_id_it, param_or_id_list] = parser_parens(parser_opt(parser_parameter_type_list))(parser, it, end);
 
           add_state(direct_decl, giveup_to_expected(std::move(param_or_id_list)));
           it = param_or_id_it;
@@ -3516,8 +3617,8 @@ auto parser_labeled_statement(ParserContext& parser, TokenIterator begin, TokenI
 }
 
 // function-definition:
-//   declaration-specifiers? declarator declaration-list? compound-statement
-//    -> ^(FunctionDefinition Declaration CompoundStatement DeclarationSpecifiers? DeclarationList?)
+//   declaration-specifiers declarator declaration-list? compound-statement
+//    -> ^(FunctionDefinition DeclarationSpecifiers Declaration CompoundStatement DeclarationList?)
 //
 // declaration-list:
 //   declaration
@@ -3544,15 +3645,14 @@ auto parser_function_definition(ParserContext& parser, TokenIterator begin, Toke
   if (begin != end)
   {
     ParserState func_def = ParserSuccess(nullptr);
-    optional<ParserState> declspecs;
     optional<ParserState> declarations;
     auto it = begin;
 
-    if (auto [specs_it, specs] = parser_declaration_specifiers(parser, it, end); !is_giveup(specs))
-    {
-      declspecs = std::move(specs);
-      it = specs_it;
-    }
+    auto [declspecs_it, declspecs] = parser_declaration_specifiers(parser, it, end);
+    it = declspecs_it;
+
+    if (is_giveup(declspecs))
+      return ParserResult(it, std::move(declspecs));
 
     auto [decl_it, declarator] = parser_declarator(parser, it, end);
     it = decl_it;
@@ -3572,11 +3672,9 @@ auto parser_function_definition(ParserContext& parser, TokenIterator begin, Toke
     if (is<ParserSuccess>(declarator) && is<ParserSuccess>(compound_stmt))
       add_node(func_def, std::make_unique<SyntaxTree>(NodeType::FunctionDefinition));
 
+    add_state(func_def, std::move(declspecs));
     add_state(func_def, std::move(declarator));
     add_state(func_def, std::move(compound_stmt));
-
-    if (declspecs)
-      add_state(func_def, std::move(*declspecs));
 
     if (declarations)
       add_state(func_def, std::move(*declarations));
