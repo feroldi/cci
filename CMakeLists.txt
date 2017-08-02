@@ -33,7 +33,7 @@ target_link_libraries(ccompiler
     c++
     c++abi
 
-    -fsanitize=address
+    #-fsanitize=address
 )
 
 target_compile_features(ccompiler PUBLIC cxx_std_17)
@@ -60,7 +60,7 @@ target_compile_options(ccompiler
     -Wno-format-nonliteral # for fmtlib
     -fno-limit-debug-info
 
-    -fsanitize=address
+    #-fsanitize=address
     -ftrapv
 )
 
