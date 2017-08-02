@@ -36,12 +36,19 @@ auto Options::parse_arguments([[maybe_unused]] int argc, char**& argv) -> Option
     {
       opts.output_filename = std::string(filename.begin(), filename.end());
     }
+    else if (auto dump_ast = opt_exists(argv, "", "-dump-ast"))
+    {
+      opts.dump_ast = true;
+    }
     else if (auto level = opt_get(argv, "-O", "--optimization-level"); !level.empty())
     {
       // FIXME should use exception-free `std::from_chars`
-      int lvl = std::stoi(std::string(level.begin(), level.end()));
-      assert(lvl > 0);
-      opts.optimization_level = static_cast<uint32_t>(lvl);
+      int level_num = std::stoi(std::string(level.begin(), level.end()));
+
+      if (level_num < 0)
+        throw ProgramFailure(fmt::format("-O={}: optimization level should be greater or equal to zero", level_num));
+
+      opts.optimization_level = static_cast<uint32_t>(level_num);
     }
     else if (auto warn_opt = opt_get(argv, "-W", ""); !warn_opt.empty())
     {

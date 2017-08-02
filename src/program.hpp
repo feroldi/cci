@@ -45,11 +45,13 @@ inline auto format_error(const TokenStream::TokenDebug& context, DiagLevel level
 
 struct Options
 {
+  // Compiler options
   bool pedantic = false;
   bool pedantic_errors = false; //< implies pedantic
   bool warning_as_error = false;
   bool syntax_only = false;
   bool show_help = false; //< exits program if true
+  bool dump_ast = false;
   std::string output_filename = "a.out";
   uint32_t optimization_level = 0;
   std::vector<std::string> source_filenames;

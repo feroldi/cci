@@ -42,7 +42,7 @@ int main(int argc, char** argv)
 
       auto tree = cc::SyntaxTree::parse(program, token_stream);
 
-      if (tree)
+      if (opts.dump_ast && tree)
       {
         tree->dump();
       }
