@@ -276,7 +276,7 @@ void add_state(ParserState& state, ParserState other)
 {
   if (is<ParserSuccess>(other))
   {
-    add_node(state, get<ParserSuccess>(std::move(other)).tree);
+    add_node(state, std::move(get<ParserSuccess>(other).tree));
   }
   else
   {
