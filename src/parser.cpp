@@ -3,6 +3,7 @@
 #include "cpp/contracts.hpp"
 #include "cpp/format.hpp"
 #include "cpp/variant.hpp"
+#include "cpp/scope_guard.hpp"
 #include "lexer.hpp"
 #include "source_manager.hpp"
 #include "program.hpp"
@@ -288,6 +289,11 @@ struct ParserContext
 {
   ProgramContext& program;
   const TokenStream& token_stream;
+
+  // Wether we're inside a parser_type_specifier.
+  // Useful to tell specifier/qualifier lists that
+  // structs and enums should be the last specifiers.
+  bool is_inside_specifiers = false;
 
   explicit ParserContext(ProgramContext& program, const TokenStream& tokens)
     : program(program),
@@ -1012,6 +1018,12 @@ auto parser_type_specifier(ParserContext& parser, TokenIterator begin, TokenIter
 
       default:
       {
+        auto guard = scope_exit([&, old=parser.is_inside_specifiers] {
+          parser.is_inside_specifiers = old;
+        });
+
+        parser.is_inside_specifiers = true;
+
         auto [type_it, sub_type_spec] =
           parser_one_of(parser, begin, end, "type specifier",
                         parser_atomic_type_specifier,
@@ -1642,6 +1654,25 @@ auto parser_direct_declarator(ParserContext& parser, TokenIterator begin, TokenI
 // declarator:
 //   pointer? direct-declarator
 
+auto parser_is_declarator([[maybe_unused]] ParserContext& parser, TokenIterator begin, TokenIterator end) -> bool
+{
+  if (begin != end)
+  {
+    switch (begin->type)
+    {
+      case TokenType::Times:
+      case TokenType::Identifier:
+      case TokenType::LeftParen:
+        return true;
+
+      default:
+        break;
+    }
+  }
+
+  return false;
+}
+
 auto parser_pointer(ParserContext& parser, TokenIterator begin, TokenIterator end) -> ParserResult;
 
 auto parser_declarator(ParserContext& parser, TokenIterator begin, TokenIterator end)
@@ -2004,6 +2035,14 @@ auto parser_enum_specifier(ParserContext& parser, TokenIterator begin, TokenIter
         add_error(enum_spec, make_error(ParserStatus::ErrorNote, begin, "for this enumerator specifier"));
       }
 
+      if (parser.is_inside_specifiers && is<ParserSuccess>(enum_spec) && it != end && it->type != TokenType::Semicolon)
+      {
+        if (!parser_is_declarator(parser, it, end))
+        {
+          add_error(enum_spec, make_error(ParserStatus::Error, std::prev(it), "missing ';' after enumerator declaration"));
+        }
+      }
+
       return ParserResult(it, std::move(enum_spec));
     }
   }
@@ -2045,11 +2084,13 @@ auto parser_struct_or_union_specifier(ParserContext& parser, TokenIterator begin
 
   if (begin != end && (begin->type == TokenType::Struct || begin->type == TokenType::Union))
   {
+    const auto struct_token = to_string(begin->type);
+
     // struct-declarator:
     //   declarator                           -> ^(StructDeclarator declarator)
     //   declarator? ':' constant-expression  -> ^(StructDeclarator declarator? constant-expression)
 
-    auto struct_declarator = [] (ParserContext& parser, TokenIterator begin, TokenIterator end)
+    auto struct_declarator = [struct_token] (ParserContext& parser, TokenIterator begin, TokenIterator end)
       -> ParserResult
     {
       if (begin != end)
@@ -2081,7 +2122,7 @@ auto parser_struct_or_union_specifier(ParserContext& parser, TokenIterator begin
         return ParserResult(it, std::move(struct_decl));
       }
 
-      return ParserResult(end, make_error(ParserStatus::GiveUp, begin, "struct declarator"));
+      return ParserResult(end, make_error(ParserStatus::GiveUp, begin, fmt::format("{} declarator", struct_token)));
     };
 
     // struct-declarator-list:
@@ -2094,7 +2135,7 @@ auto parser_struct_or_union_specifier(ParserContext& parser, TokenIterator begin
     //   specifier-qualifier-list struct-declarator-list? ';'
     //   static-assert-declaration
 
-    auto struct_declaration = [struct_declarator_list] (ParserContext& parser, TokenIterator begin, TokenIterator end)
+    auto struct_declaration = [struct_declarator_list, struct_token] (ParserContext& parser, TokenIterator begin, TokenIterator end)
       -> ParserResult
     {
       if (begin != end)
@@ -2127,17 +2168,17 @@ auto parser_struct_or_union_specifier(ParserContext& parser, TokenIterator begin
         }
       }
 
-      return ParserResult(end, make_error(ParserStatus::GiveUp, begin, "struct declaration"));
+      return ParserResult(end, make_error(ParserStatus::GiveUp, begin, fmt::format("{} declaration", struct_token)));
     };
 
     // struct-declaration-list:
     //   struct-declaration
     //   struct-declaration-list struct-declaration
 
-    auto struct_declaration_list = [struct_declaration] (ParserContext& parser, TokenIterator begin, TokenIterator end)
+    auto struct_declaration_list = [struct_declaration, struct_token] (ParserContext& parser, TokenIterator begin, TokenIterator end)
       -> ParserResult
     {
-      return parser_one_many_of(parser, begin, end, "struct declaration list", struct_declaration, [] (TokenIterator t) {
+      return parser_one_many_of(parser, begin, end, fmt::format("{} declaration list", struct_token), struct_declaration, [] (TokenIterator t) {
         return t->type != TokenType::RightCurlyBraces;
       });
     };
@@ -2175,7 +2216,16 @@ auto parser_struct_or_union_specifier(ParserContext& parser, TokenIterator begin
       else
       {
         add_error(struct_spec, make_error(ParserStatus::Error, it, "expected identifier or '{'"));
-        add_error(struct_spec, make_error(ParserStatus::ErrorNote, begin, fmt::format("for this {} specifier", to_string(begin->type))));
+        add_error(struct_spec, make_error(ParserStatus::ErrorNote, begin, fmt::format("for this {} specifier", struct_token)));
+      }
+
+      if (parser.is_inside_specifiers && is<ParserSuccess>(struct_spec) && it != end && it->type != TokenType::Semicolon)
+      {
+        if (!parser_is_declarator(parser, it, end))
+        {
+          add_error(struct_spec,
+              make_error(ParserStatus::Error, std::prev(it), fmt::format("missing ';' after {} declaration", struct_token)));
+        }
       }
 
       return ParserResult(it, std::move(struct_spec));
@@ -3696,6 +3746,8 @@ auto parser_function_definition(ParserContext& parser, TokenIterator begin, Toke
 //   function-definition
 //   declaration
 //   ';'
+//
+//  -> ^(CompilationUnit (FunctionDefinition|Declaration)*)
 
 auto parser_compilation_unit(ParserContext& parser, TokenIterator begin, TokenIterator end)
   -> ParserResult
