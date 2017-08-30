@@ -1374,6 +1374,18 @@ auto parser_specifier_qualifier_list(ParserContext& parser, TokenIterator begin,
     ParserState qualifiers = ParserSuccess(std::make_unique<SyntaxTree>(NodeType::SpecifierQualifierList));
     auto it = begin;
 
+    auto [s_it, spec_qual] = parser_one_of(parser, it, end, "type specifier or qualifier",
+                                           parser_type_specifier,
+                                           parser_type_qualifier);
+
+    if (!is_giveup(spec_qual))
+    {
+      add_state(qualifiers, std::move(spec_qual));
+      it = s_it;
+    }
+    else
+      return ParserResult(end, std::move(spec_qual));
+
     while (true)
     {
       auto [s_it, spec_qual] = parser_one_of(parser, it, end, "type specifier or qualifier",
