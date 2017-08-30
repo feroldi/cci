@@ -2167,7 +2167,7 @@ auto parser_struct_or_union_specifier(ParserContext& parser, TokenIterator begin
 
           auto [decl_it, decl_list] = struct_declarator_list(parser, spec_qual_it, end);
 
-          if (!is_giveup(decl_list))
+          if (is<ParserSuccess>(decl_list))
           {
             add_state(struct_decl, std::move(decl_list));
             it = decl_it;
