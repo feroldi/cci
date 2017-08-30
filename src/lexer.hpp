@@ -56,10 +56,10 @@ enum class TokenType
   // Brackets
   LeftParen,
   RightParen,
-  LeftBraces,
-  RightBraces,
-  LeftCurlyBraces,
-  RightCurlyBraces,
+  LeftBracket,
+  RightBracket,
+  LeftBrace,
+  RightBrace,
   StringMark,
   CharMark,
 

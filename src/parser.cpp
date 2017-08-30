@@ -638,8 +638,8 @@ auto parser_list_of(Rule rule, bool allow_trailing_comma = false)
         if (allow_trailing_comma)
         {
           if (it != end &&
-              (it->type == TokenType::RightCurlyBraces ||
-               it->type == TokenType::RightBraces ||
+              (it->type == TokenType::RightBrace ||
+               it->type == TokenType::RightBracket ||
                it->type == TokenType::RightParen))
           {
             break;
@@ -1201,13 +1201,13 @@ auto parser_direct_abstract_declarator(ParserContext& parser, TokenIterator begi
       auto it = begin;
 
       // '[' ']'
-      if (it->type == TokenType::RightBraces)
+      if (it->type == TokenType::RightBracket)
       {
         return ParserResult(it, ParserSuccess(std::make_unique<SyntaxTree>(NodeType::ArrayVLADeclarator, array_token)));
       }
 
       // '[' '*' ']'
-      if (it->type == TokenType::Times && std::next(it) != end && std::next(it)->type == TokenType::RightBraces)
+      if (it->type == TokenType::Times && std::next(it) != end && std::next(it)->type == TokenType::RightBracket)
       {
         return ParserResult(std::next(it), ParserSuccess(std::make_unique<SyntaxTree>(NodeType::ArrayVLADeclarator, array_token)));
       }
@@ -1279,7 +1279,7 @@ auto parser_direct_abstract_declarator(ParserContext& parser, TokenIterator begi
   if (begin != end)
   {
     auto function_declarator_production = parser_parens(function_declarator);
-    auto array_declarator_production = parser_parens(array_declarator, TokenType::LeftBraces, TokenType::RightBraces);
+    auto array_declarator_production = parser_parens(array_declarator, TokenType::LeftBracket, TokenType::RightBracket);
     auto [it, array_decl] = parser_one_of(parser, begin, end, "function or array declarator",
                                           function_declarator_production,
                                           array_declarator_production);
@@ -1302,7 +1302,7 @@ auto parser_direct_abstract_declarator(ParserContext& parser, TokenIterator begi
         array_decl = std::move(func_decl);
         it = params_it;
       }
-      else if (it->type == TokenType::LeftBraces)
+      else if (it->type == TokenType::LeftBracket)
       {
         auto [decl_it, declarator] = array_declarator_production(parser, it, end);
         ParserState direct_decl = ParserSuccess(std::make_unique<SyntaxTree>(NodeType::DirectAbstractDeclarator));
@@ -1338,7 +1338,7 @@ auto parser_abstract_declarator(ParserContext& parser, TokenIterator begin, Toke
       auto [ptr_it, pointer_decl] = parser_pointer(parser, begin, end);
 
       // direct-abstract-declarator
-      if (ptr_it != end && ptr_it->type == TokenType::LeftBraces)
+      if (ptr_it != end && ptr_it->type == TokenType::LeftBracket)
       {
         ParserState abstract_decl = ParserSuccess(nullptr);
         auto [decl_it, decl] = parser_direct_abstract_declarator(parser, ptr_it, end);
@@ -1354,7 +1354,7 @@ auto parser_abstract_declarator(ParserContext& parser, TokenIterator begin, Toke
 
       return ParserResult(ptr_it, std::move(pointer_decl));
     }
-    else if (begin->type == TokenType::LeftBraces)
+    else if (begin->type == TokenType::LeftBracket)
     {
       return parser_direct_abstract_declarator(parser, begin, end);
     }
@@ -1503,13 +1503,13 @@ auto parser_direct_declarator(ParserContext& parser, TokenIterator begin, TokenI
       auto it = begin;
 
       // '[' ']'
-      if (it->type == TokenType::RightBraces)
+      if (it->type == TokenType::RightBracket)
       {
         return ParserResult(it, ParserSuccess(std::make_unique<SyntaxTree>(NodeType::ArrayVLADeclarator, array_token)));
       }
 
       // '[' '*' ']'
-      if (it->type == TokenType::Times && std::next(it) != end && std::next(it)->type == TokenType::RightBraces)
+      if (it->type == TokenType::Times && std::next(it) != end && std::next(it)->type == TokenType::RightBracket)
       {
         return ParserResult(std::next(it), ParserSuccess(std::make_unique<SyntaxTree>(NodeType::ArrayVLADeclarator, array_token)));
       }
@@ -1615,10 +1615,10 @@ auto parser_direct_declarator(ParserContext& parser, TokenIterator begin, TokenI
         // '[' 'static' type-qualifier-list? assignment-expression ']'
         // '[' type-qualifier-list 'static' assignment-expression ']'
         // '[' type-qualifier-list? '*' ']'
-        if (it->type == TokenType::LeftBraces)
+        if (it->type == TokenType::LeftBracket)
         {
           auto [arr_it, arr_decl] =
-            parser_parens(array_declarator_production, TokenType::LeftBraces, TokenType::RightBraces)(parser, it, end);
+            parser_parens(array_declarator_production, TokenType::LeftBracket, TokenType::RightBracket)(parser, it, end);
 
           add_state(direct_decl, giveup_to_expected(std::move(arr_decl)));
           it = arr_it;
@@ -1998,8 +1998,8 @@ auto parser_enum_specifier(ParserContext& parser, TokenIterator begin, TokenIter
     // '{' enumerator-list ','opt '}' -> enumerator-list
 
     auto enum_list_production = parser_parens(enumerator_list_production,
-                                              TokenType::LeftCurlyBraces,
-                                              TokenType::RightCurlyBraces);
+                                              TokenType::LeftBrace,
+                                              TokenType::RightBrace);
 
     ParserState enum_spec = ParserSuccess(std::make_unique<SyntaxTree>(NodeType::EnumSpecifier, *begin));
     auto it = std::next(begin); //< Skips TokenType::Enum.
@@ -2016,14 +2016,14 @@ auto parser_enum_specifier(ParserContext& parser, TokenIterator begin, TokenIter
         add_state(enum_spec, std::move(identifier));
         it = ident_it;
 
-        if (it != end && it->type == TokenType::LeftCurlyBraces)
+        if (it != end && it->type == TokenType::LeftBrace)
         {
           auto [enum_list_it, enum_list] = enum_list_production(parser, it, end);
           add_state(enum_spec, giveup_to_expected(std::move(enum_list)));
           it = enum_list_it;
         }
       }
-      else if (it->type == TokenType::LeftCurlyBraces)
+      else if (it->type == TokenType::LeftBrace)
       {
         auto [enum_list_it, enum_list] = enum_list_production(parser, it, end);
         add_state(enum_spec, giveup_to_expected(std::move(enum_list)));
@@ -2179,15 +2179,15 @@ auto parser_struct_or_union_specifier(ParserContext& parser, TokenIterator begin
       -> ParserResult
     {
       return parser_one_many_of(parser, begin, end, fmt::format("{} declaration list", struct_token), struct_declaration, [] (TokenIterator t) {
-        return t->type != TokenType::RightCurlyBraces;
+        return t->type != TokenType::RightBrace;
       });
     };
 
     // '{' struct-declaration-list '}'
 
     auto struct_decl_list_production = parser_parens(struct_declaration_list,
-                                                     TokenType::LeftCurlyBraces,
-                                                     TokenType::RightCurlyBraces);
+                                                     TokenType::LeftBrace,
+                                                     TokenType::RightBrace);
 
     ParserState struct_spec = ParserSuccess(std::make_unique<SyntaxTree>(NodeType::StructOrUnionSpecifier, *begin));
     auto it = std::next(begin);
@@ -2200,14 +2200,14 @@ auto parser_struct_or_union_specifier(ParserContext& parser, TokenIterator begin
         add_state(struct_spec, std::move(identifier));
         it = ident_it;
 
-        if (it != end && it->type == TokenType::LeftCurlyBraces)
+        if (it != end && it->type == TokenType::LeftBrace)
         {
           auto [decl_list_it, decl_list] = struct_decl_list_production(parser, it, end);
           add_state(struct_spec, giveup_to_expected(std::move(decl_list)));
           it = decl_list_it;
         }
       }
-      else if (it->type == TokenType::LeftCurlyBraces)
+      else if (it->type == TokenType::LeftBrace)
       {
         auto [decl_list_it, decl_list] = struct_decl_list_production(parser, it, end);
         add_state(struct_spec, giveup_to_expected(std::move(decl_list)));
@@ -2248,11 +2248,11 @@ auto parser_initializer(ParserContext& parser, TokenIterator begin, TokenIterato
 {
   if (begin != end)
   {
-    if (begin->type == TokenType::LeftCurlyBraces)
+    if (begin->type == TokenType::LeftBrace)
     {
       auto init_list_production = parser_parens(parser_initializer_list,
-                                                TokenType::LeftCurlyBraces,
-                                                TokenType::RightCurlyBraces);
+                                                TokenType::LeftBrace,
+                                                TokenType::RightBrace);
 
       return init_list_production(parser, begin, end);
     }
@@ -2281,11 +2281,11 @@ auto parser_initializer_list(ParserContext& parser, TokenIterator begin, TokenIt
   {
     if (begin != end)
     {
-      if (begin->type == TokenType::LeftBraces)
+      if (begin->type == TokenType::LeftBracket)
       {
         auto subscript_production = parser_parens(parser_constant_expression,
-                                                  TokenType::LeftBraces,
-                                                  TokenType::RightBraces);
+                                                  TokenType::LeftBracket,
+                                                  TokenType::RightBracket);
 
         auto [it, subscript] = subscript_production(parser, begin, end);
 
@@ -2444,8 +2444,8 @@ auto parser_postfix_expression(ParserContext& parser, TokenIterator begin, Token
         {
           auto initializer_list_production =
             parser_parens(parser_initializer_list,
-                          TokenType::LeftCurlyBraces,
-                          TokenType::RightCurlyBraces);
+                          TokenType::LeftBrace,
+                          TokenType::RightBrace);
 
           auto [init_it, initalizer_list] = initializer_list_production(parser, type_it, end);
 
@@ -2472,11 +2472,11 @@ auto parser_postfix_expression(ParserContext& parser, TokenIterator begin, Token
       switch (begin->type)
       {
         // '[' expression ']' -> ^(ArraySubscripting expression)
-        case TokenType::LeftBraces:
+        case TokenType::LeftBracket:
         {
           auto [expr_it, expression] = parser_expression(parser, std::next(begin), end);
 
-          if (expect_end_token(expression, begin, end, expr_it, TokenType::RightBraces))
+          if (expect_end_token(expression, begin, end, expr_it, TokenType::RightBracket))
           {
             ParserState postfix_op =
               ParserSuccess(std::make_unique<SyntaxTree>(NodeType::ArraySubscripting, *begin));
@@ -2747,7 +2747,7 @@ auto parser_cast_expression(ParserContext& parser, TokenIterator begin, TokenIte
           auto [cast_it, cast_expr] = parser_cast_expression(parser, std::next(type_it), end);
 
           // Not a compound literal
-          if (cast_it != end && cast_it->type != TokenType::LeftCurlyBraces)
+          if (cast_it != end && cast_it->type != TokenType::LeftBrace)
           {
             ParserState cast = ParserSuccess(std::make_unique<SyntaxTree>(NodeType::CastExpression));
 
@@ -3554,7 +3554,7 @@ auto parser_expression_statement(ParserContext& parser, TokenIterator begin, Tok
 auto parser_compound_statement(ParserContext& parser, TokenIterator begin, TokenIterator end)
   -> ParserResult
 {
-  if (begin != end && begin->type == TokenType::LeftCurlyBraces)
+  if (begin != end && begin->type == TokenType::LeftBrace)
   {
     auto block_item_list_production = [] (ParserContext& parser, TokenIterator begin, TokenIterator end)
       -> ParserResult
@@ -3580,8 +3580,8 @@ auto parser_compound_statement(ParserContext& parser, TokenIterator begin, Token
 
     // '{' block-item-list? '}'
     auto [it, items] = parser_parens(block_item_list_production,
-                                     TokenType::LeftCurlyBraces,
-                                     TokenType::RightCurlyBraces)(parser, begin, end);
+                                     TokenType::LeftBrace,
+                                     TokenType::RightBrace)(parser, begin, end);
 
     ParserState compound_stmt = ParserSuccess(nullptr);
 

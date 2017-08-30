@@ -60,10 +60,10 @@ static const std::pair<TokenType, string_view> TOKEN_SYMBOLS[] = {
   // Matches
   {TokenType::LeftParen, "("},
   {TokenType::RightParen, ")"},
-  {TokenType::LeftBraces, "["},
-  {TokenType::RightBraces, "]"},
-  {TokenType::LeftCurlyBraces, "{"},
-  {TokenType::RightCurlyBraces, "}"},
+  {TokenType::LeftBracket, "["},
+  {TokenType::RightBracket, "]"},
+  {TokenType::LeftBrace, "{"},
+  {TokenType::RightBrace, "}"},
   {TokenType::StringMark, "\""},
   {TokenType::CharMark, "'"},
   {TokenType::Dot, "."},
@@ -806,13 +806,13 @@ auto to_string(TokenType token) -> const char*
       return "(";
     case TokenType::RightParen:
       return ")";
-    case TokenType::LeftBraces:
+    case TokenType::LeftBracket:
       return "[";
-    case TokenType::RightBraces:
+    case TokenType::RightBracket:
       return "]";
-    case TokenType::LeftCurlyBraces:
+    case TokenType::LeftBrace:
       return "{";
-    case TokenType::RightCurlyBraces:
+    case TokenType::RightBrace:
       return "}";
     case TokenType::StringMark:
       return "\"";
