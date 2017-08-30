@@ -2005,7 +2005,20 @@ auto parser_enum_specifier(ParserContext& parser, TokenIterator begin, TokenIter
     //
     //  -> ^(EnumeratorList enumerator+)
 
-    auto enumerator_list_production = parser_list_of(enumerator_production, /*allow_trailing_comma=*/ true);
+    auto enumerator_list_production = [enumerator_production] (ParserContext& parser, TokenIterator begin, TokenIterator end)
+      -> ParserResult
+    {
+      auto [it, enumerators] = parser_list_of(enumerator_production, /*allow_trailing_comma=*/ true)(parser, begin, end);
+
+      if (is<ParserSuccess>(enumerators))
+      {
+        ParserState enum_list = ParserSuccess(std::make_unique<SyntaxTree>(NodeType::EnumeratorList));
+        add_state(enum_list, std::move(enumerators));
+        enumerators = std::move(enum_list);
+      }
+
+      return ParserResult(it, std::move(enumerators));
+    };
 
     // '{' enumerator-list ','opt '}' -> enumerator-list
 
