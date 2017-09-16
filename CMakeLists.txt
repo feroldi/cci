@@ -65,4 +65,4 @@ target_compile_options(ccompiler
 )
 
 # Enable LTO (Link Time Optimization)
-set_property(TARGET ccompiler PROPERTY INTERPROCEDURAL_OPTIMIZATION TRUE)
+#set_property(TARGET ccompiler PROPERTY INTERPROCEDURAL_OPTIMIZATION TRUE)

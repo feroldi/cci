@@ -307,6 +307,7 @@ struct ParserContext
   }
 
   template <typename... Args>
+  [[maybe_unused]]
   void warning(TokenIterator token, Args&&... args)
   {
     program.warn(this->token_info(token), std::forward<Args>(args)...);
@@ -360,6 +361,7 @@ auto parser_one_of(ParserContext& parser, TokenIterator begin, TokenIterator end
 }
 
 template <typename Rule, typename Predicate>
+[[maybe_unused]]
 auto parser_many_of(ParserContext& parser, TokenIterator begin, TokenIterator end,
                     Rule rule, Predicate pred)
   -> ParserResult

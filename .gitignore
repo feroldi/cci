@@ -4,3 +4,4 @@ build/
 Makefile
 TODO.md
 test/build/
+ccompiler-parser-notes.md
