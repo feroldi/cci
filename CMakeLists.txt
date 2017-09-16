@@ -12,16 +12,12 @@ add_executable(ccompiler src/main.cpp)
 
 target_sources(ccompiler
   PUBLIC
-    src/parser.hpp
-    src/lexer.hpp
     src/program.hpp
     src/source_manager.hpp
     src/utils/stream.hpp
     src/cpp/format.hpp
     src/cpp/variant.hpp
   PRIVATE
-    src/parser.cpp
-    src/lexer.cpp
     src/program.cpp
     src/source_manager.cpp
     src/utils/stream.cpp
@@ -41,6 +37,7 @@ target_compile_features(ccompiler PUBLIC cxx_std_17)
 target_compile_options(ccompiler
   PUBLIC
     -stdlib=libc++
+    -F .. # Add ccompiler/ directory to include search path.
     -Wall
     -Wextra
     -Weverything

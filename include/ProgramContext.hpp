@@ -1,10 +1,10 @@
 #pragma once
 
 #include <stdexcept>
-#include "cpp/format.hpp"
-#include "cpp/optional.hpp"
-#include "source_manager.hpp"
-#include "lexer.hpp"
+#include "ccompiler/include/Cpp/optional.hpp"
+#include "ccompiler/include/Util/Format.hpp"
+#include "ccompiler/include/SourceManager.hpp"
+#include "ccompiler/include/TokenStream.hpp"
 
 namespace ccompiler
 {

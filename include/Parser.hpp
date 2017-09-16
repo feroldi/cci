@@ -2,11 +2,11 @@
 
 #include <memory>
 #include <vector>
-#include "cpp/any.hpp"
-#include "cpp/observer_ptr.hpp"
-#include "lexer.hpp"
-#include "source_manager.hpp"
-#include "program.hpp"
+#include "ccompiler/include/Cpp/any.hpp"
+#include "ccompiler/include/Cpp/observer_ptr.hpp"
+#include "ccompiler/include/TokenStream.hpp"
+#include "ccompiler/include/SourceManager.hpp"
+#include "ccompiler/include/ProgramContext.hpp"
 
 namespace ccompiler
 {

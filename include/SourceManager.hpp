@@ -2,9 +2,9 @@
 
 #include <string>
 #include <vector>
-#include "cpp/format.hpp"
-#include "cpp/contracts.hpp"
-#include "cpp/string_view.hpp"
+#include "ccompiler/include/Cpp/string_view.hpp"
+#include "ccompiler/include/Util/Format.hpp"
+#include "ccompiler/include/Util/Contracts.hpp"
 
 namespace ccompiler
 {
