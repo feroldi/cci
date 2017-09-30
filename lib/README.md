@@ -1,4 +1,6 @@
 
++ TODO: rewrite this to conform with the new file system hierarchy.
+
 # CCompiler Compiling Infrastructure
 
 This document is an attempt to describe the process ccompiler

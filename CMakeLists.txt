@@ -6,30 +6,12 @@ project(ccompiler)
 # i.e. don't choose gnu++11 over c++11
 set(CXX_EXTENSIONS OFF)
 
-add_executable(ccompiler src/main.cpp)
-
-#add_library(fmt deps/fmt/fmt/format.cc)
-
-target_sources(ccompiler
-  PUBLIC
-    src/program.hpp
-    src/source_manager.hpp
-    src/utils/stream.hpp
-    src/cpp/format.hpp
-    src/cpp/variant.hpp
-  PRIVATE
-    src/program.cpp
-    src/source_manager.cpp
-    src/utils/stream.cpp
-    deps/fmt/fmt/format.cc
-)
+add_executable(ccompiler lib/ccompiler/main.cpp)
 
 target_link_libraries(ccompiler
   PUBLIC
     c++
     c++abi
-
-    #-fsanitize=address
 )
 
 target_compile_features(ccompiler PUBLIC cxx_std_17)
@@ -37,12 +19,20 @@ target_compile_features(ccompiler PUBLIC cxx_std_17)
 target_compile_options(ccompiler
   PUBLIC
     -stdlib=libc++
-    -F .. # Add ccompiler/ directory to include search path.
+
+    # Add current directory to include search path.
+    -F .
+
+    # Turn on all them warnings.
     -Wall
     -Wextra
     -Weverything
     -Werror
+
+    # Turn pedantic warnings into errors.
     -pedantic-errors
+
+    # Disable a few unwanted warnings.
     -Wno-c++98-compat
     -Wno-c++98-compat-pedantic
     -Wno-gnu-statement-expression
@@ -55,10 +45,12 @@ target_compile_options(ccompiler
     -Wno-covered-switch-default
     -Wno-global-constructors
     -Wno-format-nonliteral # for fmtlib
+
+    # Emit full debug information.
     -fno-limit-debug-info
 
-    #-fsanitize=address
-    -ftrapv
+    # Turn on static analyzer.
+    --analyze
 )
 
 # Enable LTO (Link Time Optimization)
