@@ -6,12 +6,26 @@ project(ccompiler)
 # i.e. don't choose gnu++11 over c++11
 set(CXX_EXTENSIONS OFF)
 
-add_executable(ccompiler lib/ccompiler/main.cpp)
+add_executable(ccompiler src/main.cpp)
+
+include_directories(include)
+include_directories(deps)
+
+add_library(fmtlib STATIC deps/fmt/fmt/format.cc)
 
 target_link_libraries(ccompiler
   PUBLIC
     c++
     c++abi
+    fmtlib
+)
+
+target_sources(ccompiler
+  PRIVATE
+    lib/ccompiler/Util/MemoryBuffer.cpp
+
+  PUBLIC
+    include/ccompiler/Util/MemoryBuffer.hpp
 )
 
 target_compile_features(ccompiler PUBLIC cxx_std_17)
@@ -19,9 +33,6 @@ target_compile_features(ccompiler PUBLIC cxx_std_17)
 target_compile_options(ccompiler
   PUBLIC
     -stdlib=libc++
-
-    # Add current directory to include search path.
-    -F .
 
     # Turn on all them warnings.
     -Wall
@@ -48,9 +59,6 @@ target_compile_options(ccompiler
 
     # Emit full debug information.
     -fno-limit-debug-info
-
-    # Turn on static analyzer.
-    --analyze
 )
 
 # Enable LTO (Link Time Optimization)

@@ -1,10 +1,10 @@
 #pragma once
 
-#include <string>
-#include <vector>
-#include "ccompiler/include/Cpp/string_view.hpp"
 #include "ccompiler/include/Util/Format.hpp"
 #include "ccompiler/include/Util/Contracts.hpp"
+#include <string>
+#include <string_view>
+#include <vector>
 
 namespace ccompiler
 {
@@ -78,11 +78,6 @@ private:
   SourceLocation first;
   SourceLocation last;
 };
-
-inline auto string_ref(const SourceRange& range) -> fmt::StringRef
-{
-  return fmt::StringRef(range.data(), range.size());
-}
 
 struct SourceManager
 {
