@@ -158,7 +158,7 @@ struct hash<ccompiler::SourceRange>
     const std::size_t h1 = std::hash<SourceLocation>{}(range.begin());
     const std::size_t h2 = std::hash<SourceLocation>{}(range.end());
 
-    return h1 ^ (h2 << 1);
+    return h1.raw_code() ^ h2.raw_code();
   }
 };
 } // namespace std

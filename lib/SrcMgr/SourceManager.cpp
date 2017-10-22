@@ -1,4 +1,4 @@
-#include "ccompiler/SourceManager.hpp"
+#if 0
 #include <vector>
 
 namespace ccompiler::SrcMgr {
@@ -48,3 +48,4 @@ auto SourceManager::get_line_location(SourceLocation L) const -> LineLocationInf
 }
 
 } // namespace ccompiler::SrcMgr
+#endif

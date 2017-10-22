@@ -8,25 +8,13 @@ set(CXX_EXTENSIONS OFF)
 
 add_executable(ccompiler src/main.cpp)
 
-include_directories(include)
-include_directories(deps)
-
-add_library(fmtlib STATIC deps/fmt/fmt/format.cc)
-
-target_link_libraries(ccompiler
-  PUBLIC
-    c++
-    c++abi
-    fmtlib
+include_directories(
+  include
+  deps
 )
 
-target_sources(ccompiler
-  PRIVATE
-    lib/ccompiler/Util/MemoryBuffer.cpp
-
-  PUBLIC
-    include/ccompiler/Util/MemoryBuffer.hpp
-)
+# FIXME: this should be an add_subdirectory.
+add_library(fmt STATIC deps/fmt/fmt/format.cc)
 
 target_compile_features(ccompiler PUBLIC cxx_std_17)
 
@@ -59,6 +47,17 @@ target_compile_options(ccompiler
 
     # Emit full debug information.
     -fno-limit-debug-info
+)
+
+#add_subdirectory(include)
+add_subdirectory(lib)
+
+target_link_libraries(ccompiler
+  PUBLIC
+    c++
+    c++abi
+  PRIVATE
+    fmt
 )
 
 # Enable LTO (Link Time Optimization)

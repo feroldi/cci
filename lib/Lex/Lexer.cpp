@@ -1,4 +1,4 @@
-#include "ccompiler/Lex/LexerContext.hpp"
+#include "ccompiler/Lex/Lexer.hpp"
 #include "ccompiler/Util/Contracts.hpp"
 #include "ccompiler/Util/MemoryBuffer.hpp"
 #include <utility>
@@ -6,6 +6,69 @@
 #include <cassert>
 
 namespace ccompiler::lex {
+
+auto Token::text(const SourceManager &SM) const -> std::string_view
+{
+  // TODO
+  return {};
+}
+
+auto to_string(TokenKind K) -> const char *
+{
+  switch (K)
+  {
+    default: Unreachable();
+    case TokenKind::Kw_auto: return "auto";
+    case TokenKind::Kw_break: return "break";
+    case TokenKind::Kw_case: return "case";
+    case TokenKind::Kw_char: return "char";
+    case TokenKind::Kw_const: return "const";
+    case TokenKind::Kw_continue: return "continue";
+    case TokenKind::Kw_default: return "default";
+    case TokenKind::Kw_do: return "do";
+    case TokenKind::Kw_double: return "double";
+    case TokenKind::Kw_else: return "else";
+    case TokenKind::Kw_enum: return "enum";
+    case TokenKind::Kw_extern: return "extern";
+    case TokenKind::Kw_float: return "float";
+    case TokenKind::Kw_for: return "for";
+    case TokenKind::Kw_goto: return "goto";
+    case TokenKind::Kw_if: return "if";
+    case TokenKind::Kw_inline: return "inline";
+    case TokenKind::Kw_int: return "int";
+    case TokenKind::Kw_long: return "long";
+    case TokenKind::Kw_register: return "register";
+    case TokenKind::Kw_restrict: return "restrict";
+    case TokenKind::Kw_return: return "return";
+    case TokenKind::Kw_short: return "short";
+    case TokenKind::Kw_signed: return "signed";
+    case TokenKind::Kw_sizeof: return "sizeof";
+    case TokenKind::Kw_static: return "static";
+    case TokenKind::Kw_struct: return "struct";
+    case TokenKind::Kw_switch: return "switch";
+    case TokenKind::Kw_typedef: return "typedef";
+    case TokenKind::Kw_union: return "union";
+    case TokenKind::Kw_unsigned: return "unsigned";
+    case TokenKind::Kw_void: return "void";
+    case TokenKind::Kw_volatile: return "volatile";
+    case TokenKind::Kw_while: return "while";
+    case TokenKind::Kw__Alignas: return "_Alignas";
+    case TokenKind::Kw__Alignof: return "_Alignof";
+    case TokenKind::Kw__Atomic: return "_Atomic";
+    case TokenKind::Kw__Bool: return "_Bool";
+    case TokenKind::Kw__Complex: return "_Complex";
+    case TokenKind::Kw__Generic: return "_Generic";
+    case TokenKind::Kw__Imaginary: return "_Imaginary";
+    case TokenKind::Kw__Noreturn: return "_Noreturn";
+    case TokenKind::Kw__Static_assert: return "_Static_assert";
+    case TokenKind::Kw__Thread_local: return "_Thread_local";
+    case TokenKind::identifier: return "identifier";
+    case TokenKind::eof: return "<end of input>";
+  }
+}
+
+} // namespace ccompiler::lex
+
 namespace {
 
 // token:
@@ -25,63 +88,6 @@ namespace {
 //   default   if      sizeof    while     _Static_assert
 //   do        inline  static    _Alignas  _Thread_local
 //   double    int     struct    _Alignof
-
-
-enum class TokenKind
-{
-  // Keywords
-  Kw_auto,
-  Kw_break,
-  Kw_case,
-  Kw_char,
-  Kw_const,
-  Kw_continue,
-  Kw_default,
-  Kw_do,
-  Kw_double,
-  Kw_else,
-  Kw_enum,
-  Kw_extern,
-  Kw_float,
-  Kw_for,
-  Kw_goto,
-  Kw_if,
-  Kw_inline,
-  Kw_int,
-  Kw_long,
-  Kw_register,
-  Kw_restrict,
-  Kw_return,
-  Kw_short,
-  Kw_signed,
-  Kw_sizeof,
-  Kw_static,
-  Kw_struct,
-  Kw_switch,
-  Kw_typedef,
-  Kw_union,
-  Kw_unsigned,
-  Kw_void,
-  Kw_volatile,
-  Kw_while,
-  Kw__Alignas,
-  Kw__Alignof,
-  Kw__Atomic,
-  Kw__Bool,
-  Kw__Complex,
-  Kw__Generic,
-  Kw__Imaginary,
-  Kw__Noreturn,
-  Kw__Static_assert,
-  Kw__Thread_local,
-
-  // C11 6.4.2 Identifiers
-  identifier,
-
-  // TODO Constant
-  // TODO String-literal
-  // TODO Punctuator
-};
 
 class LexerContext
 {
@@ -183,4 +189,3 @@ void lex_identifier(LexerContext &LC, Token &result)
 
 
 } // namespace
-} // namespace ccompiler::lex
