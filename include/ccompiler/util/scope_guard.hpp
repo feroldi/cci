@@ -1,12 +1,14 @@
 #pragma once
 
-#include <type_traits>
+#include <utility>
 
-template <typename InvocableF>
+namespace ccompiler {
+
+template <typename Invocable>
 struct ScopeGuard
 {
   template <typename F>
-  explicit ScopeGuard(F&& f) noexcept
+  explicit ScopeGuard(F &&f) noexcept
     : callback(std::forward<F>(f))
   {}
 
@@ -25,12 +27,11 @@ struct ScopeGuard
   ScopeGuard& operator= (ScopeGuard&&) = delete;
 
 private:
-  InvocableF callback;
+  Invocable callback;
   bool should_run = true;
 };
 
 template <typename F>
-inline ScopeGuard<std::decay_t<F>> ScopeExit(F&& f) noexcept
-{
-  return ScopeGuard<std::decay_t<F>>(std::forward<F>(f));
-}
+ScopeGuard(F) -> ScopeGuard<F>;
+
+} // namespace ccompiler

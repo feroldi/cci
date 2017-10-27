@@ -82,10 +82,10 @@ auto to_string(TokenKind K) -> const char *;
 // TODO: reference token definition in the standard.
 class Token
 {
-  // Token's kind (e.g. Kw_return, identifier etc).
+  // Token's kind, e.g. Kw_return, identifier etc.
   TokenKind kind;
 
-  // Token's location on the source file.
+  // Token's start and end locations on the source file.
   SourceRange range;
 
 public:

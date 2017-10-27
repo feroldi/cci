@@ -45,6 +45,9 @@ target_compile_options(ccompiler
     -Wno-global-constructors
     -Wno-format-nonliteral # for fmtlib
 
+    # Clang's bug with templated deduction guides
+    -Wno-undefined-func-template
+
     # Emit full debug information.
     -fno-limit-debug-info
 )

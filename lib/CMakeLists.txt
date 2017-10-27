@@ -1,4 +1,4 @@
-add_subdirectory(Lex)
-add_subdirectory(Parser)
-add_subdirectory(SrcMgr)
-add_subdirectory(Util)
+add_subdirectory(lex)
+add_subdirectory(parser)
+add_subdirectory(basic)
+add_subdirectory(util)

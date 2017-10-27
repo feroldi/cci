@@ -1,6 +1,7 @@
-#include "ccompiler/Lex/Lexer.hpp"
-#include "ccompiler/Util/Contracts.hpp"
-#include "ccompiler/Util/MemoryBuffer.hpp"
+#if 0
+#include "ccompiler/lex/lexer.hpp"
+#include "ccompiler/util/contracts.hpp"
+#include "ccompiler/util/memory_buffer.hpp"
 #include <utility>
 #include <algorithm>
 #include <cassert>
@@ -189,3 +190,4 @@ void lex_identifier(LexerContext &LC, Token &result)
 
 
 } // namespace
+#endif
