@@ -34,7 +34,7 @@ auto SourceManager::from_file(std::string_view source_path) -> std::optional<Sou
 {
   std::optional<SourceManager> src_mgr;
 
-  if (auto file_content = read_from_stream_utf8(source_path))
+  if (auto file_content = read_stream_utf8(source_path))
   {
     auto ln_offsets = calc_line_offsets(*file_content);
     src_mgr = SourceManager(std::move(ln_offsets), std::move(*file_content));

@@ -7,7 +7,7 @@
 
 namespace ccompiler {
 
-auto write_to_stream(std::string_view file_path, const std::byte *data, size_t length) -> bool
+auto write_stream(std::string_view file_path, const std::byte *data, size_t length) -> bool
 {
   if (std::FILE *stream = std::fopen(file_path.data(), "wb"); stream != nullptr)
   {
@@ -18,14 +18,14 @@ auto write_to_stream(std::string_view file_path, const std::byte *data, size_t l
     return false;
 }
 
-auto write_to_stream(std::vector<std::byte> &stream, const std::byte *data, size_t length) -> bool
+auto write_stream(std::vector<std::byte> &stream, const std::byte *data, size_t length) -> bool
 {
   stream.resize(length);
   std::memcpy(&stream[0], data, length);
   return true;
 }
 
-auto read_from_stream_utf8(std::string_view file_path) -> std::optional<std::string>
+auto read_stream_utf8(std::string_view file_path) -> std::optional<std::string>
 {
   if (std::FILE *stream = std::fopen(file_path.data(), "rb"); stream != nullptr)
   {
@@ -47,7 +47,7 @@ auto read_from_stream_utf8(std::string_view file_path) -> std::optional<std::str
   return std::nullopt;
 }
 
-auto read_from_stream_binary(std::string_view file_path) -> std::optional<std::vector<std::byte>>
+auto read_stream_binary(std::string_view file_path) -> std::optional<std::vector<std::byte>>
 {
   if (std::FILE *stream = std::fopen(file_path.data(), "rb"); stream != nullptr)
   {
