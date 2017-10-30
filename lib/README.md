@@ -3,7 +3,7 @@
 
 # CCompiler Compiling Infrastructure
 
-This document is an attempt to describe the process ccompiler
+This document is an attempt to describe the process sunfyre
 goes through when executed, from source file tokenization to
 code optimization and generation.
 
@@ -11,8 +11,8 @@ code optimization and generation.
 
 + `Options::parse_arguments(argc, argv)`, from `program.hpp`.
 
-Parses ccompiler command-line arguments. This is the very first
-thing ccompiler has to before anything. Every argument is
+Parses sunfyre command-line arguments. This is the very first
+thing sunfyre has to before anything. Every argument is
 parsed and the program options are updated.
 
 Some compiler/language options default to some value in case

@@ -2,13 +2,13 @@
 
 #include <vector>
 
-namespace ccompiler {
+namespace sunfyre {
 class SourceManager;
 class SourceLocation;
 class SourceRange;
 }
 
-namespace ccompiler::lex {
+namespace sunfyre::lex {
 
 // TokenKind - This represents the kind of a token, e.g. identifier,
 // keyword etc.
@@ -148,4 +148,4 @@ public:
   auto cend() const -> const_iterator { return tokens.cend(); }
 };
 
-} // namespace ccompiler::lex
+} // namespace sunfyre::lex

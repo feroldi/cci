@@ -1,11 +1,11 @@
-#include "ccompiler/basic/file_stream.hpp"
-#include "ccompiler/util/scope_guard.hpp"
+#include "sunfyre/basic/file_stream.hpp"
+#include "sunfyre/util/scope_guard.hpp"
 #include "fmt/format.h"
 #include <cstring>
 #include <memory>
 #include <optional>
 
-namespace ccompiler {
+namespace sunfyre {
 
 auto write_stream(std::string_view file_path, const std::byte *data, size_t length) -> bool
 {
@@ -69,4 +69,4 @@ auto read_stream_binary(std::string_view file_path) -> std::optional<std::vector
   return std::nullopt;
 }
 
-} // namespace ccompiler
+} // namespace sunfyre

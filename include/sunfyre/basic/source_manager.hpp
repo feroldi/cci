@@ -5,7 +5,7 @@
 #include <vector>
 #include <optional>
 
-namespace ccompiler
+namespace sunfyre
 {
 
 // SourceLocation - This represents an offset into the buffer of
@@ -99,4 +99,4 @@ public:
   }
 };
 
-} // namespace ccompiler
+} // namespace sunfyre

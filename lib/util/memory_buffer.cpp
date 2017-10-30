@@ -1,12 +1,12 @@
-#include "ccompiler/util/memory_buffer.hpp"
-#include "ccompiler/util/scope_guard.hpp"
+#include "sunfyre/util/memory_buffer.hpp"
+#include "sunfyre/util/scope_guard.hpp"
 #include <string_view>
 #include <memory>
 #include <system_error>
 #include <optional>
 #include <cassert>
 
-namespace ccompiler {
+namespace sunfyre {
 
 // TODO: change the filename to an fs::path.
 auto MemoryBuffer::from_file(std::string_view filename) -> std::optional<MemoryBuffer>
@@ -32,4 +32,4 @@ auto MemoryBuffer::from_file(std::string_view filename) -> std::optional<MemoryB
   return MemoryBuffer(std::move(file_content), file_size, filename);
 }
 
-} // namespace ccompiler
+} // namespace sunfyre

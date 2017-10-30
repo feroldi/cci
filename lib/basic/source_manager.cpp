@@ -1,13 +1,13 @@
-#include "ccompiler/basic/source_manager.hpp"
-#include "ccompiler/basic/file_stream.hpp"
-#include "ccompiler/util/contracts.hpp"
+#include "sunfyre/basic/source_manager.hpp"
+#include "sunfyre/basic/file_stream.hpp"
+#include "sunfyre/util/contracts.hpp"
 #include "fmt/format.h"
 #include <string_view>
 #include <string>
 #include <vector>
 #include <optional>
 
-namespace ccompiler {
+namespace sunfyre {
 
 // Calculates all '\n' (new line) offsets in `buffer`.
 static auto calc_line_offsets(std::string_view buffer) -> std::vector<SourceLocation>
@@ -81,4 +81,4 @@ auto SourceManager::get_linecol(SourceLocation loc) const -> std::pair<unsigned,
   return std::pair(line_num, col_num);
 }
 
-} // namespace ccompiler
+} // namespace sunfyre

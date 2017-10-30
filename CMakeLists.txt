@@ -1,12 +1,12 @@
 cmake_minimum_required(VERSION 3.9)
 
-project(ccompiler)
+project(sunfyre)
 
 # Disable extended variants of C++ dialects
 # i.e. don't choose gnu++11 over c++11
 set(CXX_EXTENSIONS OFF)
 
-add_executable(ccompiler src/main.cpp)
+add_executable(sunfyre src/main.cpp)
 
 include_directories(
   include
@@ -16,9 +16,9 @@ include_directories(
 # FIXME: this should be an add_subdirectory.
 add_library(fmt STATIC deps/fmt/fmt/format.cc)
 
-target_compile_features(ccompiler PUBLIC cxx_std_17)
+target_compile_features(sunfyre PUBLIC cxx_std_17)
 
-target_compile_options(ccompiler
+target_compile_options(sunfyre
   PUBLIC
     -stdlib=libc++
 
@@ -56,7 +56,7 @@ target_compile_options(ccompiler
 #add_subdirectory(include)
 add_subdirectory(lib)
 
-target_link_libraries(ccompiler
+target_link_libraries(sunfyre
   PUBLIC
     c++
     c++abi
@@ -65,4 +65,4 @@ target_link_libraries(ccompiler
 )
 
 # Enable LTO (Link Time Optimization)
-set_property(TARGET ccompiler PROPERTY INTERPROCEDURAL_OPTIMIZATION TRUE)
+set_property(TARGET sunfyre PROPERTY INTERPROCEDURAL_OPTIMIZATION TRUE)

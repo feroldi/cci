@@ -1,12 +1,12 @@
 #if 0
-#include "ccompiler/lex/lexer.hpp"
-#include "ccompiler/util/contracts.hpp"
-#include "ccompiler/util/memory_buffer.hpp"
+#include "sunfyre/lex/lexer.hpp"
+#include "sunfyre/util/contracts.hpp"
+#include "sunfyre/util/memory_buffer.hpp"
 #include <utility>
 #include <algorithm>
 #include <cassert>
 
-namespace ccompiler::lex {
+namespace sunfyre::lex {
 
 auto Token::text(const SourceManager &SM) const -> std::string_view
 {
@@ -68,7 +68,7 @@ auto to_string(TokenKind K) -> const char *
   }
 }
 
-} // namespace ccompiler::lex
+} // namespace sunfyre::lex
 
 namespace {
 

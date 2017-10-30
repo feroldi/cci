@@ -11,13 +11,13 @@
 
 #pragma once
 
-#include "ccompiler/util/contracts.hpp"
+#include "sunfyre/util/contracts.hpp"
 #include <string_view>
 #include <optional>
 #include <system_error>
 #include <memory>
 
-namespace ccompiler {
+namespace sunfyre {
 
 // MemoryBuffer - Represents a read-only block of memory read from a file,
 // a stream etc.
@@ -67,4 +67,4 @@ public:
   std::string_view name() const { return name_; }
 };
 
-} // namespace ccompiler
+} // namespace sunfyre

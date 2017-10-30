@@ -1,10 +1,10 @@
-#include "ccompiler/basic/source_manager.hpp"
+#include "sunfyre/basic/source_manager.hpp"
 #include "fmt/format.h"
 #include <cassert>
 
 int main(int argc, char **argv)
 {
-  using namespace ccompiler;
+  using namespace sunfyre;
   assert(argc == 2);
 
   if (auto src = SourceManager::from_file(argv[1]))

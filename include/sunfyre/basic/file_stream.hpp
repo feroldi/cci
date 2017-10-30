@@ -6,7 +6,7 @@
 #include <vector>
 #include <optional>
 
-namespace ccompiler {
+namespace sunfyre {
 
 // Writes some data into a file stream.
 //
@@ -26,4 +26,4 @@ auto read_stream_utf8(std::string_view file_path) -> std::optional<std::string>;
 // Reads the content from a binary file.
 auto read_stream_binary(std::string_view file_path) -> std::optional<std::vector<std::byte>>;
 
-} // namespace ccompiler
+} // namespace sunfyre
