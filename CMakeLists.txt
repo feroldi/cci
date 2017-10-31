@@ -18,19 +18,51 @@ add_library(fmt STATIC deps/fmt/fmt/format.cc)
 
 target_compile_features(sunfyre PUBLIC cxx_std_17)
 
-target_compile_options(sunfyre
-  PUBLIC
+if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+  target_compile_options(sunfyre PUBLIC
     -stdlib=libc++
+    #-fuse-ld=lld
+    )
+  # Enable LTO (Link Time Optimization)
+  set_property(TARGET sunfyre PROPERTY INTERPROCEDURAL_OPTIMIZATION TRUE)
+endif()
 
-    # Turn on all them warnings.
+option(SUNFYRE_ENABLE_WARNINGS "Turn on all warnings." ON)
+if (SUNFYRE_ENABLE_WARNINGS)
+  target_compile_options(sunfyre PUBLIC
     -Wall
     -Wextra
     -Weverything
-    -Werror
+    )
+endif()
 
-    # Turn pedantic warnings into errors.
-    -pedantic-errors
+option(SUNFYRE_ENABLE_WERROR "Stop compiling upon warnings." ON)
+if (SUNFYRE_ENABLE_WERROR)
+  target_compile_options(sunfyre PUBLIC -Werror)
+endif()
 
+option(SUNFYRE_ENABLE_PEDANTIC "Compile with -pedantic on." ON)
+if (SUNFYRE_ENABLE_PEDANTIC)
+  target_compile_options(sunfyre PUBLIC -pedantic -pedantic-errors)
+endif()
+
+option(SUNFYRE_ENABLE_NATIVE "Generate code based on native hardware (-march=native)." ON)
+if (SUNFYRE_ENABLE_NATIVE)
+  target_compile_options(sunfyre PUBLIC -march=native)
+endif()
+
+option(SUNFYRE_ENABLE_CONTRACTS "Enable contracts (assertions). This makes the binary slow." ON)
+if (SUNFYRE_ENABLE_CONTRACTS)
+  # TODO
+endif()
+
+if(CMAKE_BUILD_TYPE MATCHES DEBUG)
+  target_compile_options(sunfyre PUBLIC -fno-limit-debug-info)
+endif()
+
+# Default compile options.
+target_compile_options(sunfyre
+  PUBLIC
     # Disable a few unwanted warnings.
     -Wno-c++98-compat
     -Wno-c++98-compat-pedantic
@@ -44,13 +76,8 @@ target_compile_options(sunfyre
     -Wno-covered-switch-default
     -Wno-global-constructors
     -Wno-format-nonliteral # for fmtlib
-    # Clang's bug with templated deduction guides
+    # Clang's bug with templated deduction guides. Fixed in r316820.
     -Wno-undefined-func-template
-
-    -march=native
-
-    # Emit full debug information.
-    -fno-limit-debug-info
 )
 
 #add_subdirectory(include)
@@ -63,6 +90,3 @@ target_link_libraries(sunfyre
   PRIVATE
     fmt
 )
-
-# Enable LTO (Link Time Optimization)
-set_property(TARGET sunfyre PROPERTY INTERPROCEDURAL_OPTIMIZATION TRUE)
