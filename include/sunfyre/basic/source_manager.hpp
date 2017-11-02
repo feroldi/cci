@@ -15,8 +15,20 @@ struct SourceLocation
   unsigned offset; //< Offset into a SourceManager's buffer.
 
   // Constructs a SourceLocation with `offset`.
+  // Useful when constructing inplace (e.g. vector::emplace_back).
   explicit SourceLocation(unsigned offset)
     : offset(offset) {}
+
+  // Constructs a SourceLocation with `offset`.
+  static auto with_offset(unsigned offset) -> SourceLocation
+  {
+    return SourceLocation(offset);
+  }
+
+  auto based_on(SourceLocation base) const -> SourceLocation
+  {
+    return SourceLocation::with_offset(offset - base.offset);
+  }
 };
 
 inline bool operator== (SourceLocation lhs, SourceLocation rhs) { return lhs.offset == rhs.offset; };

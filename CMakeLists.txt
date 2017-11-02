@@ -15,6 +15,7 @@ include_directories(
 
 # FIXME: this should be an add_subdirectory.
 add_library(fmt STATIC deps/fmt/fmt/format.cc)
+target_link_libraries(sunfyre PRIVATE fmt)
 
 target_compile_features(sunfyre PUBLIC cxx_std_17)
 
@@ -22,9 +23,16 @@ if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
   target_compile_options(sunfyre PUBLIC
     -stdlib=libc++
     #-fuse-ld=lld
-    )
+  )
+
   # Enable LTO (Link Time Optimization)
   set_property(TARGET sunfyre PROPERTY INTERPROCEDURAL_OPTIMIZATION TRUE)
+
+  if(CMAKE_BUILD_TYPE MATCHES DEBUG)
+    target_compile_options(sunfyre PUBLIC -fno-limit-debug-info)
+  endif()
+
+  target_link_libraries(sunfyre PUBLIC c++ c++abi)
 endif()
 
 option(SUNFYRE_ENABLE_WARNINGS "Turn on all warnings." ON)
@@ -56,8 +64,15 @@ if (SUNFYRE_ENABLE_CONTRACTS)
   # TODO
 endif()
 
-if(CMAKE_BUILD_TYPE MATCHES DEBUG)
-  target_compile_options(sunfyre PUBLIC -fno-limit-debug-info)
+option(SUNFYRE_ENABLE_ASAN "Enable address sanitizer." OFF)
+if (SUNFYRE_ENABLE_ASAN)
+  target_compile_options(sunfyre PUBLIC -fsanitize=address)
+  target_link_libraries(sunfyre PUBLIC -fsanitize=address)
+endif()
+
+option(SUNFYRE_ENABLE_INT_WRAP "Enable integer wrapping (-fwrapv)." OFF)
+if (SUNFYRE_ENABLE_INT_WRAP)
+  target_compile_options(sunfyre PUBLIC -fwrapv)
 endif()
 
 # Default compile options.
@@ -80,13 +95,4 @@ target_compile_options(sunfyre
     -Wno-undefined-func-template
 )
 
-#add_subdirectory(include)
 add_subdirectory(lib)
-
-target_link_libraries(sunfyre
-  PUBLIC
-    c++
-    c++abi
-  PRIVATE
-    fmt
-)

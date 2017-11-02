@@ -1,12 +1,8 @@
 #pragma once
 
+#include "sunfyre/basic/source_manager.hpp"
 #include <vector>
-
-namespace sunfyre {
-class SourceManager;
-class SourceLocation;
-class SourceRange;
-}
+#include <string_view>
 
 namespace sunfyre::lex {
 
@@ -15,50 +11,50 @@ namespace sunfyre::lex {
 enum class TokenKind
 {
   // Keywords
-  Kw_auto,
-  Kw_break,
-  Kw_case,
-  Kw_char,
-  Kw_const,
-  Kw_continue,
-  Kw_default,
-  Kw_do,
-  Kw_double,
-  Kw_else,
-  Kw_enum,
-  Kw_extern,
-  Kw_float,
-  Kw_for,
-  Kw_goto,
-  Kw_if,
-  Kw_inline,
-  Kw_int,
-  Kw_long,
-  Kw_register,
-  Kw_restrict,
-  Kw_return,
-  Kw_short,
-  Kw_signed,
-  Kw_sizeof,
-  Kw_static,
-  Kw_struct,
-  Kw_switch,
-  Kw_typedef,
-  Kw_union,
-  Kw_unsigned,
-  Kw_void,
-  Kw_volatile,
-  Kw_while,
-  Kw__Alignas,
-  Kw__Alignof,
-  Kw__Atomic,
-  Kw__Bool,
-  Kw__Complex,
-  Kw__Generic,
-  Kw__Imaginary,
-  Kw__Noreturn,
-  Kw__Static_assert,
-  Kw__Thread_local,
+  kw_auto,
+  kw_break,
+  kw_case,
+  kw_char,
+  kw_const,
+  kw_continue,
+  kw_default,
+  kw_do,
+  kw_double,
+  kw_else,
+  kw_enum,
+  kw_extern,
+  kw_float,
+  kw_for,
+  kw_goto,
+  kw_if,
+  kw_inline,
+  kw_int,
+  kw_long,
+  kw_register,
+  kw_restrict,
+  kw_return,
+  kw_short,
+  kw_signed,
+  kw_sizeof,
+  kw_static,
+  kw_struct,
+  kw_switch,
+  kw_typedef,
+  kw_union,
+  kw_unsigned,
+  kw_void,
+  kw_volatile,
+  kw_while,
+  kw__Alignas,
+  kw__Alignof,
+  kw__Atomic,
+  kw__Bool,
+  kw__Complex,
+  kw__Generic,
+  kw__Imaginary,
+  kw__Noreturn,
+  kw__Static_assert,
+  kw__Thread_local,
 
   // C11 6.4.2 Identifiers
   identifier,
@@ -73,10 +69,10 @@ enum class TokenKind
 
 // Returns a string representation of a TokenKind.
 //
-// For example, the name of TokenKind::Kw_auto is "auto",
+// For instance, the name of TokenKind::kw_auto is "auto",
 // TokenKind::identifier's name is "identifier", TokenKind::plusplus's
 // name is "++" etc.
-auto to_string(TokenKind K) -> const char *;
+auto to_string(TokenKind K) -> std::string_view;
 
 // Token - A representation of a token as described in the C11 standard.
 // TODO: reference token definition in the standard.
@@ -99,28 +95,20 @@ public:
 
   // Checks wether this token is of any kind in `Ks`.
   template <typename... Kinds>
-  bool is_any_of(Kinds... Ks) const
+  bool is_one_of(Kinds... Ks) const
   {
     static_assert((std::is_same_v<TokenKind, Kinds> && ...));
     return (is(Ks) || ...);
   }
 
-  // Checks wether this token is not of any kind in `Ks`.
-  template <typename... Kinds>
-  bool is_not_any_of(Kinds... Ks) const
-  {
-    static_assert((std::is_same_v<TokenKind, Kinds> && ...));
-    return (is_not(Ks) && ...);
-  }
-
   // Returns the source location where this token starts.
-  auto start_loc() const -> SourceLocation { return range.begin() };
+  auto source_loc() const -> SourceLocation { return range.start; }
 
-  // Returns the text from where this token was parsed.
-  auto text(const SourceManager &) const -> std::string_view;
+  // Returns the source range where this token is in the buffer.
+  auto source_range() const -> SourceRange { return range; }
 
   // Returns the name of this token's kind.
-  auto spelling() const -> const char * { return to_string(kind); }
+  auto spelling() const -> std::string_view { return to_string(kind); }
 };
 
 // TokenStream - This implements a tokenizer for the C language. It's
@@ -136,16 +124,13 @@ public:
   using iterator = std::vector<Token>::iterator;
   using const_iterator = std::vector<Token>::const_iterator;
 
-  // Tokenizes the content held by a SourceManager.
+  // Tokenizes the content of a buffer.
   //
-  // \returns A TokenStream containing all the tokens from a source file.
-  static auto tokenize(const SourceManager &SM) -> TokenStream;
+  // \returns A TokenStream containing all the tokens from a buffer.
+  static auto tokenize(const char *begin, const char *end) -> TokenStream;
 
-  auto begin() const -> iterator { return tokens.begin(); }
-  auto end() const -> iterator { return tokens.end(); }
-
-  auto cbegin() const -> const_iterator { return tokens.cbegin(); }
-  auto cend() const -> const_iterator { return tokens.cend(); }
+  auto begin() const -> const_iterator { return tokens.begin(); }
+  auto end() const -> const_iterator { return tokens.end(); }
 };
 
 } // namespace sunfyre::lex
