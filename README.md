@@ -62,4 +62,13 @@ $ ./a.out; echo $?
 42
 ```
 
+## Running tests
+
+This project depends on [GoogleTest](https://github.com/google/googletest)
+in order to run the unit tests. There's no need to install it in order to
+compile the project, it's only required if you want to run the tests.
+
+**Note**: When generating CMake configuration files, make sure to enable
+the CMake option `SUNFYRE_ENABLE_TESTS` **if** you want to compile and run tests.
+
 Use `sunfyre --help` to get a list of useful parameters and options.
