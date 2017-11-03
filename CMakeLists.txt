@@ -75,6 +75,8 @@ if (SUNFYRE_ENABLE_INT_WRAP)
   target_compile_options(sunfyre PUBLIC -fwrapv)
 endif()
 
+option(SUNFYRE_ENABLE_TESTS "Enable testing with GTest." OFF)
+
 # Default compile options.
 target_compile_options(sunfyre
   PUBLIC
@@ -96,3 +98,7 @@ target_compile_options(sunfyre
 )
 
 add_subdirectory(lib)
+
+if (SUNFYRE_ENABLE_TESTS)
+  add_subdirectory(unittest)
+endif()
