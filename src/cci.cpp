@@ -11,12 +11,12 @@ constexpr const char *const GIT_HASH = "";
 constexpr const char *const GIT_TAG = "";
 #endif
 
-[[maybe_unused]]
-static auto cci_get_build_version() -> std::string
+[[maybe_unused]] static auto cci_get_build_version() -> std::string
 {
-  return fmt::format("{} {} {}", GIT_REFSPEC, GIT_TAG, GIT_HASH);
+  return fmt::format("{} {} {}", GIT_TAG, GIT_REFSPEC, GIT_HASH);
 }
 
 int main()
 {
+  fmt::print(stderr, "{}\n", cci_get_build_version());
 }

@@ -211,7 +211,7 @@ auto to_string(TokenKind K) -> std::string_view
 {
   switch (K)
   {
-    default: Unreachable();
+    default: cci_unreachable();
     case TokenKind::kw_auto: return "auto";
     case TokenKind::kw_break: return "break";
     case TokenKind::kw_case: return "case";

@@ -1,7 +1,7 @@
 #include "cci/basic/source_manager.hpp"
-#include "fmt/format.h"
 #include "cci/basic/file_stream.hpp"
 #include "cci/util/contracts.hpp"
+#include "fmt/format.h"
 #include <optional>
 #include <string>
 #include <string_view>
@@ -29,8 +29,8 @@ namespace cci
 static auto calc_line_offsets(const char *buf_begin, const char *buf_end)
   -> std::vector<SourceLocation>
 {
-  Expects(std::prev(buf_end)[0] == '\n' &&
-          "Source file needs to end in a '\n' (new line)!");
+  cci_expects(std::prev(buf_end)[0] == '\n' &&
+              "Source file needs to end in a '\n' (new line)!");
 
   // First line starts at offset 0.
   std::vector<SourceLocation> offsets{SourceLocation(0)};
@@ -62,7 +62,7 @@ static auto find_line_index(const std::vector<SourceLocation> &offsets,
     }
   }
 
-  Unreachable();
+  cci_unreachable();
 }
 
 auto SourceManager::from_file(std::string_view source_path)
@@ -82,14 +82,14 @@ auto SourceManager::from_file(std::string_view source_path)
 
 auto SourceManager::get_text(SourceRange range) const -> std::string_view
 {
-  Expects(!line_offsets.empty() && "Line offsets need to be calculated!");
+  cci_expects(!line_offsets.empty() && "Line offsets need to be calculated!");
   return get_text().substr(range.start.offset,
                            range.end.offset - range.start.offset);
 }
 
 auto SourceManager::get_line_text(SourceLocation loc) const -> std::string_view
 {
-  Expects(!line_offsets.empty() && "Line offsets need to be calculated!");
+  cci_expects(!line_offsets.empty() && "Line offsets need to be calculated!");
 
   size_t i = find_line_index(line_offsets, loc);
 
@@ -102,7 +102,7 @@ auto SourceManager::get_line_text(SourceLocation loc) const -> std::string_view
 auto SourceManager::get_linecol(SourceLocation loc) const
   -> std::pair<unsigned, unsigned>
 {
-  Expects(!line_offsets.empty() && "Line offsets need to be calculated!");
+  cci_expects(!line_offsets.empty() && "Line offsets need to be calculated!");
 
   size_t i = find_line_index(line_offsets, loc);
 

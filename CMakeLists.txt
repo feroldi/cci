@@ -63,7 +63,7 @@ endif()
 
 option(CCI_ENABLE_CONTRACTS "Enable contracts (assertions). This makes the binary slow." ON)
 if (CCI_ENABLE_CONTRACTS)
-  # TODO
+  target_compile_definitions(cci PUBLIC -DCCI_ENABLE_CONTRACTS)
 endif()
 
 option(CCI_ENABLE_ASAN "Enable address sanitizer." OFF)
