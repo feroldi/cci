@@ -46,6 +46,11 @@ $ ./a.out; echo $?
 42
 ```
 
+## Legacy branch
+
+Initially, this project had a complete parser for C11 (found at `legacy`
+branch), but due to maintainance issues, it was decided to rewrite that part.
+
 ## Running tests
 
 This project depends on [GoogleTest](https://github.com/google/googletest)
