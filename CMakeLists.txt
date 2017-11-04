@@ -6,7 +6,7 @@ add_subdirectory(cmake)
 
 # Disable extended variants of C++ dialects
 # i.e. don't choose gnu++11 over c++11
-set(CXX_EXTENSIONS OFF)
+set(CMAKE_CXX_EXTENSIONS OFF)
 
 add_executable(cci src/cci.cpp)
 
