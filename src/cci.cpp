@@ -2,18 +2,19 @@
 #include <string>
 
 #ifdef CCI_USING_GIT_REVISION
-extern const char *const GIT_REFSPEC;
-extern const char *const GIT_HASH;
-extern const char *const GIT_TAG;
+auto cci_git_refspec() -> const char *;
+auto cci_git_hash() -> const char *;
+auto cci_git_tag() -> const char *;
 #else
-constexpr const char *const GIT_REFSPEC = "";
-constexpr const char *const GIT_HASH = "";
-constexpr const char *const GIT_TAG = "";
+auto cci_git_refspec() -> const char * { return ""; }
+auto cci_git_hash() -> const char * { return ""; }
+auto cci_git_tag() -> const char * { return ""; }
 #endif
 
-[[maybe_unused]] static auto cci_get_build_version() -> std::string
+static auto cci_get_build_version() -> std::string
 {
-  return fmt::format("{} {} {}", GIT_TAG, GIT_REFSPEC, GIT_HASH);
+  return fmt::format("{} {} {}", cci_git_refspec(), cci_git_tag(),
+                     cci_git_hash());
 }
 
 int main()

@@ -1,6 +1,10 @@
 // This file is used by CMake to generate `$CMAKE_CURRENT_BINARY_DIR/git_revision.cpp`,
 // which is used by CCI to make up the compiler's build version.
 
-[[maybe_unused]] const char *const GIT_REFSPEC = "@GIT_REFSPEC@";
-[[maybe_unused]] const char *const GIT_HASH = "@GIT_HASH@";
-[[maybe_unused]] const char *const GIT_TAG = "@GIT_TAG@";
+auto cci_git_refspec() -> const char *;
+auto cci_git_hash() -> const char *;
+auto cci_git_tag() -> const char *;
+
+auto cci_git_refspec() -> const char * { return "@GIT_REFSPEC@"; }
+auto cci_git_hash() -> const char * { return "@GIT_HASH@"; }
+auto cci_git_tag() -> const char * { return "@GIT_TAG@"; }
