@@ -151,16 +151,31 @@ TEST(StringRefTest, Ctor) {
 
   EXPECT_STREQ("defg", StringRef(std::string("defg")).data());
   EXPECT_EQ(4u, StringRef(std::string("defg")).size());
+
+#if FMT_HAS_STRING_VIEW
+  EXPECT_STREQ("hijk", StringRef(std::string_view("hijk")).data());
+  EXPECT_EQ(4u, StringRef(std::string_view("hijk")).size());
+#endif
 }
 
 TEST(StringRefTest, ConvertToString) {
   std::string s = StringRef("abc").to_string();
   EXPECT_EQ("abc", s);
+
+#if FMT_HAS_STRING_VIEW
+  StringRef str_ref("defg");
+  std::string_view sv = static_cast<std::string_view>(str_ref);
+  EXPECT_EQ("defg", sv);
+#endif
 }
 
 TEST(CStringRefTest, Ctor) {
   EXPECT_STREQ("abc", CStringRef("abc").c_str());
   EXPECT_STREQ("defg", CStringRef(std::string("defg")).c_str());
+
+#if FMT_HAS_STRING_VIEW
+  EXPECT_STREQ("hijk", CStringRef(std::string_view("hijk")).c_str());
+#endif
 }
 
 #if FMT_USE_TYPE_TRAITS
@@ -1234,6 +1249,16 @@ TEST(FormatterTest, FormatIntLocale) {
   EXPECT_EQ("1--234--567", format("{:n}", 1234567));
 }
 
+struct ConvertibleToLongLong {
+  operator fmt::LongLong() const {
+    return fmt::LongLong(1) << 32;
+  }
+};
+
+TEST(FormatterTest, FormatConvertibleToLongLong) {
+  EXPECT_EQ("100000000", format("{:x}", ConvertibleToLongLong()));
+}
+
 TEST(FormatterTest, FormatFloat) {
   EXPECT_EQ("392.500000", format("{0:f}", 392.5f));
 }
@@ -1367,6 +1392,12 @@ TEST(FormatterTest, FormatStringRef) {
 TEST(FormatterTest, FormatCStringRef) {
   EXPECT_EQ("test", format("{0}", CStringRef("test")));
 }
+
+#if FMT_HAS_STRING_VIEW
+TEST(FormatterTest, FormatStringView) {
+  EXPECT_EQ("test", format("{0}", std::string_view("test")));
+}
+#endif
 
 void format_arg(fmt::BasicFormatter<char> &f, const char *, const Date &d) {
   f.writer() << d.year() << '-' << d.month() << '-' << d.day();
@@ -1556,8 +1587,8 @@ TEST(FormatTest, JoinArg) {
   using fmt::join;
   int v1[3] = { 1, 2, 3 };
   std::vector<float> v2;
-  v2.push_back(1.2);
-  v2.push_back(3.4);
+  v2.push_back(1.2f);
+  v2.push_back(3.4f);
 
   EXPECT_EQ("(1, 2, 3)", format("({})", join(v1 + 0, v1 + 3, ", ")));
   EXPECT_EQ("(1)", format("({})", join(v1 + 0, v1 + 1, ", ")));

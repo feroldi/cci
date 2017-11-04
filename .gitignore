@@ -1,7 +1,4 @@
-build/
-*.swp
+/build
+*.sw?
 *.out
-Makefile
 TODO.md
-test/build/
-ccompiler-parser-notes.md

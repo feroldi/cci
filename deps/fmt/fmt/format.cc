@@ -41,6 +41,9 @@
 #endif
 
 #if FMT_USE_WINDOWS_H
+# if !defined(FMT_HEADER_ONLY) && !defined(WIN32_LEAN_AND_MEAN)
+#  define WIN32_LEAN_AND_MEAN
+# endif
 # if defined(NOMINMAX) || defined(FMT_WIN_MINMAX)
 #  include <windows.h>
 # else
@@ -130,7 +133,7 @@ int safe_strerror(
     void operator=(const StrError &) {}
 
     // Handle the result of XSI-compliant version of strerror_r.
-    [[maybe_unused]] int handle(int result) {
+    int handle(int result) {
       // glibc versions before 2.13 return result in errno.
       return result == -1 ? errno : result;
     }
@@ -145,12 +148,12 @@ int safe_strerror(
     }
 
     // Handle the case when strerror_r is not available.
-    [[maybe_unused]] int handle(internal::Null<>) {
+    int handle(internal::Null<>) {
       return fallback(strerror_s(buffer_, buffer_size_, error_code_));
     }
 
     // Fallback to strerror_s when strerror_r is not available.
-    [[maybe_unused]] int fallback(int result) {
+    int fallback(int result) {
       // If the buffer is full then the message is probably truncated.
       return result == 0 && strlen(buffer_) == buffer_size_ - 1 ?
             ERANGE : result;
@@ -209,16 +212,6 @@ void report_error(FormatFunc func, int error_code,
   std::fputc('\n', stderr);
 }
 }  // namespace
-
-namespace internal {
-
-// This method is used to preserve binary compatibility with fmt 3.0.
-// It can be removed in 4.0.
-FMT_FUNC inline void format_system_error(
-  Writer &out, int error_code, StringRef message) FMT_NOEXCEPT {
-  fmt::format_system_error(out, error_code, message);
-}
-}  // namespace internal
 
 FMT_FUNC void SystemError::init(
     int err_code, CStringRef format_str, ArgList args) {
@@ -404,51 +397,6 @@ FMT_FUNC void format_system_error(
 }
 
 template <typename Char>
-void internal::ArgMap<Char>::init(const ArgList &args) {
-  if (!map_.empty())
-    return;
-  typedef internal::NamedArg<Char> NamedArg;
-  const NamedArg *named_arg = FMT_NULL;
-  bool use_values =
-      args.type(ArgList::MAX_PACKED_ARGS - 1) == internal::Arg::NONE;
-  if (use_values) {
-    for (unsigned i = 0;/*nothing*/; ++i) {
-      internal::Arg::Type arg_type = args.type(i);
-      switch (arg_type) {
-      case internal::Arg::NONE:
-        return;
-      case internal::Arg::NAMED_ARG:
-        named_arg = static_cast<const NamedArg*>(args.values_[i].pointer);
-        map_.push_back(Pair(named_arg->name, *named_arg));
-        break;
-      default:
-        /*nothing*/;
-      }
-    }
-    return;
-  }
-  for (unsigned i = 0; i != ArgList::MAX_PACKED_ARGS; ++i) {
-    internal::Arg::Type arg_type = args.type(i);
-    if (arg_type == internal::Arg::NAMED_ARG) {
-      named_arg = static_cast<const NamedArg*>(args.args_[i].pointer);
-      map_.push_back(Pair(named_arg->name, *named_arg));
-    }
-  }
-  for (unsigned i = ArgList::MAX_PACKED_ARGS;/*nothing*/; ++i) {
-    switch (args.args_[i].type) {
-    case internal::Arg::NONE:
-      return;
-    case internal::Arg::NAMED_ARG:
-      named_arg = static_cast<const NamedArg*>(args.args_[i].pointer);
-      map_.push_back(Pair(named_arg->name, *named_arg));
-      break;
-    default:
-      /*nothing*/;
-    }
-  }
-}
-
-template <typename Char>
 void internal::FixedBuffer<Char>::grow(std::size_t) {
   FMT_THROW(std::runtime_error("buffer overflow"));
 }
@@ -509,8 +457,6 @@ template struct internal::BasicData<void>;
 
 template void internal::FixedBuffer<char>::grow(std::size_t);
 
-template void internal::ArgMap<char>::init(const ArgList &args);
-
 template FMT_API int internal::CharTraits<char>::format_float(
     char *buffer, std::size_t size, const char *format,
     unsigned width, int precision, double value);
@@ -522,8 +468,6 @@ template FMT_API int internal::CharTraits<char>::format_float(
 // Explicit instantiations for wchar_t.
 
 template void internal::FixedBuffer<wchar_t>::grow(std::size_t);
-
-template void internal::ArgMap<wchar_t>::init(const ArgList &args);
 
 template FMT_API int internal::CharTraits<wchar_t>::format_float(
     wchar_t *buffer, std::size_t size, const wchar_t *format,
