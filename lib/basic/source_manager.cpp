@@ -1,13 +1,13 @@
-#include "sunfyre/basic/source_manager.hpp"
+#include "cci/basic/source_manager.hpp"
 #include "fmt/format.h"
-#include "sunfyre/basic/file_stream.hpp"
-#include "sunfyre/util/contracts.hpp"
+#include "cci/basic/file_stream.hpp"
+#include "cci/util/contracts.hpp"
 #include <optional>
 #include <string>
 #include <string_view>
 #include <vector>
 
-namespace sunfyre
+namespace cci
 {
 
 // Calculates all line offsets in `buffer`.
@@ -112,4 +112,4 @@ auto SourceManager::get_linecol(SourceLocation loc) const
   return std::pair(line_num, col_num);
 }
 
-} // namespace sunfyre
+} // namespace cci

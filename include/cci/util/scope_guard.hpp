@@ -2,7 +2,7 @@
 
 #include <utility>
 
-namespace sunfyre {
+namespace cci {
 
 template <typename Invocable>
 struct ScopeGuard
@@ -34,4 +34,4 @@ private:
 template <typename F>
 ScopeGuard(F) -> ScopeGuard<F>;
 
-} // namespace sunfyre
+} // namespace cci

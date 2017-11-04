@@ -1,11 +1,11 @@
-#include "sunfyre/lex/lexer.hpp"
-#include "sunfyre/util/contracts.hpp"
-#include "sunfyre/basic/source_manager.hpp"
+#include "cci/lex/lexer.hpp"
+#include "cci/util/contracts.hpp"
+#include "cci/basic/source_manager.hpp"
 #include <utility>
 #include <algorithm>
 #include <cassert>
 
-namespace sunfyre::lex {
+namespace cci::lex {
 namespace {
 
 // token:
@@ -261,4 +261,4 @@ auto to_string(TokenKind K) -> std::string_view
   }
 }
 
-} // namespace sunfyre::lex
+} // namespace cci::lex

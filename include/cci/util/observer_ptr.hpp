@@ -11,7 +11,7 @@
 #include <type_traits>
 #include <functional>
 
-namespace sunfyre
+namespace cci
 {
 
 template <typename T>
@@ -72,65 +72,65 @@ private:
 
 template <typename T>
 inline auto make_observer(T* p) noexcept
-{ return ::sunfyre::observer_ptr<T>(p); }
+{ return ::cci::observer_ptr<T>(p); }
 
 template <typename W1, typename W2>
-inline bool operator== (const ::sunfyre::observer_ptr<W1>& p1, const ::sunfyre::observer_ptr<W2>& p2)
+inline bool operator== (const ::cci::observer_ptr<W1>& p1, const ::cci::observer_ptr<W2>& p2)
 { return p1.get() == p2.get(); }
 
 template <typename W1, typename W2>
-inline bool operator!= (const ::sunfyre::observer_ptr<W1>& p1, const ::sunfyre::observer_ptr<W2>& p2)
+inline bool operator!= (const ::cci::observer_ptr<W1>& p1, const ::cci::observer_ptr<W2>& p2)
 { return !(p1 == p2); }
 
 template <typename W>
-inline bool operator== (const ::sunfyre::observer_ptr<W>& p, std::nullptr_t) noexcept
+inline bool operator== (const ::cci::observer_ptr<W>& p, std::nullptr_t) noexcept
 { return !p; }
 
 template <typename W>
-inline bool operator== (std::nullptr_t, const ::sunfyre::observer_ptr<W>& p) noexcept
+inline bool operator== (std::nullptr_t, const ::cci::observer_ptr<W>& p) noexcept
 { return !p; }
 
 template <typename W>
-inline bool operator!= (const ::sunfyre::observer_ptr<W>& p, std::nullptr_t) noexcept
+inline bool operator!= (const ::cci::observer_ptr<W>& p, std::nullptr_t) noexcept
 { return static_cast<bool>(p); }
 
 template <typename W>
-inline bool operator!= (std::nullptr_t, const ::sunfyre::observer_ptr<W>& p) noexcept
+inline bool operator!= (std::nullptr_t, const ::cci::observer_ptr<W>& p) noexcept
 { return static_cast<bool>(p); }
 
 template <typename W1, typename W2>
-inline bool operator< (const ::sunfyre::observer_ptr<W1>& p1, const ::sunfyre::observer_ptr<W2>& p2)
+inline bool operator< (const ::cci::observer_ptr<W1>& p1, const ::cci::observer_ptr<W2>& p2)
 {
   using W3 = std::common_type_t<W1*, W2*>;
   return std::less<W3>()(p1.get(), p2.get());
 }
 
 template <typename W1, typename W2>
-inline bool operator> (const ::sunfyre::observer_ptr<W1>& p1, const ::sunfyre::observer_ptr<W2>& p2)
+inline bool operator> (const ::cci::observer_ptr<W1>& p1, const ::cci::observer_ptr<W2>& p2)
 { return p2 < p1; }
 
 template <typename W1, typename W2>
-inline bool operator<= (const ::sunfyre::observer_ptr<W1>& p1, const ::sunfyre::observer_ptr<W2>& p2)
+inline bool operator<= (const ::cci::observer_ptr<W1>& p1, const ::cci::observer_ptr<W2>& p2)
 { return !(p2 < p1); }
 
 template <typename W1, typename W2>
-inline bool operator>= (const ::sunfyre::observer_ptr<W1>& p1, const ::sunfyre::observer_ptr<W2>& p2)
+inline bool operator>= (const ::cci::observer_ptr<W1>& p1, const ::cci::observer_ptr<W2>& p2)
 { return !(p1 < p2); }
 
-} // namespace sunfyre
+} // namespace cci
 
 namespace std
 {
 template <typename W>
-inline void swap(::sunfyre::observer_ptr<W>& lhs, ::sunfyre::observer_ptr<W>& rhs) noexcept
+inline void swap(::cci::observer_ptr<W>& lhs, ::cci::observer_ptr<W>& rhs) noexcept
 { lhs.swap(rhs); }
 
 template <typename T>
-struct hash<::sunfyre::observer_ptr<T>>
+struct hash<::cci::observer_ptr<T>>
 {
   hash() noexcept = default;
 
-  constexpr auto operator() (::sunfyre::observer_ptr<T> p) noexcept -> std::size_t
+  constexpr auto operator() (::cci::observer_ptr<T> p) noexcept -> std::size_t
   {
     return std::hash<T*>()(p.get());
   }

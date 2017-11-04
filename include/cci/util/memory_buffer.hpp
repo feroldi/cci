@@ -11,13 +11,13 @@
 
 #pragma once
 
-#include "sunfyre/util/contracts.hpp"
+#include "cci/util/contracts.hpp"
 #include <string_view>
 #include <optional>
 #include <system_error>
 #include <memory>
 
-namespace sunfyre {
+namespace cci {
 
 // MemoryBuffer - Represents a read-only block of memory read from a file,
 // a stream etc.
@@ -67,4 +67,4 @@ public:
   std::string_view name() const { return name_; }
 };
 
-} // namespace sunfyre
+} // namespace cci

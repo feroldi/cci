@@ -5,7 +5,7 @@
 #include <vector>
 #include <optional>
 
-namespace sunfyre
+namespace cci
 {
 
 // SourceLocation - This represents an offset into the buffer of
@@ -111,4 +111,4 @@ public:
   }
 };
 
-} // namespace sunfyre
+} // namespace cci

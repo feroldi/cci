@@ -1,10 +1,10 @@
 #pragma once
 
-#include "sunfyre/basic/source_manager.hpp"
+#include "cci/basic/source_manager.hpp"
 #include <vector>
 #include <string_view>
 
-namespace sunfyre::lex {
+namespace cci::lex {
 
 // TokenKind - This represents the kind of a token, e.g. identifier,
 // keyword etc.
@@ -133,4 +133,4 @@ public:
   auto end() const -> const_iterator { return tokens.end(); }
 };
 
-} // namespace sunfyre::lex
+} // namespace cci::lex
