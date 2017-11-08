@@ -33,20 +33,18 @@ static auto calc_line_offsets(const char *buf_begin, const char *buf_end)
               "Source file needs to end in a '\n' (new line)!");
 
   // First line starts at offset 0.
-  std::vector<SourceLocation> offsets{SourceLocation(0)};
+  std::vector offsets{SourceLocation(0)};
   auto line_ptr = buf_begin;
 
   while (line_ptr != buf_end)
   {
     line_ptr =
       std::find_if(line_ptr, buf_end, [](char C) { return C == '\n'; });
-
-    assert(line_ptr <= buf_end);
-
     std::advance(line_ptr, 1); //< Skips new line.
     offsets.emplace_back(static_cast<unsigned>(line_ptr - buf_begin));
   }
 
+  cci_ensures(line_ptr == buf_end);
   return offsets;
 }
 
