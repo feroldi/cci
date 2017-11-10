@@ -33,20 +33,18 @@ static auto calc_line_offsets(const char *buf_begin, const char *buf_end)
               "Source file needs to end in a '\n' (new line)!");
 
   // First line starts at offset 0.
-  std::vector<SourceLocation> offsets{SourceLocation(0)};
+  std::vector offsets{SourceLocation(0)};
   auto line_ptr = buf_begin;
 
   while (line_ptr != buf_end)
   {
     line_ptr =
       std::find_if(line_ptr, buf_end, [](char C) { return C == '\n'; });
-
-    assert(line_ptr <= buf_end);
-
     std::advance(line_ptr, 1); //< Skips new line.
     offsets.emplace_back(static_cast<unsigned>(line_ptr - buf_begin));
   }
 
+  cci_ensures(line_ptr == buf_end);
   return offsets;
 }
 
@@ -71,13 +69,17 @@ auto SourceManager::from_file(std::string_view source_path)
   std::optional<SourceManager> src_mgr;
 
   if (auto file_content = read_stream_utf8(source_path))
-  {
-    std::string_view buf = *file_content;
-    auto ln_offsets = calc_line_offsets(buf.begin(), buf.end());
-    src_mgr = SourceManager(std::move(ln_offsets), std::move(*file_content));
-  }
+    src_mgr = SourceManager::from_buffer(std::move(*file_content));
 
   return src_mgr;
+}
+
+auto SourceManager::from_buffer(std::string buffer)
+  -> SourceManager
+{
+  std::string_view buf = buffer;
+  auto ln_offsets = calc_line_offsets(buf.begin(), buf.end());
+  return SourceManager(std::move(ln_offsets), std::move(buffer));
 }
 
 auto SourceManager::get_text(SourceRange range) const -> std::string_view
