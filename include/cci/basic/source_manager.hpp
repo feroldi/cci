@@ -82,6 +82,9 @@ public:
   // None if `source_path` doesn't exist or is a directory.
   static auto from_file(std::string_view source_path) -> std::optional<SourceManager>;
 
+  // Returns a SourceManager that manages a UTF-8 string buffer.
+  static auto from_buffer(std::string buffer) -> SourceManager;
+
   // Returns the text represented by a SourceRange.
   auto get_text(SourceRange) const -> std::string_view;
 
