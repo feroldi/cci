@@ -1,3 +1,5 @@
-add_unit_test_sources(
-  source_manager.cpp
-)
+add_cci_unittest_library(CCIBasicTest
+  SOURCES
+    source_manager.cpp
+  DEPENDS
+    CCIBasic)

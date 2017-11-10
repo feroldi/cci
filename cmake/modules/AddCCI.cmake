@@ -1,109 +1,135 @@
 # Configures a target to have common compiler flags and options
 # across targets.
+#
+# USAGE
+#   cci_set_common_configs(<target>)
+#
+# Compile features, options, definitions and libraries that are common
+# to all targets in this project are put here. Use this function in
+# order to maintain a concise compilation.
 function(cci_set_common_configs target)
-  target_compile_features(${target} PUBLIC cxx_std_17)
-
   if (CMAKE_CXX_COMPILER_ID MATCHES "Clang")
-    #-fuse-ld=lld
-    target_compile_options(${target} PUBLIC
-      -stdlib=libc++)
-
     # Enable LTO (Link Time Optimization)
     set_property(TARGET ${target} PROPERTY INTERPROCEDURAL_OPTIMIZATION TRUE)
-
-    if (CMAKE_BUILD_TYPE MATCHES DEBUG)
-      target_compile_options(${target} PUBLIC -fno-limit-debug-info)
-    endif()
-
-    target_link_libraries(${target} PUBLIC c++ c++abi)
   endif()
 
-  if (CCI_ENABLE_WARNINGS)
-    target_compile_options(${target} PUBLIC
-      -Wall
-      -Wextra
-      -Weverything)
-  endif()
+  target_compile_features(${target} PRIVATE
+    cxx_std_17)
 
-  if (CCI_ENABLE_WERROR)
-    target_compile_options(${target} PUBLIC -Werror)
-  endif()
+  target_compile_options(${target} PRIVATE
+    $<$<CXX_COMPILER_ID:Clang>:-stdlib=libc++>
+    $<$<CONFIG:CCI_ENABLE_WARNINGS>:-Wall -Wextra $<$<CXX_COMPILER_ID:Clang>:-Weverything>>
+    $<$<CONFIG:CCI_ENABLE_WERROR>:-Werror>
+    $<$<CONFIG:CCI_ENABLE_PEDANTIC>:-pedantic-errors>
+    $<$<CONFIG:CCI_ENABLE_NATIVE>:-march=native>
+    $<$<CONFIG:CCI_ENABLE_SAN>:-fsanitize=address>
+    $<$<CONFIG:CCI_INT_WRAP>:-fwrapv>
+    $<$<CONFIG:DEBUG>:-fno-limit-debug-info>
 
-  if (CCI_ENABLE_PEDANTIC)
-    target_compile_options(${target} PUBLIC -pedantic -pedantic-errors)
-  endif()
+    -Wno-c++98-compat
+    -Wno-c++98-compat-pedantic
+    -Wno-gnu-statement-expression
+    -Wno-padded
+    -Wno-weak-vtables
+    -Wno-documentation
+    -Wno-shadow
+    -Wno-missing-variable-declarations
+    -Wno-switch-enum
+    -Wno-covered-switch-default
+    -Wno-global-constructors
+    # for fmtlib
+    -Wno-format-nonliteral
+    # Clang's bug with templated deduction guides. Fixed in r316820.
+    -Wno-undefined-func-template)
 
-  if (CCI_ENABLE_NATIVE)
-    target_compile_options(${target} PUBLIC -march=native)
-  endif()
+  target_compile_definitions(${target} PRIVATE
+    $<$<CONFIG:CCI_ENABLE_CONTRACTS>:CCI_ENABLE_CONTRACTS>)
 
-  if (CCI_ENABLE_CONTRACTS)
-    target_compile_definitions(${target} PUBLIC -DCCI_ENABLE_CONTRACTS)
-  endif()
+  target_link_libraries(${target} PRIVATE
+    $<$<CXX_COMPILER_ID:Clang>:c++>
+    $<$<CXX_COMPILER_ID:Clang>:c++abi>
+    $<$<CXX_COMPILER_ID:Clang>:-fuse-ld=lld>
+    $<$<CONFIG:CCI_ENABLE_SAN>:-fsanitize=address>)
+endfunction()
 
-  if (CCI_ENABLE_ASAN)
-    target_compile_options(${target} PUBLIC -fsanitize=address)
-    target_link_libraries(${target} PUBLIC -fsanitize=address)
-  endif()
-
-  if (CCI_ENABLE_INT_WRAP)
-    target_compile_options(${target} PUBLIC -fwrapv)
-  endif()
-
-  # Default compile options.
-  target_compile_options(${target}
-    PUBLIC
-      # Disable a few unwanted warnings.
-      -Wno-c++98-compat
-      -Wno-c++98-compat-pedantic
-      -Wno-gnu-statement-expression
-      -Wno-padded
-      -Wno-weak-vtables
-      -Wno-documentation
-      -Wno-shadow
-      -Wno-missing-variable-declarations
-      -Wno-switch-enum
-      -Wno-covered-switch-default
-      -Wno-global-constructors
-      -Wno-format-nonliteral # for fmtlib
-      # Clang's bug with templated deduction guides. Fixed in r316820.
-      -Wno-undefined-func-template)
-
-endfunction(cci_set_common_configs target)
-
-# Creates a new CCI library.
+# Creates a CCI library.
 #
-# USAGE:
+# OPTIONS
+#   STATIC
+#     Builds the library as static.
+#   SHARED
+#     Builds the library as shared.
+#   SOURCES files...
+#     Sets the library's source files.
+#   DEPENDS targets...
+#     Adds other libraries as dependencies. Effectively
+#     links them.
 #
-#     add_cci_library(<target name> SOURCES <files>... DEPENDS <targets>...)
+# USAGE
+#   add_cci_library(<target name> SOURCES <files>... DEPENDS <targets>...)
 #
 # add_cci_library creates a new target with the name ${libname} as
-# a library. Sources listed in SOURCES will be used to compose the library's
+# a library. Files listed in SOURCES will be used to compose the library's
 # sources. Anything listed in DEPENDS will get linked to the library.
 function(add_cci_library libname)
-  cmake_parse_arguments(ARG "" "" "SOURCES;DEPENDS" ${ARGN})
-  add_library(${libname} ${ARG_SOURCES})
-  if(NOT "${ARG_DEPENDS}" STREQUAL "")
-    target_link_libraries(${libname} PRIVATE ${ARG_DEPENDS})
+  cmake_parse_arguments(ARG "STATIC;SHARED" "" "SOURCES;DEPENDS" ${ARGN})
+  if(ARG_STATIC AND ARG_SHARED)
+    message(FATAL_ERROR "STATIC and SHARED are mutually exclusive")
   endif()
+  add_library(${libname}
+    $<$<CONFIG:ARG_STATIC>:STATIC>
+    $<$<CONFIG:ARG_SHARED>:SHARED>
+    ${ARG_SOURCES})
+  target_include_directories(${libname}
+    PUBLIC ${CMAKE_SOURCE_DIR}/include
+    PUBLIC ${CMAKE_SOURCE_DIR}/deps)
+  target_link_libraries(${libname} PRIVATE ${ARG_DEPENDS})
   cci_set_common_configs(${libname})
-endfunction(add_cci_library libname)
+endfunction()
 
-# Creates a new CCI tool/executable.
-function(add_cci_tool toolname)
+# Creates a CCI tool/executable.
+#
+# OPTIONS
+#   SOURCES files...
+#     Sets the executable's source files.
+#   DEPENDS targets...
+#     Adds other targets as dependencies. Effectively
+#     links them into the executable.
+#
+# USAGE
+#   add_cci_executable(<target name> SOURCEs <files>... DEPEDS <targets>...)
+#
+# add_cci_executable creates an executable with the target ${exe_name}.
+# It's useful for adding tools to the project that uses the main CCI libraries.
+# Files listed in SOURCES will be used to compose the executable's
+# sources. Anything listed in DEPENDS will get linked into the executable.
+function(add_cci_executable exe_name)
   cmake_parse_arguments(ARG "" "" "SOURCES;DEPENDS" ${ARGN})
-  add_executable(${toolname} ${ARG_SOURCES})
-  if(NOT "${ARG_DEPENDS}" STREQUAL "")
-    target_link_libraries(${toolname} PRIVATE ${ARG_DEPENDS})
-  endif()
-  cci_set_common_configs(${toolname})
+  add_executable(${exe_name} ${ARG_SOURCES})
+  target_link_libraries(${exe_name} PRIVATE ${ARG_DEPENDS})
+  cci_set_common_configs(${exe_name})
+endfunction()
 
-  # Takes advantage of git version control to make up the compiler's build version.
-  if (CCI_USE_GIT_REVISION)
-    target_compile_definitions(${toolname} PUBLIC -DCCI_USING_GIT_REVISION)
-    git_get_head_revision(GIT_REFSPEC GIT_HASH)
-    git_get_exact_tag(GIT_TAG)
-    configure_file(${PROJECT_SOURCE_DIR}/git_revision.cpp.in ${CMAKE_CURRENT_BINARY_DIR}/git_revision.cpp @ONLY NEWLINE_STYLE UNIX)
-    target_sources(${toolname} PUBLIC ${CMAKE_CURRENT_BINARY_DIR}/git_revision.cpp)
-  endif()
-endfunction(add_cci_tool toolname)
+# Adds a test to a test suite.
+#
+# OPTIONS
+#   SOURCES files...
+#     Sets the test's source files.
+#   DEPENDS targets...
+#     Adds other targets as dependencies. Effectively
+#     links them into the test's executable.
+#
+# USAGE
+#   add_cci_unittest(<test suite> <test name> SOURCES <files>... DEPENDS <targets>...)
+#
+# Adds a single test (usually a directory containing tests) to the CCI's test
+# suite. A test suite should be created in order to use this function.
+function(add_cci_unittest_executable test_suite)
+  add_cci_executable(${test_suite} ${ARGN} DEPENDS GTest::GTest)
+  target_include_directories(${test_suite} PRIVATE ${GTEST_INCLUDE_DIRS})
+  gtest_add_tests(TARGET ${test_suite})
+endfunction()
+
+function(add_cci_unittest_library test_name)
+  add_cci_library(${test_name} ${ARGN})
+endfunction()
