@@ -1,4 +1,5 @@
 #include "cci/basic/source_manager.hpp"
+#include "cci/util/contracts.hpp"
 #include "gtest/gtest.h"
 #include <string>
 #include <string_view>
@@ -36,6 +37,9 @@ TEST(SourceManagerTest, calcLineOffsets)
     EXPECT_EQ(std::pair(3u, 9u), sm.get_linecol(return_end));
     EXPECT_EQ("  return 0;", sm.get_line_text(return_begin));
   }
+
+  EXPECT_THROW(sm.get_line_text(cci::SourceLocation(code.size())),
+               unreachable_exception);
 };
 
 } // anonymouns namespace

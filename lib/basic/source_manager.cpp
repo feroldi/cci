@@ -2,6 +2,7 @@
 #include "cci/basic/file_stream.hpp"
 #include "cci/util/contracts.hpp"
 #include "fmt/format.h"
+#include <cstddef>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -41,7 +42,7 @@ static auto compute_line_offsets(const char *buf_begin, const char *buf_end)
     line_ptr =
       std::find_if(line_ptr, buf_end, [](char C) { return C == '\n'; });
     std::advance(line_ptr, 1); //< Skips new line.
-    offsets.emplace_back(static_cast<unsigned>(line_ptr - buf_begin));
+    offsets.emplace_back(static_cast<std::size_t>(line_ptr - buf_begin));
   }
 
   cci_ensures(line_ptr == buf_end);
@@ -74,11 +75,10 @@ auto SourceManager::from_file(std::string_view source_path)
   return src_mgr;
 }
 
-auto SourceManager::from_buffer(std::string buffer)
-  -> SourceManager
+auto SourceManager::from_buffer(std::string buffer) -> SourceManager
 {
   std::string_view buf = buffer;
-  auto ln_offsets = calc_line_offsets(buf.begin(), buf.end());
+  auto ln_offsets = compute_line_offsets(buf.begin(), buf.end());
   return SourceManager(std::move(ln_offsets), std::move(buffer));
 }
 
@@ -107,7 +107,7 @@ auto SourceManager::get_linecol(SourceLocation loc) const
 {
   cci_expects(!line_offsets.empty() && "Line offsets need to be computed!");
 
-  size_t i = find_line_index(line_offsets, loc);
+  std::size_t i = find_line_index(line_offsets, loc);
 
   auto line_num = i + 1;
   auto col_num = loc.based_on(line_offsets[i]).offset + 1;

@@ -4,6 +4,7 @@
 #include <string>
 #include <vector>
 #include <optional>
+#include <cstddef>
 
 namespace cci
 {
@@ -12,15 +13,15 @@ namespace cci
 // a SourceManager.
 struct SourceLocation
 {
-  unsigned offset; //< Offset into a SourceManager's buffer.
+  std::size_t offset; //< Offset into a SourceManager's buffer.
 
   // Constructs a SourceLocation with `offset`.
   // Useful when constructing inplace (e.g. vector::emplace_back).
-  explicit SourceLocation(unsigned offset)
+  explicit SourceLocation(std::size_t offset)
     : offset(offset) {}
 
   // Constructs a SourceLocation with `offset`.
-  static auto with_offset(unsigned offset) -> SourceLocation
+  static auto with_offset(std::size_t offset) -> SourceLocation
   {
     return SourceLocation(offset);
   }
