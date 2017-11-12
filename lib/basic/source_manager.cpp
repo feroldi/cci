@@ -26,7 +26,7 @@ namespace cci
 // the first character in the line. This is useful for the front-end,
 // specifically the diagnostics system: printing out source lines to
 // the user requires knowledge of where lines start and end.
-static auto calc_line_offsets(const char *buf_begin, const char *buf_end)
+static auto compute_line_offsets(const char *buf_begin, const char *buf_end)
   -> std::vector<SourceLocation>
 {
   cci_expects(std::prev(buf_end)[0] == '\n' &&
@@ -84,19 +84,20 @@ auto SourceManager::from_buffer(std::string buffer)
 
 auto SourceManager::get_text(SourceRange range) const -> std::string_view
 {
-  cci_expects(!line_offsets.empty() && "Line offsets need to be calculated!");
+  cci_expects(!line_offsets.empty() && "Line offsets need to be computed!");
   return get_text().substr(range.start.offset,
                            range.end.offset - range.start.offset);
 }
 
 auto SourceManager::get_line_text(SourceLocation loc) const -> std::string_view
 {
-  cci_expects(!line_offsets.empty() && "Line offsets need to be calculated!");
+  cci_expects(!line_offsets.empty() && "Line offsets need to be computed!");
 
   size_t i = find_line_index(line_offsets, loc);
 
   auto line_start = line_offsets[i];
   auto line_end = line_offsets[i + 1]; //< Next new line.
+  line_end.offset -= 1; // Remove trailing newline.
 
   return get_text(SourceRange(line_start, line_end));
 }
@@ -104,7 +105,7 @@ auto SourceManager::get_line_text(SourceLocation loc) const -> std::string_view
 auto SourceManager::get_linecol(SourceLocation loc) const
   -> std::pair<unsigned, unsigned>
 {
-  cci_expects(!line_offsets.empty() && "Line offsets need to be calculated!");
+  cci_expects(!line_offsets.empty() && "Line offsets need to be computed!");
 
   size_t i = find_line_index(line_offsets, loc);
 
