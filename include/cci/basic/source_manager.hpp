@@ -41,6 +41,15 @@ inline bool operator>= (SourceLocation lhs, SourceLocation rhs) { return lhs.off
 // SourceRange - This represents a range of source locations, containing
 // a starting point and an ending one. Useful to represent the text of a token,
 // or a single line.
+//
+// Note that `end` is similar to an end iterator — it points past the last
+// element of a container. In this case, `end` is treated as an offset
+// past the last character. For instance, given a buffer "answer is 42\n",
+// constructing a range that represents the substring "answer" would look like so:
+//
+//    SourceRange answer(SourceLocation(0u), SourceLocation(6u));
+//
+// Where `6u` is the position of the first white space in that buffer.
 struct SourceRange
 {
   SourceLocation start;
