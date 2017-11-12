@@ -6,8 +6,6 @@ project(cci)
 # i.e. don't choose gnu++11 over c++11
 set(CMAKE_CXX_EXTENSIONS OFF)
 
-add_subdirectory(cmake)
-
 option(CCI_ENABLE_WARNINGS "Turn on all warnings." ON)
 option(CCI_ENABLE_WERROR "Stop compiling upon warnings." ON)
 option(CCI_ENABLE_PEDANTIC "Compile with -pedantic on." ON)
@@ -17,6 +15,8 @@ option(CCI_ENABLE_ASAN "Enable address sanitizer." OFF)
 option(CCI_ENABLE_INT_WRAP "Enable integer wrapping (-fwrapv)." OFF)
 option(CCI_ENABLE_TESTS "Enable testing with GTest." OFF)
 option(CCI_USE_GIT_REVISION "Use Git revision to make up CCI's build version." ON)
+
+add_subdirectory(cmake)
 
 # Includes building pieces of the compiler.
 add_subdirectory(deps)

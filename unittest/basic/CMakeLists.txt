@@ -1,4 +1,4 @@
-add_cci_unittest_library(CCIBasicTest
+add_cci_unittest(CCIBasicTest
   SOURCES
     source_manager.cpp
   DEPENDS

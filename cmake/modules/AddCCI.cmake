@@ -13,43 +13,42 @@ function(cci_set_common_configs target)
     set_property(TARGET ${target} PROPERTY INTERPROCEDURAL_OPTIMIZATION TRUE)
   endif()
 
-  target_compile_features(${target} PRIVATE
-    cxx_std_17)
+  target_compile_features(${target} PUBLIC cxx_std_17)
 
-  target_compile_options(${target} PRIVATE
-    $<$<CXX_COMPILER_ID:Clang>:-stdlib=libc++>
-    $<$<CONFIG:CCI_ENABLE_WARNINGS>:-Wall -Wextra $<$<CXX_COMPILER_ID:Clang>:-Weverything>>
-    $<$<CONFIG:CCI_ENABLE_WERROR>:-Werror>
-    $<$<CONFIG:CCI_ENABLE_PEDANTIC>:-pedantic-errors>
-    $<$<CONFIG:CCI_ENABLE_NATIVE>:-march=native>
-    $<$<CONFIG:CCI_ENABLE_SAN>:-fsanitize=address>
-    $<$<CONFIG:CCI_INT_WRAP>:-fwrapv>
-    $<$<CONFIG:DEBUG>:-fno-limit-debug-info>
+  target_compile_options(${target}
+    PUBLIC $<$<CXX_COMPILER_ID:Clang>:-stdlib=libc++>
+    PRIVATE $<$<BOOL:CCI_ENABLE_WARNINGS>:-Wall -Wextra $<$<CXX_COMPILER_ID:Clang>:-Weverything>>
+    PRIVATE $<$<BOOL:CCI_ENABLE_WERROR>:-Werror>
+    PRIVATE $<$<BOOL:CCI_ENABLE_PEDANTIC>:-pedantic-errors>
+    PRIVATE $<$<BOOL:CCI_ENABLE_NATIVE>:-march=native>
+    PUBLIC $<$<BOOL:CCI_ENABLE_SAN>:-fsanitize=address>
+    PRIVATE $<$<BOOL:CCI_INT_WRAP>:-fwrapv>
+    PRIVATE $<$<BOOL:DEBUG>:-fno-limit-debug-info>
 
-    -Wno-c++98-compat
-    -Wno-c++98-compat-pedantic
-    -Wno-gnu-statement-expression
-    -Wno-padded
-    -Wno-weak-vtables
-    -Wno-documentation
-    -Wno-shadow
-    -Wno-missing-variable-declarations
-    -Wno-switch-enum
-    -Wno-covered-switch-default
-    -Wno-global-constructors
+    PRIVATE -Wno-c++98-compat
+    PRIVATE -Wno-c++98-compat-pedantic
+    PRIVATE -Wno-gnu-statement-expression
+    PRIVATE -Wno-padded
+    PRIVATE -Wno-weak-vtables
+    PRIVATE -Wno-documentation
+    PRIVATE -Wno-shadow
+    PRIVATE -Wno-missing-variable-declarations
+    PRIVATE -Wno-switch-enum
+    PRIVATE -Wno-covered-switch-default
+    PRIVATE -Wno-global-constructors
     # for fmtlib
-    -Wno-format-nonliteral
+    PRIVATE -Wno-format-nonliteral
     # Clang's bug with templated deduction guides. Fixed in r316820.
-    -Wno-undefined-func-template)
+    PRIVATE -Wno-undefined-func-template)
 
-  target_compile_definitions(${target} PRIVATE
-    $<$<CONFIG:CCI_ENABLE_CONTRACTS>:CCI_ENABLE_CONTRACTS>)
+  target_compile_definitions(${target}
+    PRIVATE $<$<BOOL:CCI_ENABLE_CONTRACTS>:CCI_ENABLE_CONTRACTS>)
 
-  target_link_libraries(${target} PRIVATE
-    $<$<CXX_COMPILER_ID:Clang>:c++>
-    $<$<CXX_COMPILER_ID:Clang>:c++abi>
-    $<$<CXX_COMPILER_ID:Clang>:-fuse-ld=lld>
-    $<$<CONFIG:CCI_ENABLE_SAN>:-fsanitize=address>)
+  target_link_libraries(${target}
+    PUBLIC $<$<CXX_COMPILER_ID:Clang>:c++>
+    PUBLIC $<$<CXX_COMPILER_ID:Clang>:c++abi>
+    PUBLIC $<$<CXX_COMPILER_ID:Clang>:-fuse-ld=lld>
+    PUBLIC $<$<BOOL:CCI_ENABLE_SAN>:-fsanitize=address>)
 endfunction()
 
 # Creates a CCI library.
@@ -72,14 +71,8 @@ endfunction()
 # a library. Files listed in SOURCES will be used to compose the library's
 # sources. Anything listed in DEPENDS will get linked to the library.
 function(add_cci_library libname)
-  cmake_parse_arguments(ARG "STATIC;SHARED" "" "SOURCES;DEPENDS" ${ARGN})
-  if(ARG_STATIC AND ARG_SHARED)
-    message(FATAL_ERROR "STATIC and SHARED are mutually exclusive")
-  endif()
-  add_library(${libname}
-    $<$<CONFIG:ARG_STATIC>:STATIC>
-    $<$<CONFIG:ARG_SHARED>:SHARED>
-    ${ARG_SOURCES})
+  cmake_parse_arguments(ARG "" "" "SOURCES;DEPENDS" ${ARGN})
+  add_library(${libname} ${ARG_SOURCES})
   target_include_directories(${libname}
     PUBLIC ${CMAKE_SOURCE_DIR}/include
     PUBLIC ${CMAKE_SOURCE_DIR}/deps)
@@ -110,7 +103,7 @@ function(add_cci_executable exe_name)
   cci_set_common_configs(${exe_name})
 endfunction()
 
-# Adds a test to a test suite.
+# Creates a test suite.
 #
 # OPTIONS
 #   SOURCES files...
@@ -120,16 +113,14 @@ endfunction()
 #     links them into the test's executable.
 #
 # USAGE
-#   add_cci_unittest(<test suite> <test name> SOURCES <files>... DEPENDS <targets>...)
+#   add_cci_unittest(<test suite> SOURCES <files>... DEPENDS <targets>...)
 #
 # Adds a single test (usually a directory containing tests) to the CCI's test
-# suite. A test suite should be created in order to use this function.
-function(add_cci_unittest_executable test_suite)
-  add_cci_executable(${test_suite} ${ARGN} DEPENDS GTest::GTest)
+# suite. A test suite here is an executable tracked by CTest.
+function(add_cci_unittest test_suite)
+  add_cci_executable(${test_suite} ${ARGN} DEPENDS GTest::GTest GTest::Main)
   target_include_directories(${test_suite} PRIVATE ${GTEST_INCLUDE_DIRS})
+  # GoogleTest makes a few uses of NULL.
+  target_compile_options(${test_suite} PRIVATE -Wno-zero-as-null-pointer-constant)
   gtest_add_tests(TARGET ${test_suite})
-endfunction()
-
-function(add_cci_unittest_library test_name)
-  add_cci_library(${test_name} ${ARGN})
 endfunction()
