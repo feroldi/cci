@@ -14,7 +14,7 @@ TEST(SourceManagerTest, calcLineOffsets)
   std::string code = "int main()\n{\n  return 0;\n}\n";
   auto sm = cci::SourceManager::from_buffer(code);
 
-  EXPECT_EQ(code, sm.get_text());
+  ASSERT_EQ(code, sm.get_text());
 
   {
     cci::SourceLocation int_begin(0u);
