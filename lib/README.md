@@ -1,64 +1,66 @@
+# CCI Compiling Infrastructure
 
-+ TODO: rewrite this to conform with the new file system hierarchy.
+This document is an attempt to describe the process cci goes through
+when executed, from source file tokenization to code optimization and
+generation, as well as API and project design.
 
-# CCompiler Compiling Infrastructure
+Summary:
 
-This document is an attempt to describe the process cci
-goes through when executed, from source file tokenization to
-code optimization and generation.
++ General
+  + Why infrastructure
+  + Directory skeleton
+  + Why C11 only
++ Front-end
+  + Source code management
+  + Tokenization
+  + Parsing and analyses
 
-## Source hierarchy
+TODO:
 
-+ `Options::parse_arguments(argc, argv)`, from `program.hpp`.
++ Back-end
++ API
 
-Parses cci command-line arguments. This is the very first
-thing cci has to before anything. Every argument is
-parsed and the program options are updated.
+# General
 
-Some compiler/language options default to some value in case
-no flag/argument is passed for such. E.g. the option `-Werror`
-modifies `Options::warning_as_error`, which is defaulted to `false`.
+There are a few non-obvious choices and terminologies used in this
+project, so this section is intended to explain them.
 
-+ `ProgramContext(options)`, from `program.hpp`.
+## Why infrastructure
 
-This is where information useful to the user and program
-is handled. Diagnostics (such as warnings, errors, where to output
-etc), and program state (diagnostics counting, program/language options
-etc) are all managed by an instance of `ProgramContext`.
+CCI stands for *C11 Compiler Infrastructure*. That means this is not
+just a tool you can use to compile C code. CCI has an API, which you
+can use to manipulate C code, such as tokenizing it, generating a parse
+tree, doing static and semantic analyses, generating an IR, producing
+an executable, writing a back-end, and so on.
 
-Every step in the compiler makes use of that instance, which has
-to be unique across the entire compilation process.
+## Directory skeleton
 
-+ `SourceManager::from_path(filename)`, from `source_manager.hpp`.
++ `include/`: This directory exposes the CCI's API you can use to write
+  your own applications. There are functions for tokenizing, parsing,
+  diagnosing, analysing, IR, back-ends etc.
++ `lib/`: This is where most of CCI's code base is located at. All APIs
+  are implemented here, following the same names as in `include/`. E.g.
+  if there's an `include/cci/lexer/lex.hpp`, then there's also a
+  `lib/lexer/lex.cpp` (but not the other way around sometimes).
++ `src/`: This is where some CCI tools are implemented, where each
+  directory is a separate project. For example, the CCI compiler tool
+  is implemented in `src/cci/`.
++ `deps/`: All third party dependencies go here.
++ `unittest/`: This directory contains unit tests for the API. Regression
+  tests are in another directory.
++ `docs/`:  All documentation or manuals go here.
++ `cmake/`: This contains some modules used across the build system.
 
-Source code management. `SourceManager` provides ways to access
-the source code from a given file, including its text (input stream),
-iterators inside the text, line and column number information for iterators,
-and (to be done) logical lines for preprocessor.
+Almost all directories have a *README.md* explaining their structure
+and purpose, what they do and solve etc.
 
-This is used primarily for compile diagnostics.
+There's also a `git_revision.cpp.in` file in the root directory: that's
+meant to be configured by CMake when you build a tool. You can use this
+to make your application's build version.
 
-+ `TokenStream::parse(program, source_manager)`, from `lexer.hpp`.
+## Why C11 only
 
-Translates an input text stream into a sequence of tokens.
-Effectively produces a vector of `TokenData` elements.
-
-`TokenStream` also offers ways to produce information from tokens
-useful for diagnosing.
-
-+ `SyntaxTree::parse(program, token_stream)`, from `parser.hpp`.
-
-Produces an abstract syntax tree out of a sequence of tokens.
-This is the second of three steps into translating C source code
-into a useful AST. A `SyntaxTree` instance is a simple, generic
-node into a C syntax. It holds information about tokens and also
-other user data, such as annotations. It also describes the
-expressions associativity, precedence and hierarchy. This step
-doesn't handle wrong semantics, but it does fail on wrong syntax
-when the tokens don't respect grammar, and procudes compile
-errors accordingly.
-
-A successfully parsed `SyntaxTree` instance doesn't imply correct
-or meaningful code. Those checks are done later on, when static/semantic
-analyses kick in.
-
+Writing a C90 compiler is easy, there are plenty of those out there.
+But a conforming C11 compiler? I only know a few. Besides, such a project
+is a journey for myself, one can learn so much by writing a compiler, and
+C11 seems perfect for that.
