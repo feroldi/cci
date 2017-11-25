@@ -31,7 +31,7 @@ static auto compute_line_offsets(const char *buf_begin, const char *buf_end)
   -> std::vector<SourceLocation>
 {
   cci_expects(std::prev(buf_end)[0] == '\n' &&
-              "Source file needs to end in a '\n' (new line)!");
+              "Source file needs to end in a new line!");
 
   // First line starts at offset 0.
   std::vector offsets{SourceLocation(0)};
@@ -107,7 +107,7 @@ auto SourceManager::get_linecol(SourceLocation loc) const
 {
   cci_expects(!line_offsets.empty() && "Line offsets need to be computed!");
 
-  std::size_t i = find_line_index(line_offsets, loc);
+  size_t i = find_line_index(line_offsets, loc);
 
   auto line_num = i + 1;
   auto col_num = loc.based_on(line_offsets[i]).offset + 1;
