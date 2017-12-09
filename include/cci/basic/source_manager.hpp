@@ -1,5 +1,6 @@
 #pragma once
 
+#include "cci/util/filesystem.hpp"
 #include <cstddef>
 #include <optional>
 #include <string>
@@ -7,12 +8,15 @@
 #include <vector>
 
 namespace cci {
+class SourceManager;
 
 // SourceLocation - This represents an offset into the buffer of
 // a SourceManager.
 struct SourceLocation
 {
   size_t offset; //< Offset into a SourceManager's buffer.
+
+  SourceLocation() = default;
 
   // Constructs a SourceLocation with `offset`.
   // Useful when constructing in-place (e.g. vector::emplace_back).
@@ -21,13 +25,13 @@ struct SourceLocation
   // Constructs a new SourceLocation with an offset based off on `base`.
   auto with_offset(SourceLocation base) const -> SourceLocation
   {
-    return SourceLocation(offset - base.offset);
+    return SourceLocation(offset + base.offset);
   }
 
   // Constructs a new SourceLocation with an offset based off on `base`.
-  auto with_offset(size_t base) const -> SourceLocation
+  auto with_offset(int32_t base) const -> SourceLocation
   {
-    return SourceLocation(offset - base);
+    return SourceLocation(offset + base);
   }
 };
 
@@ -74,8 +78,14 @@ struct SourceRange
   SourceLocation start;
   SourceLocation end;
 
+  SourceRange() = default;
+
   SourceRange(SourceLocation start, SourceLocation end) noexcept
     : start(start), end(end)
+  {}
+
+  SourceRange(SourceLocation loc) noexcept
+    : start(loc), end(loc.with_offset(1ull))
   {}
 };
 
@@ -88,11 +98,17 @@ class SourceManager
   // Source file's text content.
   std::string buffer;
 
+  // Source file's path, if loaded from a file.
+  std::optional<fs::path> buffer_filepath;
+
   SourceManager(std::vector<SourceLocation> line_offsets, std::string buffer)
     : line_offsets(std::move(line_offsets)), buffer(std::move(buffer))
   {}
 
 public:
+  SourceManager(SourceManager &&) = default;
+  SourceManager &operator=(SourceManager &&) = default;
+
   // Constructs a SourceManager from a source file.
   //
   // \returns `std::nullopt` if `source_path` doesn't exist or is a directory.
@@ -115,21 +131,37 @@ public:
   auto translate_to_linecolumn(SourceLocation) const
     -> std::pair<size_t, size_t>;
 
+  // Checks whether this SourceManager was loaded from a file.
+  auto loaded_from_file() const -> bool;
+
+  // Returns the source's file path.
+  auto file_path() const -> const fs::path &;
+};
+
+// FullSourceLoc - This represents a `SourceLocation` with its respective
+// `SourceManager` owner.
+struct FullSourceLoc
+{
+private:
+  const SourceManager &src_mgr;
+  SourceLocation loc;
+
 public:
-  SourceManager(SourceManager &&that) noexcept
-    : line_offsets(std::move(that.line_offsets)), buffer(std::move(that.buffer))
+  FullSourceLoc() = default;
+  FullSourceLoc(const SourceManager &ctx, SourceLocation loc) noexcept
+    : src_mgr(ctx), loc(loc)
   {}
 
-  SourceManager &operator=(SourceManager &&that) noexcept
+  auto get_manager() const -> const SourceManager & { return src_mgr; }
+  auto get_location() const -> SourceLocation { return loc; }
+  auto full_text() const -> std::string_view { return src_mgr.full_text(); }
+  auto text_line() const -> std::string_view { return src_mgr.text_line(loc); }
+  auto translate_to_line_column() const -> std::pair<size_t, size_t>
   {
-    if (this != std::addressof(that))
-    {
-      line_offsets = std::move(that.line_offsets);
-      buffer = std::move(that.buffer);
-    }
-
-    return *this;
+    return src_mgr.translate_to_linecolumn(loc);
   }
+  auto loaded_from_file() const -> bool { return src_mgr.loaded_from_file(); }
+  auto file_path() const -> const fs::path & { return src_mgr.file_path(); }
 };
 
 } // namespace cci

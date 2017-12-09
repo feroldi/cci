@@ -110,7 +110,7 @@ auto SourceManager::text_line(SourceLocation loc) const -> std::string_view
   const auto line_start = line_offsets[i];
 
   // Gets the next new-line and removes the trailing '\n'.
-  const auto line_end = line_offsets[i + 1].with_offset(1);
+  const auto line_end = line_offsets[i + 1].with_offset(-1);
 
   return text_slice(SourceRange(line_start, line_end));
 }
@@ -126,9 +126,20 @@ auto SourceManager::translate_to_linecolumn(SourceLocation loc) const
   // Column numbers can be calculated by subtracting the offset for the
   // first character in the line from the current source location.
   // This gives a 0-based column number, so adding one makes it 1-based.
-  const auto column_num = loc.with_offset(line_offsets[i]).offset + 1;
+  const auto column_num = loc.offset - line_offsets[i].offset + 1;
 
   return std::pair(line_num, column_num);
+}
+
+auto SourceManager::loaded_from_file() const -> bool
+{
+  return buffer_filepath.has_value();
+}
+
+auto SourceManager::file_path() const -> const fs::path &
+{
+  cci_expects(loaded_from_file());
+  return *buffer_filepath;
 }
 
 } // namespace cci

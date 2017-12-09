@@ -1,4 +1,5 @@
 #include "cci/basic/file_stream.hpp"
+#include "cci/util/filesystem.hpp"
 #include "cci/util/scope_guard.hpp"
 #include <cstring>
 #include <memory>
@@ -6,9 +7,11 @@
 
 namespace cci {
 
-auto write_stream(std::string_view file_path, const std::byte *data, size_t length) -> bool
+auto write_stream(const fs::path &file_path, const std::byte *data,
+                  size_t length) -> bool
 {
-  if (std::FILE *stream = std::fopen(file_path.data(), "wb"); stream != nullptr)
+  if (std::FILE *stream = std::fopen(file_path.c_str(), "wb");
+      stream != nullptr)
   {
     ScopeGuard file_guard([&] { std::fclose(stream); });
     return std::fwrite(data, length, 1, stream) == length;
@@ -17,55 +20,43 @@ auto write_stream(std::string_view file_path, const std::byte *data, size_t leng
     return false;
 }
 
-auto write_stream(std::vector<std::byte> &stream, const std::byte *data, size_t length) -> bool
+auto write_stream(std::vector<std::byte> &stream, const std::byte *data,
+                  size_t length) -> bool
 {
   stream.resize(length);
-  std::memcpy(&stream[0], data, length);
-  return true;
+  return std::copy(data, data + length, stream.begin()) == stream.end();
 }
 
-auto read_stream_utf8(std::string_view file_path) -> std::optional<std::string>
+// `Container` must meet the requirements of `ContiguousContainer`
+template <typename Container>
+//  requires ContiguousContainer<Container>
+static auto read_stream(const fs::path &file_path) -> std::optional<Container>
 {
-  if (std::FILE *stream = std::fopen(file_path.data(), "rb"); stream != nullptr)
+  std::optional<Container> data;
+
+  if (std::FILE *stream = std::fopen(file_path.c_str(), "rb");
+      stream != nullptr)
   {
     ScopeGuard stream_guard([&] { std::fclose(stream); });
-    long file_size = 0L;
-
-    if (std::fseek(stream, 0L, SEEK_END) == 0 && (file_size = std::ftell(stream)) != -1L &&
-        std::fseek(stream, 0L, SEEK_SET) == 0)
-    {
-      auto size = static_cast<size_t>(file_size);
-      std::string buffer;
-      buffer.resize(size);
-
-      if (std::fread(buffer.data(), sizeof(buffer[0]), size, stream) == size)
-        return buffer;
-    }
+    const uintmax_t size = fs::file_size(file_path);
+    Container buffer;
+    buffer.resize(size);
+    if (std::fread(buffer.data(), sizeof(buffer[0]), size, stream) == size)
+      data = std::move(buffer);
   }
 
-  return std::nullopt;
+  return data;
 }
 
-auto read_stream_binary(std::string_view file_path) -> std::optional<std::vector<std::byte>>
+auto read_stream_utf8(const fs::path &file_path) -> std::optional<std::string>
 {
-  if (std::FILE *stream = std::fopen(file_path.data(), "rb"); stream != nullptr)
-  {
-    ScopeGuard stream_guard([&] { std::fclose(stream); });
-    long file_size = 0L;
+  return read_stream<std::string>(file_path);
+}
 
-    if (std::fseek(stream, 0L, SEEK_END) == 0 && (file_size = std::ftell(stream)) != -1L &&
-        std::fseek(stream, 0L, SEEK_SET) == 0)
-    {
-      auto size = static_cast<size_t>(file_size);
-      std::vector<std::byte> buffer;
-      buffer.resize(size);
-
-      if (std::fread(buffer.data(), sizeof(buffer[0]), size, stream) == size)
-        return buffer;
-    }
-  }
-
-  return std::nullopt;
+auto read_stream_binary(const fs::path &file_path)
+  -> std::optional<std::vector<std::byte>>
+{
+  return read_stream<std::vector<std::byte>>(file_path);
 }
 
 } // namespace cci
