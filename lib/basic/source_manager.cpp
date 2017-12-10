@@ -8,8 +8,7 @@
 #include <string_view>
 #include <vector>
 
-namespace cci
-{
+namespace cci {
 
 // Calculates all line offsets in `buffer`.
 //
@@ -17,9 +16,10 @@ namespace cci
 //
 //    "\n1234\n678\n\n"
 //
-// It finds every new line character and keeps its offset + 1 as a
-// SourceLocation. Therefore, the list of source locations
-// for the above buffer will look like so:
+// It finds every new-line character and keeps its offset plus 1 as a
+// SourceLocation. Additionally, the first offset is always 0.
+// Therefore, the list of source locations for the above buffer should look like
+// so:
 //
 //    [0, 1, 6, 10, 11]
 //
@@ -27,7 +27,19 @@ namespace cci
 // the first character in the line. This is useful for the front-end,
 // specifically the diagnostics system: printing out source lines to
 // the user requires knowledge of where lines start and end.
-static auto compute_line_offsets(const char *buf_begin, const char *buf_end)
+//
+// TL;DR: Starting positions (except for the offset 0) begin after a new-line.
+// For instance:
+//
+//    1| int main()
+//    2| {
+//    3|   printf("Hello, %s!\n", "World");
+//    4| }
+//
+// First position starts at the first byte ('i'), second one is at
+// after the first new line ('\n'), i.e. the '{' in the second line.
+static auto compute_source_line_offsets(const char *buf_begin,
+                                        const char *buf_end)
   -> std::vector<SourceLocation>
 {
   cci_expects(std::prev(buf_end)[0] == '\n' &&
@@ -49,16 +61,17 @@ static auto compute_line_offsets(const char *buf_begin, const char *buf_end)
   return offsets;
 }
 
-static auto find_line_index(const std::vector<SourceLocation> &offsets,
-                            SourceLocation loc) -> size_t
+// Finds the index into `offsets` that corresponds to the line `loc` is in.
+static auto find_source_line_index(const std::vector<SourceLocation> &offsets,
+                                   SourceLocation loc) -> size_t
 {
+  cci_expects(offsets.size() > 1);
+  cci_expects(loc >= offsets.front() && loc < offsets.back());
+
   for (auto it = offsets.begin(); it != std::prev(offsets.end()); ++it)
   {
     if (loc >= *it && loc < *std::next(it))
-    {
-      assert(it != offsets.end());
       return static_cast<size_t>(std::distance(offsets.begin(), it));
-    }
   }
 
   cci_unreachable();
@@ -78,41 +91,44 @@ auto SourceManager::from_file(std::string_view source_path)
 auto SourceManager::from_buffer(std::string buffer) -> SourceManager
 {
   std::string_view buf = buffer;
-  auto ln_offsets = compute_line_offsets(buf.begin(), buf.end());
+  auto ln_offsets = compute_source_line_offsets(buf.begin(), buf.end());
   return SourceManager(std::move(ln_offsets), std::move(buffer));
 }
 
-auto SourceManager::get_text(SourceRange range) const -> std::string_view
+auto SourceManager::text_slice(SourceRange range) const -> std::string_view
 {
   cci_expects(!line_offsets.empty() && "Line offsets need to be computed!");
-  return get_text().substr(range.start.offset,
-                           range.end.offset - range.start.offset);
+  return full_text().substr(range.start.offset,
+                            range.end.offset - range.start.offset);
 }
 
-auto SourceManager::get_line_text(SourceLocation loc) const -> std::string_view
+auto SourceManager::text_line(SourceLocation loc) const -> std::string_view
 {
   cci_expects(!line_offsets.empty() && "Line offsets need to be computed!");
 
-  size_t i = find_line_index(line_offsets, loc);
+  const size_t i = find_source_line_index(line_offsets, loc);
+  const auto line_start = line_offsets[i];
 
-  auto line_start = line_offsets[i];
-  auto line_end = line_offsets[i + 1]; //< Next new line.
-  line_end.offset -= 1; // Remove trailing newline.
+  // Gets the next new-line and removes the trailing '\n'.
+  const auto line_end = line_offsets[i + 1].with_offset(1);
 
-  return get_text(SourceRange(line_start, line_end));
+  return text_slice(SourceRange(line_start, line_end));
 }
 
-auto SourceManager::get_linecol(SourceLocation loc) const
-  -> std::pair<unsigned, unsigned>
+auto SourceManager::translate_to_linecolumn(SourceLocation loc) const
+  -> std::pair<size_t, size_t>
 {
   cci_expects(!line_offsets.empty() && "Line offsets need to be computed!");
 
-  size_t i = find_line_index(line_offsets, loc);
+  const size_t i = find_source_line_index(line_offsets, loc);
+  const auto line_num = i + 1;
 
-  auto line_num = i + 1;
-  auto col_num = loc.based_on(line_offsets[i]).offset + 1;
+  // Column numbers can be calculated by subtracting the offset for the
+  // first character in the line from the current source location.
+  // This gives a 0-based column number, so adding one makes it 1-based.
+  const auto column_num = loc.with_offset(line_offsets[i]).offset + 1;
 
-  return std::pair(line_num, col_num);
+  return std::pair(line_num, column_num);
 }
 
 } // namespace cci
