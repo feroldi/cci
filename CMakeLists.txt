@@ -2,24 +2,26 @@
 cmake_minimum_required(VERSION 3.9)
 project(cci)
 
-# Disable extended variants of C++ dialects
-# i.e. don't choose gnu++11 over c++11
-set(CMAKE_CXX_EXTENSIONS OFF)
+set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} ${PROJECT_SOURCE_DIR}/cmake/modules)
+include(GetGitRevisionDescription)
 
-option(CCI_ENABLE_WARNINGS "Turn on all warnings." ON)
-option(CCI_ENABLE_WERROR "Stop compiling upon warnings." ON)
-option(CCI_ENABLE_PEDANTIC "Compile with -pedantic on." ON)
-option(CCI_ENABLE_NATIVE "Generate code based on native hardware (-march=native)." ON)
 option(CCI_ENABLE_CONTRACTS "Enable contracts (assertions). This makes the binary slow." ON)
-option(CCI_ENABLE_ASAN "Enable address sanitizer." OFF)
-option(CCI_ENABLE_INT_WRAP "Enable integer wrapping (-fwrapv)." OFF)
-option(CCI_ENABLE_TESTS "Enable testing with GTest." OFF)
+option(CCI_ENABLE_TESTS "Enable unit tests with GTest." OFF)
 option(CCI_USE_GIT_REVISION "Use Git revision to make up CCI's build version." ON)
 
-add_subdirectory(cmake)
+# CCI depends on fmtlib 4.0.0 or later.
+find_package(FMT 4 REQUIRED)
+
+# See /include/cci/util/contracts.hpp
+if(CCI_ENABLE_CONTRACTS)
+  add_definitions(-DCCI_ENABLE_CONTRACTS)
+endif()
+
+# TODO: Configure `install`.
+
+set_property(GLOBAL PROPERTY INTERPROCEDURAL_OPTIMIZATION TRUE)
 
 # Includes building pieces of the compiler.
-add_subdirectory(deps)
 add_subdirectory(lib)
 add_subdirectory(src)
 

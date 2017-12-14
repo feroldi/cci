@@ -41,6 +41,10 @@ if(__get_git_revision_description)
 endif()
 set(__get_git_revision_description YES)
 
+# We must run the following at "include" time, not at function call time,
+# to find the path to this module rather than the path to a calling list file
+get_filename_component(_gitdescmoddir ${CMAKE_CURRENT_LIST_FILE} PATH)
+
 function(git_get_head_revision _refspecvar _hashvar)
 	set(GIT_PARENT_DIR "${CMAKE_CURRENT_SOURCE_DIR}")
 	set(GIT_DIR "${GIT_PARENT_DIR}/.git")
@@ -73,7 +77,7 @@ function(git_get_head_revision _refspecvar _hashvar)
 	set(HEAD_FILE "${GIT_DATA}/HEAD")
 	configure_file("${GIT_DIR}/HEAD" "${HEAD_FILE}" COPYONLY)
 
-  configure_file("${CCI_CMAKE_MODULES_DIR}/GetGitRevisionDescription.cmake.in"
+  configure_file("${_gitdescmoddir}/GetGitRevisionDescription.cmake.in"
 		"${GIT_DATA}/grabRef.cmake"
 		@ONLY)
 	include("${GIT_DATA}/grabRef.cmake")

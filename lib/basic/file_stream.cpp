@@ -1,6 +1,5 @@
 #include "cci/basic/file_stream.hpp"
 #include "cci/util/scope_guard.hpp"
-#include "fmt/format.h"
 #include <cstring>
 #include <memory>
 #include <optional>

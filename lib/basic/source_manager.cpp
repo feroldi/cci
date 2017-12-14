@@ -1,7 +1,6 @@
 #include "cci/basic/source_manager.hpp"
 #include "cci/basic/file_stream.hpp"
 #include "cci/util/contracts.hpp"
-#include "fmt/format.h"
 #include <cstddef>
 #include <optional>
 #include <string>

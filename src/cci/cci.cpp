@@ -1,4 +1,4 @@
-#include "fmt/format.h"
+#include <fmt/format.h>
 #include <string>
 
 #ifdef CCI_USING_GIT_REVISION
