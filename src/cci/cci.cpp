@@ -20,4 +20,5 @@ static auto cci_get_build_version() -> std::string
 int main()
 {
   fmt::print(stderr, "{}\n", cci_get_build_version());
+  return 0;
 }
