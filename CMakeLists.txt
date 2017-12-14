@@ -2,7 +2,10 @@
 cmake_minimum_required(VERSION 3.9)
 project(cci)
 
-set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} ${PROJECT_SOURCE_DIR}/cmake/modules)
+set(CMAKE_MODULE_PATH
+  ${PROJECT_SOURCE_DIR}/cmake/modules
+  ${CMAKE_MODULE_PATH})
+
 include(GetGitRevisionDescription)
 
 option(CCI_ENABLE_CONTRACTS "Enable contracts (assertions). This makes the binary slow." ON)
