@@ -21,8 +21,7 @@ before you continue with the build process. This project is tested
 with Clang, and GCC occasionally. For example:
 
 ```
-export CC=clang
-export CXX=clang++
+cmake -DCMAKE_TOOLCHAIN_FILE=../cmake/toolchains/clang.cmake ..
 cmake --build . --target cci
 ```
 

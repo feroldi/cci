@@ -22,8 +22,6 @@ endif()
 
 # TODO: Configure `install`.
 
-set_property(GLOBAL PROPERTY INTERPROCEDURAL_OPTIMIZATION TRUE)
-
 # Includes building pieces of the compiler.
 add_subdirectory(lib)
 add_subdirectory(src)
