@@ -41,7 +41,7 @@ TEST(SourceManagerTest, calcLineOffsets)
     EXPECT_EQ("  return 0;"sv, src_mgr.text_line(return_begin));
   }
 
-#ifdef CCI_ENABLE_CONTRACTS
+#if CCI_ENABLE_CONTRACTS
   EXPECT_THROW(src_mgr.text_line(cci::SourceLocation(code.size())),
                broken_contract);
 #endif

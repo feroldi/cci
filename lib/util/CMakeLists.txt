@@ -1,6 +1,11 @@
-#add_library(cci_util ...)
-#target_include_directories(cci_util
-#  PUBLIC $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/include>
-#  PUBLIC $<INSTALL_INTERFACE:include>)
-#target_link_libraries(cci_util PRIVATE ...)
-#target_compile_features(cci_util PUBLIC cxx_std_17)
+add_library(cci_util INTERFACE)
+target_include_directories(cci_util INTERFACE
+  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+  $<INSTALL_INTERFACE:include>)
+target_compile_features(cci_util INTERFACE cxx_std_17)
+
+if (CCI_ENABLE_CONTRACTS)
+  target_compile_definitions(cci_util INTERFACE CCI_ENABLE_CONTRACTS=1)
+else()
+  target_compile_definitions(cci_util INTERFACE CCI_ENABLE_CONTRACTS=0)
+endif()

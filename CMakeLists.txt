@@ -15,11 +15,6 @@ option(CCI_USE_GIT_REVISION "Use Git revision to make up CCI's build version." O
 # CCI depends on fmtlib 4.0.0 or later.
 find_package(FMT 4 REQUIRED)
 
-# See /include/cci/util/contracts.hpp
-if(CCI_ENABLE_CONTRACTS)
-  add_definitions(-DCCI_ENABLE_CONTRACTS)
-endif()
-
 # TODO: Configure `install`.
 
 # Includes building pieces of the compiler.
