@@ -211,7 +211,6 @@ auto to_string(TokenKind K) -> std::string_view
 {
   switch (K)
   {
-    default: cci_unreachable();
     case TokenKind::kw_auto: return "auto";
     case TokenKind::kw_break: return "break";
     case TokenKind::kw_case: return "case";
@@ -259,6 +258,9 @@ auto to_string(TokenKind K) -> std::string_view
     case TokenKind::identifier: return "identifier";
     case TokenKind::eof: return "<end of input>";
   }
+
+  cci_unreachable();
+  return "<invalid token>";
 }
 
 } // namespace cci::lex
