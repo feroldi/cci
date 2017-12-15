@@ -5,8 +5,8 @@ target_compile_features(cci PUBLIC cxx_std_17)
 # Takes advantage of git version control to make up the compiler's build version.
 if(CCI_USE_GIT_REVISION)
   target_compile_definitions(cci PRIVATE CCI_USING_GIT_REVISION)
-  git_get_head_revision(GIT_REFSPEC GIT_HASH)
-  git_get_exact_tag(GIT_TAG)
+  git_get_head_revision(CCI_GIT_REFSPEC CCI_GIT_HASH)
+  git_get_exact_tag(CCI_GIT_TAG)
   configure_file(
     ${PROJECT_SOURCE_DIR}/git_revision.cpp.in
     ${CMAKE_CURRENT_BINARY_DIR}/git_revision.cpp

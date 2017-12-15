@@ -4,7 +4,13 @@
 /// https://github.com/isocpp/CppCoreGuidelines/blob/master/CppCoreGuidelines.md#Ri-ensures
 ///
 #pragma once
-#ifdef CCI_ENABLE_CONTRACTS
+
+// Compatibility with non-Clang compilers.
+#ifndef __has_builtin
+#define __has_builtin(x) 0
+#endif
+
+#if CCI_ENABLE_CONTRACTS
 #include <cassert>
 #include <stdexcept>
 
@@ -43,15 +49,14 @@ struct unreachable_exception : std::runtime_error
   (throw unreachable_exception("unreachable code reached at " __FILE__         \
                                ":" STRINGIFY(__LINE__)))
 
-#else // ifdef CCI_ENABLE_CONTRACTS
+#else // if CCI_ENABLE_CONTRACTS
 
 #define cci_expects(cond)
 #define cci_ensures(cond)
-#if defined(__GNUC__) || defined(__clang__) ||                                 \
-  __has_builtin(__builtin_unreachable)
-#define cci_unreachable(cond) __builtin_unreachable()
+#if defined(__GNUC__) || __has_builtin(__builtin_unreachable)
+#define cci_unreachable() __builtin_unreachable()
 #else
-#define cci_unreachable(cond) std::terminate()
+#define cci_unreachable() std::terminate()
 #endif
 
-#endif // ifdef CCI_ENABLE_CONTRACTS
+#endif // if CCI_ENABLE_CONTRACTS
