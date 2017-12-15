@@ -114,7 +114,7 @@ an executable, writing a back-end, and so on.
 + `deps/`: All third party dependencies go here.
 + `unittest/`: This directory contains unit tests for the API. Regression
   tests are in another directory.
-+ `docs/`:  All documentation or manuals go here.
++ `doc/`:  All documentation or manuals go here.
 + `cmake/`: This contains some modules used across the build system.
 
 Almost all directories have a *README.md* explaining their structure
