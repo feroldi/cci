@@ -25,6 +25,9 @@ cmake -DCMAKE_TOOLCHAIN_FILE=../cmake/toolchains/clang.cmake ..
 cmake --build . --target cci
 ```
 
+**Note**: If fmtlib or GTest are not compiled with libc++, then the
+above commands might vomit lots of linker errors.
+
 ## Usage
 
 **Note**: This is still a work in progress project, so don't except the following
@@ -53,13 +56,13 @@ branch), but due to maintainance issues, it was decided to rewrite that part.
 ## Running tests
 
 This project depends on [GoogleTest](https://github.com/google/googletest)
-in order to run the unit tests. There's no need to install it in order to
+in order to run unit tests. There's no need to install it in order to
 compile the project, it's only required if you want to run the tests.
 
 **Note**: When generating CMake configuration files, make sure to disable
 the CMake option `BUILD_TESTING` **if** you don't want to compile and run tests.
 
-To run the tests, type:
+To run unit tests, type:
 
     GTEST_COLOR=yes ctest --output-on-failure
 

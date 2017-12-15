@@ -1,9 +1,10 @@
-// This file is used by CMake to generate `$CMAKE_CURRENT_BINARY_DIR/git_revision.cpp`,
-// which is used by CCI to make up the compiler's build version.
+// This file is used by CMake to generate
+// `$CMAKE_CURRENT_BINARY_DIR/git_revision.cpp`, which is used by CCI to make up
+// the compiler's build version.
 
-#cmakedefine CCI_GIT_REFSPEC "@GIT_REFSPEC@"
-#cmakedefine CCI_GIT_HASH "@GIT_HASH@"
-#cmakedefine CCI_GIT_TAG "@GIT_TAG@"
+#cmakedefine CCI_GIT_REFSPEC "@CCI_GIT_REFSPEC@"
+#cmakedefine CCI_GIT_HASH "@CCI_GIT_HASH@"
+#cmakedefine CCI_GIT_TAG "@CCI_GIT_TAG@"
 
 auto cci_git_refspec() -> const char *
 {
