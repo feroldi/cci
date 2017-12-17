@@ -5,7 +5,8 @@ target_include_directories(cci_basic
   PUBLIC $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/include>
   PUBLIC $<INSTALL_INTERFACE:include>)
 target_compile_features(cci_basic PUBLIC cxx_std_17)
+target_link_libraries(cci_basic PUBLIC cci_util)
 
-# FIXME: not sure if PRIVATE is wanted,
-# or if it's ok to have cci_util in the public headers
-target_link_libraries(cci_basic PRIVATE cci_util)
+install(TARGETS cci_basic
+        EXPORT ${PROJECT_NAME}-targets
+        DESTINATION ${CMAKE_INSTALL_LIBDIR})

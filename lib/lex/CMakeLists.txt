@@ -5,9 +5,9 @@ target_include_directories(cci_lex
 target_link_libraries(cci_lex
   PUBLIC
     cci_basic
-  PRIVATE
-    # FIXME: not sure if PRIVATE is wanted,
-    # or if it's ok to have cci_util in the public headers
     cci_util
 )
 target_compile_features(cci_lex PUBLIC cxx_std_17)
+install(TARGETS cci_lex
+        EXPORT ${PROJECT_NAME}-targets
+        DESTINATION ${CMAKE_INSTALL_LIBDIR})

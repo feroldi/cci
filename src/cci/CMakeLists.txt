@@ -13,3 +13,5 @@ if(CCI_USE_GIT_REVISION)
     @ONLY NEWLINE_STYLE UNIX)
   target_sources(cci PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/git_revision.cpp)
 endif()
+
+install(TARGETS cci DESTINATION ${CMAKE_INSTALL_BINDIR})
