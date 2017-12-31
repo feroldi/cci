@@ -1,3 +1,5 @@
+#pragma once
+
 #include "cci/basic/source_manager.hpp"
 #include "cci/util/contracts.hpp"
 #include "fmt/format.h"

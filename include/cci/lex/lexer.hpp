@@ -1,10 +1,11 @@
 #pragma once
 
 #include "cci/basic/source_manager.hpp"
-#include <vector>
+#include "cci/basic/diagnostics.hpp"
 #include <string_view>
+#include <vector>
 
-namespace cci::lex {
+namespace cci {
 
 // TokenKind - This represents the kind of a token, e.g. identifier,
 // keyword etc.
@@ -115,22 +116,23 @@ public:
 // an iterable sequence of `Token`s.
 class TokenStream
 {
+public:
   // Sequence of tokens corresponding to a source file.
   std::vector<Token> tokens;
 
-  TokenStream(std::vector<Token> tokens) : tokens(std::move(tokens)) {}
-
-public:
   using iterator = std::vector<Token>::iterator;
   using const_iterator = std::vector<Token>::const_iterator;
+
+  TokenStream(std::vector<Token> tokens) noexcept : tokens(std::move(tokens)) {}
 
   // Tokenizes the content of a buffer.
   //
   // \returns A TokenStream containing all the tokens from a buffer.
-  static auto tokenize(const char *begin, const char *end) -> TokenStream;
+  static auto tokenize(CompilerDiagnostics &, const char *begin,
+                       const char *end) -> TokenStream;
 
   auto begin() const -> const_iterator { return tokens.begin(); }
   auto end() const -> const_iterator { return tokens.end(); }
 };
 
-} // namespace cci::lex
+} // namespace cci

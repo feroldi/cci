@@ -20,13 +20,7 @@ struct SourceLocation
 
   // Constructs a SourceLocation with `offset`.
   // Useful when constructing in-place (e.g. vector::emplace_back).
-  explicit SourceLocation(size_t offset) : offset(offset) {}
-
-  // Constructs a new SourceLocation with an offset based off on `base`.
-  auto with_offset(SourceLocation base) const -> SourceLocation
-  {
-    return SourceLocation(offset + base.offset);
-  }
+  explicit SourceLocation(size_t offset) noexcept : offset(offset) {}
 
   // Constructs a new SourceLocation with an offset based off on `base`.
   auto with_offset(int32_t base) const -> SourceLocation
@@ -60,19 +54,9 @@ inline bool operator>=(SourceLocation lhs, SourceLocation rhs)
   return lhs.offset >= rhs.offset;
 }
 
-// SourceRange - This represents a range of source locations, containing
-// a starting point and an ending one. Useful to represent the text of a token,
-// or a single line.
-//
-// Note that `end` is similar to an end iterator — it points past the last
-// element of a container. In this case, `end` is treated as an offset
-// past the last character. For instance, given a buffer "answer is 42\n",
-// constructing a range that represents the substring "answer" would look like
-// so:
-//
-//    SourceRange answer(SourceLocation(0u), SourceLocation(6u));
-//
-// Where `6u` is the position of the first white space in that buffer.
+// SourceRange - This represents a range of source locations [start, end),
+// containing a starting point and an ending one. Useful to represent the text
+// of a token, or a single line.
 struct SourceRange
 {
   SourceLocation start;
@@ -95,7 +79,7 @@ class SourceManager
   // Stores starting positions of every line in the source.
   std::vector<SourceLocation> line_offsets;
 
-  // Source file's text content.
+  // Source file's text content. May be ASCII or UTF-8.
   std::string buffer;
 
   // Source file's path, if loaded from a file.
