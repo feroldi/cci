@@ -73,66 +73,90 @@ enum class TokenKind
 // For instance, the name of TokenKind::kw_auto is "auto",
 // TokenKind::identifier's name is "identifier", TokenKind::plusplus's
 // name is "++" etc.
-auto to_string(TokenKind K) -> std::string_view;
+auto to_string(TokenKind) -> std::string_view;
 
 // Token - A representation of a token as described in the C11 standard.
-// TODO: reference token definition in the standard.
-class Token
+struct Token
 {
-  // Token's kind, e.g. Kw_return, identifier etc.
+  // Token's syntactic category, e.g. Kw_return, identifier etc.
   TokenKind kind;
 
   // Token's start and end locations on the source file.
   SourceRange range;
 
-public:
-  Token(TokenKind k, SourceRange r) : kind(k), range(r) {}
+  Token(TokenKind k, SourceRange r) noexcept : kind(k), range(r) {}
 
-  // Checks whether this token is of kind `K`.
-  bool is(TokenKind K) const { return kind == K; }
-
-  // Checks whether this token is not of kind `K`.
-  bool is_not(TokenKind K) const { return kind != K; }
+  // Checks whether this token is of kind `k`.
+  bool is(TokenKind k) const { return kind == k; }
 
   // Checks wether this token is of any kind in `Ks`.
   template <typename... Kinds>
-  bool is_one_of(Kinds... Ks) const
+  bool is_one_of(Kinds... ks) const
   {
     static_assert((std::is_same_v<TokenKind, Kinds> && ...));
-    return (is(Ks) || ...);
+    return (is(ks) || ...);
   }
 
-  // Returns the source location where this token starts.
-  auto source_loc() const -> SourceLocation { return range.start; }
+  // Returns the source location at which this token starts.
+  auto source_location() const -> SourceLocation { return range.start; }
 
-  // Returns the source range where this token is in the buffer.
+  // Returns a `SourceRange` for the token's text (spelling).
   auto source_range() const -> SourceRange { return range; }
-
-  // Returns the name of this token's kind.
-  auto spelling() const -> std::string_view { return to_string(kind); }
 };
 
 // TokenStream - This implements a tokenizer for the C language. It's
 // an iterable sequence of `Token`s.
 class TokenStream
 {
-public:
   // Sequence of tokens corresponding to a source file.
-  std::vector<Token> tokens;
+  std::vector<Token> token_buffer;
 
-  using iterator = std::vector<Token>::iterator;
-  using const_iterator = std::vector<Token>::const_iterator;
+  // Unconsumed tokens are put here, so subsequent
+  // calls to `consume()` can pop tokens until it's empty.
+  // Following the logic, `look_ahead()` doens't modify it.
+  std::vector<Token> unconsumed_cache;
 
-  TokenStream(std::vector<Token> tokens) noexcept : tokens(std::move(tokens)) {}
+  // Index of token returned by `consume()`.
+  size_t cur_tok{0};
 
+  TokenStream(std::vector<Token> tokens) noexcept : token_buffer(std::move(tokens)) {}
+
+public:
   // Tokenizes the content of a buffer.
   //
   // \returns A TokenStream containing all the tokens from a buffer.
   static auto tokenize(CompilerDiagnostics &, const char *begin,
                        const char *end) -> TokenStream;
 
-  auto begin() const -> const_iterator { return tokens.begin(); }
-  auto end() const -> const_iterator { return tokens.end(); }
+  // Returns and consumes the next token in the stream.
+  //
+  // \returns `std::nullopt` when there isn't any token left.
+  auto consume() -> std::optional<Token>;
+
+  // Returns and consumes the next `amount` tokens in the stream.
+  //
+  // Behavior is undefined if `amount == 0`.
+  auto consume_tokens(size_t amount) -> std::vector<Token>;
+
+  // Puts a token back to the stream.
+  // 
+  // Subsequent calls to `consume()` will return tokens
+  // in reverse order of unconsumption.
+  void unconsume(Token);
+
+  // Returns (but doesn't consume) the `ahead`th token.
+  //
+  // Behavior is undefined if stream is empty, or `ahead >= size()`.
+  auto look_ahead(size_t ahead = 0u) const -> Token;
+
+  // Checks whether the `ahead`th token exists.
+  auto may_look_ahead(size_t ahead = 0u) const -> bool;
+
+  // Returns the amount of remaining tokens in the stream.
+  auto size() const -> size_t;
+
+  // Checks whether the stream is empty.
+  auto empty() const -> bool { return size() == 0u; }
 };
 
 } // namespace cci

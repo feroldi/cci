@@ -6,6 +6,10 @@
 #cmakedefine CCI_GIT_HASH "@CCI_GIT_HASH@"
 #cmakedefine CCI_GIT_TAG "@CCI_GIT_TAG@"
 
+auto cci_git_refspec() -> const char *;
+auto cci_git_hash() -> const char *;
+auto cci_git_tag() -> const char *;
+
 auto cci_git_refspec() -> const char *
 {
 #ifdef CCI_GIT_REFSPEC

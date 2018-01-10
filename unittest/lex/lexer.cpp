@@ -19,35 +19,35 @@ ident\uFFFFwith_UCN\UFFFFFFFF
   auto source = cci::SourceManager::from_buffer(code);
   cci::CompilerDiagnostics diag(cci::DiagnosticsOptions{}, source, stderr);
   auto text = source.full_text();
-  auto tok_stream = cci::TokenStream::tokenize(diag, text.begin(), text.end());
-  auto &tokens = tok_stream.tokens;
+  auto tstream = cci::TokenStream::tokenize(diag, text.begin(), text.end());
 
-  ASSERT_EQ(7, tokens.size());
+  ASSERT_TRUE(tstream.may_look_ahead(6)); // tstream.size() == 7
 
-  EXPECT_TRUE(tokens[0].is(cci::TokenKind::kw_int));
-  EXPECT_EQ("int", source.text_slice(tokens[0].source_range()));
+  EXPECT_TRUE(tstream.look_ahead().is(cci::TokenKind::kw_int));
+  EXPECT_EQ("int", source.text_slice(tstream.consume()->source_range()));
 
-  EXPECT_TRUE(tokens[1].is(cci::TokenKind::identifier));
-  EXPECT_EQ("_i", source.text_slice(tokens[1].source_range()));
+  EXPECT_TRUE(tstream.look_ahead().is(cci::TokenKind::identifier));
+  EXPECT_EQ("_i", source.text_slice(tstream.consume()->source_range()));
 
-  EXPECT_TRUE(tokens[2].is(cci::TokenKind::identifier));
-  EXPECT_EQ("abc123", source.text_slice(tokens[2].source_range()));
+  EXPECT_TRUE(tstream.look_ahead().is(cci::TokenKind::identifier));
+  EXPECT_EQ("abc123", source.text_slice(tstream.consume()->source_range()));
 
-  EXPECT_TRUE(tokens[3].is(cci::TokenKind::identifier));
+  EXPECT_TRUE(tstream.look_ahead().is(cci::TokenKind::identifier));
   EXPECT_EQ("this_is_a_long_name_but_we_are_all_okay_with_it",
-            source.text_slice(tokens[3].source_range()));
+            source.text_slice(tstream.consume()->source_range()));
 
-  EXPECT_TRUE(tokens[4].is(cci::TokenKind::identifier));
-  EXPECT_EQ(R"(\u0030)", source.text_slice(tokens[4].source_range()));
+  EXPECT_TRUE(tstream.look_ahead().is(cci::TokenKind::identifier));
+  EXPECT_EQ(R"(\u0030)", source.text_slice(tstream.consume()->source_range()));
 
-  EXPECT_TRUE(tokens[5].is(cci::TokenKind::identifier));
-  EXPECT_EQ(R"(\U00000030)", source.text_slice(tokens[5].source_range()));
+  EXPECT_TRUE(tstream.look_ahead().is(cci::TokenKind::identifier));
+  EXPECT_EQ(R"(\U00000030)", source.text_slice(tstream.consume()->source_range()));
 
-  EXPECT_TRUE(tokens[6].is(cci::TokenKind::identifier));
+  EXPECT_TRUE(tstream.look_ahead().is(cci::TokenKind::identifier));
   EXPECT_EQ(R"(ident\uFFFFwith_UCN\UFFFFFFFF)",
-            source.text_slice(tokens[6].source_range()));
+            source.text_slice(tstream.consume()->source_range()));
 
   EXPECT_FALSE(diag.has_errors() || diag.has_warnings());
+  EXPECT_TRUE(tstream.empty());
 }
 
 TEST(LexerTest, universalCharacterNames)
@@ -58,8 +58,8 @@ wrong_\uabc_UCN_\UABCD_\U12345678a9
   auto source = cci::SourceManager::from_buffer(code);
   cci::CompilerDiagnostics diag(cci::DiagnosticsOptions{}, source, stderr);
   auto text = source.full_text();
-  auto tok_stream = cci::TokenStream::tokenize(diag, text.begin(), text.end());
-  auto &tokens = tok_stream.tokens;
+  auto tstream = cci::TokenStream::tokenize(diag, text.begin(), text.end());
+  auto tokens = tstream.consume_tokens(tstream.size());
 
   ASSERT_TRUE(diag.has_errors());
   ASSERT_EQ(3, tokens.size());

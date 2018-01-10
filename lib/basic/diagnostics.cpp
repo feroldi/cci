@@ -100,7 +100,7 @@ static auto format_error(const DiagnosticsOptions &opts,
     },
     [&] (SourceLocation location) {
       const FullSourceLoc loc(src_mgr, location);
-      const auto [line_num, col_num] = loc.translate_to_line_column();
+      const auto [line_num, col_num] = loc.translate_to_linecolumn();
       const auto filename = loc.loaded_from_file() ? loc.file_path().c_str() : "<source>";
       return format_error(opts, filename, line_num, col_num, to_string(level),
                           loc, message);

@@ -104,14 +104,14 @@ constexpr auto is_space(char C) -> bool
 // 6.4.2
 // identifier-nondigit:
 //   nondigit
-//   universal-character-name                    [TODO]
+//   universal-character-name
 //   other implementation-defined characters
 //
-// hex-quad:                                     [TODO]
+// hex-quad:
 //   hexadecimal-digit hexadecimal-digit
 //       hexadecimal-digit hexadecimal-digit
 //
-// universal-character-name:                     [TODO]
+// universal-character-name:
 //     \u hex-quad
 //     \U hex-quad  hex-quad
 //
@@ -119,11 +119,6 @@ constexpr auto is_space(char C) -> bool
 //   identifier-nondigit
 //   identifier  identifier-nondigit
 //   identifier  digit
-//
-// identifier-nondigit:
-//   nondigit
-//   universal-character-name                    [TODO]
-//   other implementation-defined characters
 //
 // nondigit: one of
 //   _abcdefghijklm
@@ -134,8 +129,7 @@ constexpr auto is_space(char C) -> bool
 // digit: one of
 //   0123456789
 
-auto is_universal_character_name(const char *begin, const char *end)
-  -> bool
+auto is_universal_character_name(const char *begin, const char *end) -> bool
 {
   if (std::distance(begin, end) >= 6 && begin[0] == '\\' &&
       (begin[1] == 'u' || begin[1] == 'U'))
@@ -144,15 +138,13 @@ auto is_universal_character_name(const char *begin, const char *end)
     const char *hquads_start = std::next(begin, 2);
     const char *hquads_end = std::find_if_not(
       hquads_start, std::next(hquads_start, UCN_len), is_hexdigit);
-
     return std::next(hquads_start, UCN_len) == hquads_end;
   }
-
   return false;
 }
 
-auto parse_universal_character_name(LexerContext &, const char *begin, const char *end)
-  -> const char *
+auto parse_universal_character_name(LexerContext &, const char *begin,
+                                    const char *end) -> const char *
 {
   cci_expects(is_universal_character_name(begin, end));
   return std::next(begin, (begin[1] == 'u' ? 4 : 8) + 2);
@@ -193,9 +185,8 @@ auto parse_identifier(LexerContext &lex, const char *begin, const char *end)
   return id_end;
 }
 
-}
+} // namespace
 
-// TODO
 auto TokenStream::tokenize(CompilerDiagnostics &diag, const char *text_begin,
                            const char *text_end) -> TokenStream
 {
@@ -226,9 +217,66 @@ auto TokenStream::tokenize(CompilerDiagnostics &diag, const char *text_begin,
   return TokenStream(std::move(lex.token_buffer));
 }
 
-auto to_string(TokenKind K) -> std::string_view
+auto TokenStream::consume() -> std::optional<Token>
 {
-  switch (K)
+  std::optional<Token> tok;
+  if (!unconsumed_cache.empty())
+  {
+    tok = unconsumed_cache.back();
+    unconsumed_cache.pop_back();
+  }
+  else if (cur_tok != token_buffer.size())
+    tok = token_buffer[cur_tok++];
+  return tok;
+}
+
+// FIXME: This is very unoptimized right now.
+auto TokenStream::consume_tokens(size_t amount) -> std::vector<Token>
+{
+  cci_expects(amount > 0);
+  std::vector<Token> toks;
+  if (!empty())
+  {
+    toks.reserve(amount);
+    for (; amount != 0; --amount)
+    {
+      if (auto tok = consume(); tok.has_value())
+        toks.push_back(*tok);
+      else
+        break;
+    }
+  }
+  return toks;
+}
+
+void TokenStream::unconsume(Token tok)
+{
+  unconsumed_cache.push_back(tok);
+}
+
+auto TokenStream::look_ahead(size_t ahead) const -> Token
+{
+  cci_expects(!empty() && size() > ahead);
+  if (unconsumed_cache.size() > ahead)
+    return *std::prev(unconsumed_cache.end(), static_cast<long>(ahead + 1u));
+  else if (token_buffer.size() > (cur_tok + ahead))
+    return token_buffer[cur_tok + ahead];
+  cci_unreachable();
+}
+
+auto TokenStream::may_look_ahead(size_t ahead) const -> bool
+{
+  return size() > ahead;
+}
+
+auto TokenStream::size() const -> size_t
+{
+  return token_buffer.size() + unconsumed_cache.size() - cur_tok;
+}
+
+auto to_string(TokenKind k) -> std::string_view
+{
+  switch (k)
   {
     case TokenKind::kw_auto:
       return "auto";
@@ -325,7 +373,6 @@ auto to_string(TokenKind K) -> std::string_view
   }
 
   cci_unreachable();
-  return "<invalid token>";
 }
 
 } // namespace cci

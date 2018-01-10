@@ -23,9 +23,9 @@ struct SourceLocation
   explicit SourceLocation(size_t offset) noexcept : offset(offset) {}
 
   // Constructs a new SourceLocation with an offset based off on `base`.
-  auto with_offset(int32_t base) const -> SourceLocation
+  auto with_offset(int64_t base) const -> SourceLocation
   {
-    return SourceLocation(offset + base);
+    return SourceLocation(static_cast<size_t>(static_cast<int64_t>(offset) + base));
   }
 };
 
@@ -140,7 +140,7 @@ public:
   auto get_location() const -> SourceLocation { return loc; }
   auto full_text() const -> std::string_view { return src_mgr.full_text(); }
   auto text_line() const -> std::string_view { return src_mgr.text_line(loc); }
-  auto translate_to_line_column() const -> std::pair<size_t, size_t>
+  auto translate_to_linecolumn() const -> std::pair<size_t, size_t>
   {
     return src_mgr.translate_to_linecolumn(loc);
   }
