@@ -111,11 +111,6 @@ class TokenStream
   // Sequence of tokens corresponding to a source file.
   std::vector<Token> token_buffer;
 
-  // Unconsumed tokens are put here, so subsequent
-  // calls to `consume()` can pop tokens until it's empty.
-  // Following the logic, `look_ahead()` doens't modify it.
-  std::vector<Token> unconsumed_cache;
-
   // Index of token returned by `consume()`.
   size_t cur_tok{0};
 
@@ -130,27 +125,13 @@ public:
 
   // Returns and consumes the next token in the stream.
   //
-  // \returns `std::nullopt` when there isn't any token left.
-  auto consume() -> std::optional<Token>;
-
-  // Returns and consumes the next `amount` tokens in the stream.
-  //
-  // Behavior is undefined if `amount == 0`.
-  auto consume_tokens(size_t amount) -> std::vector<Token>;
-
-  // Puts a token back to the stream.
-  // 
-  // Subsequent calls to `consume()` will return tokens
-  // in reverse order of unconsumption.
-  void unconsume(Token);
+  // \returns eof token when there isn't any token left.
+  auto consume() -> Token;
 
   // Returns (but doesn't consume) the `ahead`th token.
   //
   // Behavior is undefined if stream is empty, or `ahead >= size()`.
-  auto look_ahead(size_t ahead = 0u) const -> Token;
-
-  // Checks whether the `ahead`th token exists.
-  auto may_look_ahead(size_t ahead = 0u) const -> bool;
+  auto peek(size_t ahead = 0u) const -> Token;
 
   // Returns the amount of remaining tokens in the stream.
   auto size() const -> size_t;

@@ -214,64 +214,25 @@ auto TokenStream::tokenize(CompilerDiagnostics &diag, const char *text_begin,
     it = std::find_if_not(it, text_end, is_space);
   }
 
+  lex.add_token(TokenKind::eof, text_end, text_end);
   return TokenStream(std::move(lex.token_buffer));
 }
 
-auto TokenStream::consume() -> std::optional<Token>
+auto TokenStream::consume() -> Token
 {
-  std::optional<Token> tok;
-  if (!unconsumed_cache.empty())
-  {
-    tok = unconsumed_cache.back();
-    unconsumed_cache.pop_back();
-  }
-  else if (cur_tok != token_buffer.size())
-    tok = token_buffer[cur_tok++];
-  return tok;
+  cci_expects(cur_tok != token_buffer.size());
+  return token_buffer[cur_tok++];
 }
 
-// FIXME: This is very unoptimized right now.
-auto TokenStream::consume_tokens(size_t amount) -> std::vector<Token>
+auto TokenStream::peek(size_t ahead) const -> Token
 {
-  cci_expects(amount > 0);
-  std::vector<Token> toks;
-  if (!empty())
-  {
-    toks.reserve(amount);
-    for (; amount != 0; --amount)
-    {
-      if (auto tok = consume(); tok.has_value())
-        toks.push_back(*tok);
-      else
-        break;
-    }
-  }
-  return toks;
-}
-
-void TokenStream::unconsume(Token tok)
-{
-  unconsumed_cache.push_back(tok);
-}
-
-auto TokenStream::look_ahead(size_t ahead) const -> Token
-{
-  cci_expects(!empty() && size() > ahead);
-  if (unconsumed_cache.size() > ahead)
-    return *std::prev(unconsumed_cache.end(), static_cast<long>(ahead + 1u));
-  else if (token_buffer.size() > (cur_tok + ahead))
-    return token_buffer[cur_tok + ahead];
-  cci_unreachable();
-}
-
-auto TokenStream::may_look_ahead(size_t ahead) const -> bool
-{
-  return size() > ahead;
+  cci_expects(token_buffer.size() > (cur_tok + ahead));
+  return token_buffer[cur_tok + ahead];
 }
 
 auto TokenStream::size() const -> size_t
 {
-  return token_buffer.size() + unconsumed_cache.size() - cur_tok;
+  return token_buffer.size() - cur_tok;
 }
 
 auto to_string(TokenKind k) -> std::string_view
