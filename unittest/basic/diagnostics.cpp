@@ -1,3 +1,4 @@
+#include "cci/basic/source_manager.hpp"
 #include "cci/basic/diagnostics.hpp"
 #include "gtest/gtest.h"
 
@@ -39,9 +40,9 @@ TEST(DiagnosticsTest, fatalError)
   using cci::nocontext;
   using cci::Severity;
   const char *code = "int x;\n";
+  cci::CompilerDiagnostics diag(cci::DiagnosticsOptions{});
   auto src_mgr =
-    cci::SourceManager::from_buffer(code);
-  cci::CompilerDiagnostics diag(cci::DiagnosticsOptions(), src_mgr);
+    cci::SourceManager::from_buffer(diag, code);
   diag.set_max_errors(1);
 
   EXPECT_THROW(diag.report(Severity::Error, nocontext, "answer is {}", 42),
@@ -51,7 +52,7 @@ TEST(DiagnosticsTest, fatalError)
     diag.set_max_errors(128);
     diag.report(Severity::Error, nocontext, "all good, no fatal errors yet");
   });
-  
+
   EXPECT_THROW(diag.set_max_errors(1), cci::CompilerFatalError);
 }
 
@@ -60,13 +61,12 @@ TEST(DiagnosticsTest, outputLevelMapping)
   using cci::nocontext;
   using cci::Severity;
   const char *code = "int x;\n";
-  auto src_mgr =
-    cci::SourceManager::from_buffer(code);
   cci::DiagnosticsOptions opts;
 
   {
     opts.is_warning_as_error = false;
-    cci::CompilerDiagnostics diag(opts, src_mgr);
+    cci::CompilerDiagnostics diag(opts);
+    auto src_mgr = cci::SourceManager::from_buffer(diag, code);
     diag.report(Severity::Warning, nocontext, "this should be a warning");
     EXPECT_FALSE(diag.has_errors());
     EXPECT_TRUE(diag.has_warnings());
@@ -74,7 +74,8 @@ TEST(DiagnosticsTest, outputLevelMapping)
 
   {
     opts.is_warning_as_error = true; //< Note true.
-    cci::CompilerDiagnostics diag(opts, src_mgr);
+    cci::CompilerDiagnostics diag(opts);
+    auto src_mgr = cci::SourceManager::from_buffer(diag, code);
     diag.report(Severity::Warning, nocontext, "this should be an error");
     EXPECT_TRUE(diag.has_errors());
     EXPECT_FALSE(diag.has_warnings());
@@ -83,7 +84,8 @@ TEST(DiagnosticsTest, outputLevelMapping)
   {
     opts.is_pedantic = false;
     opts.is_pedantic_as_error = false;
-    cci::CompilerDiagnostics diag(opts, src_mgr);
+    cci::CompilerDiagnostics diag(opts);
+    auto src_mgr = cci::SourceManager::from_buffer(diag, code);
     diag.report(Severity::Extension, nocontext, "this should not be emitted");
     EXPECT_FALSE(diag.has_errors());
     EXPECT_FALSE(diag.has_warnings());
@@ -92,7 +94,8 @@ TEST(DiagnosticsTest, outputLevelMapping)
   {
     opts.is_pedantic = true; //< Note true.
     opts.is_pedantic_as_error = false;
-    cci::CompilerDiagnostics diag(opts, src_mgr);
+    cci::CompilerDiagnostics diag(opts);
+    auto src_mgr = cci::SourceManager::from_buffer(diag, code);
     diag.report(Severity::Extension, nocontext, "this should be a warning");
     EXPECT_FALSE(diag.has_errors());
     EXPECT_TRUE(diag.has_warnings());
@@ -101,7 +104,8 @@ TEST(DiagnosticsTest, outputLevelMapping)
   {
     opts.is_pedantic = false; //< Note false.
     opts.is_pedantic_as_error = true; //< Note true.
-    cci::CompilerDiagnostics diag(opts, src_mgr);
+    cci::CompilerDiagnostics diag(opts);
+    auto src_mgr = cci::SourceManager::from_buffer(diag, code);
     diag.report(Severity::Extension, nocontext, "this should be an error");
     EXPECT_TRUE(diag.has_errors());
     EXPECT_FALSE(diag.has_warnings());
@@ -109,7 +113,8 @@ TEST(DiagnosticsTest, outputLevelMapping)
 
   {
     opts.is_verbose = false;
-    cci::CompilerDiagnostics diag(opts, src_mgr);
+    cci::CompilerDiagnostics diag(opts);
+    auto src_mgr = cci::SourceManager::from_buffer(diag, code);
     diag.report(Severity::Mention, nocontext, "this should not be emitted");
     EXPECT_FALSE(diag.has_errors());
     EXPECT_FALSE(diag.has_warnings());
@@ -117,7 +122,8 @@ TEST(DiagnosticsTest, outputLevelMapping)
 
   {
     opts.is_verbose = true; //< Note true
-    cci::CompilerDiagnostics diag(opts, src_mgr);
+    cci::CompilerDiagnostics diag(opts);
+    auto src_mgr = cci::SourceManager::from_buffer(diag, code);
     diag.report(Severity::Mention, nocontext, "this should be a mention");
     EXPECT_FALSE(diag.has_errors());
     EXPECT_FALSE(diag.has_warnings());
@@ -129,10 +135,9 @@ TEST(DiagnosticsTest, carret)
   using cci::nocontext;
   using cci::Severity;
   const char *code = "int x;\n";
-  auto src_mgr =
-    cci::SourceManager::from_buffer(code);
   cci::DiagnosticsOptions opts;
-  cci::CompilerDiagnostics diag(opts, src_mgr);
+  cci::CompilerDiagnostics diag(opts);
+  auto src_mgr = cci::SourceManager::from_buffer(diag, code);
   cci::SourceLocation loc(4ull);
   diag.report(loc, cci::diag::note_declared_at);
 }
@@ -142,10 +147,9 @@ TEST(DiagnosticsTest, userDefinedErrorCode)
   using cci::nocontext;
   using cci::Severity;
   const char *code = "int x;\n";
-  auto src_mgr =
-    cci::SourceManager::from_buffer(code);
   cci::DiagnosticsOptions opts;
-  cci::CompilerDiagnostics diag(opts, src_mgr);
+  cci::CompilerDiagnostics diag(opts);
+  auto src_mgr = cci::SourceManager::from_buffer(diag, code);
   cci::SourceLocation loc(4ull);
   diag.report(loc, cci::diag::warn_test_message, "GTest");
   EXPECT_TRUE(diag.has_warnings());

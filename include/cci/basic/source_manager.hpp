@@ -1,5 +1,7 @@
 #pragma once
 
+#include "cci/basic/source_location.hpp"
+#include "cci/basic/diagnostics.hpp"
 #include "cci/util/filesystem.hpp"
 #include <cstddef>
 #include <optional>
@@ -8,74 +10,11 @@
 #include <vector>
 
 namespace cci {
-class SourceManager;
-
-// SourceLocation - This represents an offset into the buffer of
-// a SourceManager.
-struct SourceLocation
-{
-  size_t offset; //< Offset into a SourceManager's buffer.
-
-  SourceLocation() = default;
-
-  // Constructs a SourceLocation with `offset`.
-  // Useful when constructing in-place (e.g. vector::emplace_back).
-  explicit SourceLocation(size_t offset) noexcept : offset(offset) {}
-
-  // Constructs a new SourceLocation with an offset based off on `base`.
-  auto with_offset(int64_t base) const -> SourceLocation
-  {
-    return SourceLocation(static_cast<size_t>(static_cast<int64_t>(offset) + base));
-  }
-};
-
-inline bool operator==(SourceLocation lhs, SourceLocation rhs)
-{
-  return lhs.offset == rhs.offset;
-}
-inline bool operator!=(SourceLocation lhs, SourceLocation rhs)
-{
-  return lhs.offset != rhs.offset;
-}
-inline bool operator<(SourceLocation lhs, SourceLocation rhs)
-{
-  return lhs.offset < rhs.offset;
-}
-inline bool operator>(SourceLocation lhs, SourceLocation rhs)
-{
-  return lhs.offset > rhs.offset;
-}
-inline bool operator<=(SourceLocation lhs, SourceLocation rhs)
-{
-  return lhs.offset <= rhs.offset;
-}
-inline bool operator>=(SourceLocation lhs, SourceLocation rhs)
-{
-  return lhs.offset >= rhs.offset;
-}
-
-// SourceRange - This represents a range of source locations [start, end),
-// containing a starting point and an ending one. Useful to represent the text
-// of a token, or a single line.
-struct SourceRange
-{
-  SourceLocation start;
-  SourceLocation end;
-
-  SourceRange() = default;
-
-  SourceRange(SourceLocation start, SourceLocation end) noexcept
-    : start(start), end(end)
-  {}
-
-  SourceRange(SourceLocation loc) noexcept
-    : start(loc), end(loc.with_offset(1ull))
-  {}
-};
-
 // SourceManager - Manages a set of source files.
 class SourceManager
 {
+  CompilerDiagnostics &diag;
+
   // Stores starting positions of every line in the source.
   std::vector<SourceLocation> line_offsets;
 
@@ -85,9 +24,13 @@ class SourceManager
   // Source file's path, if loaded from a file.
   std::optional<fs::path> buffer_filepath;
 
-  SourceManager(std::vector<SourceLocation> line_offsets, std::string buffer)
-    : line_offsets(std::move(line_offsets)), buffer(std::move(buffer))
-  {}
+  SourceManager(CompilerDiagnostics &cd,
+                std::vector<SourceLocation> line_offsets,
+                std::string buffer) noexcept
+    : diag(cd), line_offsets(std::move(line_offsets)), buffer(std::move(buffer))
+  {
+    diag.set_source_manager(this);
+  }
 
 public:
   SourceManager(SourceManager &&) = default;
@@ -95,12 +38,15 @@ public:
 
   // Constructs a SourceManager from a source file.
   //
-  // \returns `std::nullopt` if `source_path` doesn't exist or is a directory.
-  static auto from_file(std::string_view source_path)
+  // \returns `std::nullopt` if `filename` doesn't exist or is a directory.
+  static auto from_file(CompilerDiagnostics &, const fs::path &filename)
     -> std::optional<SourceManager>;
 
-  // Constructs a SourceManager that manages a UTF-8 string buffer.
-  static auto from_buffer(std::string buffer) -> SourceManager;
+  // Constructs a SourceManager from a UTF-8 string buffer.
+  static auto from_buffer(CompilerDiagnostics &, std::string buffer)
+    -> SourceManager;
+
+  auto get_diagnostics() const -> CompilerDiagnostics & { return diag; }
 
   // Returns the text slice represented by a SourceRange.
   auto text_slice(SourceRange) const -> std::string_view;

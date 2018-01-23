@@ -1,5 +1,6 @@
-#include "cci/basic/source_manager.hpp"
 #include "cci/util/contracts.hpp"
+#include "cci/basic/source_manager.hpp"
+#include "cci/basic/diagnostics.hpp"
 #include "gtest/gtest.h"
 #include <string>
 #include <string_view>
@@ -16,7 +17,8 @@ TEST(SourceManagerTest, calcLineOffsets)
     "  return 0;\n"
     "}\n";
 
-  auto src_mgr = cci::SourceManager::from_buffer(std::string(code));
+  cci::CompilerDiagnostics diag(cci::DiagnosticsOptions(), stderr);
+  auto src_mgr = cci::SourceManager::from_buffer(diag, std::string(code));
 
   ASSERT_EQ(code, src_mgr.full_text());
 

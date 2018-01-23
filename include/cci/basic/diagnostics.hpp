@@ -1,6 +1,6 @@
 #pragma once
 
-#include "cci/basic/source_manager.hpp"
+#include "cci/basic/source_location.hpp"
 #include "cci/util/contracts.hpp"
 #include "fmt/format.h"
 #include <cstdint>
@@ -11,6 +11,7 @@
 #include <variant>
 
 namespace cci {
+class SourceManager;
 
 // DiagnosticsOptions - Options and configuration used by CompilerDiagnostics.
 struct DiagnosticsOptions
@@ -101,10 +102,11 @@ inline constexpr bool is_diagnostics_error_code_v =
 // to the user, as well as provides a minimum API for error diagnosing.
 class CompilerDiagnostics
 {
-  const DiagnosticsOptions &opts;
-  const SourceManager &src_mgr;
+  SourceManager *source_mgr;
 
 public:
+  const DiagnosticsOptions &opts;
+
   using Context = std::variant<nocontext_t, SourceLocation>;
 
   // Level - Diagnostics importance level.
@@ -123,10 +125,23 @@ public:
   };
 
   explicit CompilerDiagnostics(const DiagnosticsOptions &opts,
-                               const SourceManager &src_mgr,
                                std::FILE *out_stream = stderr)
-    : opts(opts), src_mgr(src_mgr), out_stream(out_stream)
+    : source_mgr(nullptr), opts(opts), out_stream(out_stream)
   {}
+
+  auto has_source_manager() const -> bool { return source_mgr != nullptr; }
+
+  auto get_source_manager() const -> SourceManager &
+  {
+    cci_expects(has_source_manager());
+    return *source_mgr;
+  }
+
+  void set_source_manager(SourceManager *src_mgr)
+  {
+    cci_expects(source_mgr == nullptr);
+    source_mgr = src_mgr;
+  }
 
   // Sets maximum errors emitted permitted. A fatal error
   // is issued when the error count exceeds it.

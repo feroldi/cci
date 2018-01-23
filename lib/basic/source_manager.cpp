@@ -1,4 +1,5 @@
 #include "cci/basic/source_manager.hpp"
+#include "cci/basic/diagnostics.hpp"
 #include "cci/basic/file_stream.hpp"
 #include "cci/util/contracts.hpp"
 #include <algorithm>
@@ -77,22 +78,26 @@ static auto find_source_line_index(const std::vector<SourceLocation> &offsets,
   cci_unreachable();
 }
 
-auto SourceManager::from_file(std::string_view source_path)
+auto SourceManager::from_file(CompilerDiagnostics &diag, const fs::path &filename)
   -> std::optional<SourceManager>
 {
-  std::optional<SourceManager> src_mgr;
+  if (auto file_content = read_stream_utf8(filename))
+  {
+    std::optional<SourceManager> src_mgr(
+      std::in_place,
+      SourceManager::from_buffer(diag, std::move(*file_content)));
+    src_mgr->buffer_filepath = filename;
+    return src_mgr;
+  }
 
-  if (auto file_content = read_stream_utf8(source_path))
-    src_mgr = SourceManager::from_buffer(std::move(*file_content));
-
-  return src_mgr;
+  return std::nullopt;
 }
 
-auto SourceManager::from_buffer(std::string buffer) -> SourceManager
+auto SourceManager::from_buffer(CompilerDiagnostics &diag, std::string buffer) -> SourceManager
 {
   std::string_view buf = buffer;
   auto ln_offsets = compute_source_line_offsets(buf.begin(), buf.end());
-  return SourceManager(std::move(ln_offsets), std::move(buffer));
+  return SourceManager(diag, std::move(ln_offsets), std::move(buffer));
 }
 
 auto SourceManager::text_slice(SourceRange range) const -> std::string_view
