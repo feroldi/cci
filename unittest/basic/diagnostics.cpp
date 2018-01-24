@@ -40,7 +40,8 @@ TEST(DiagnosticsTest, fatalError)
   using cci::nocontext;
   using cci::Severity;
   const char *code = "int x;\n";
-  cci::CompilerDiagnostics diag(cci::DiagnosticsOptions{});
+  cci::DiagnosticsOptions opts;
+  cci::CompilerDiagnostics diag(opts);
   auto src_mgr =
     cci::SourceManager::from_buffer(diag, code);
   diag.set_max_errors(1);

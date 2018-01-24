@@ -112,6 +112,9 @@ constexpr auto hexdigit_value(char C) -> uint32_t
 
 namespace {
 
+// The following helper functions are based off on Clang's
+// lexer implementation.
+
 // Calculates the size of an escaped new line. Assumes
 // that the slash is already consumed.
 // Based on Clang's Lexer::getEscapedNewlineSize.
@@ -141,13 +144,19 @@ auto size_for_escaped_newline(const char *ptr) -> int64_t
   return 0;
 }
 
+constexpr bool is_trivial_character(char c)
+{
+  return c != '\\';
+}
+
 // Peeks a character from the input stream and returns it, setting
 // the size to how many characters are to be skipped over.
 // This handles special cases like escaped newlines and trigraphs*.
 //
 // * TODO: Will handle trigraphs eventually.
-auto peek_char_and_size(const char *ptr, int64_t &size, Token *tok = nullptr)
-  -> char
+
+auto peek_char_and_size_nontrivial(const char *ptr, int64_t &size,
+                                   Token *tok = nullptr) -> char
 {
   if (*ptr == '\\')
   {
@@ -162,19 +171,42 @@ auto peek_char_and_size(const char *ptr, int64_t &size, Token *tok = nullptr)
       if (tok) tok->set_flags(Token::IsDirty);
       ptr += esc_nl_size;
       size += esc_nl_size;
-      return peek_char_and_size(ptr, size, tok);
+      return peek_char_and_size_nontrivial(ptr, size, tok);
     }
 
     // Not a newline, just a regular whitespace.
     return '\\';
   }
 
+  // TODO: Trigraphs.
+
   // Peek a simple character.
   ++size;
   return *ptr;
 }
 
-auto consume_char(const char *ptr, int64_t size, Token *tok = nullptr)
+auto peek_char_advance(const char *ptr, Token &tok) -> char
+{
+  if (is_trivial_character(*ptr)) return *ptr++;
+  int64_t size = 0;
+  char c = peek_char_and_size_nontrivial(ptr, size, &tok);
+  ptr += size;
+  return c;
+}
+
+auto peek_char_and_size(const char *ptr, int64_t &size)
+  -> char
+{
+  if (is_trivial_character(*ptr))
+  {
+    size = 1;
+    return *ptr;
+  }
+  size = 0;
+  return peek_char_and_size_nontrivial(ptr, size, nullptr);
+}
+
+auto consume_char(const char *ptr, int64_t size, Token &tok)
   -> const char *
 {
   // Consumes a simple character.
@@ -183,7 +215,7 @@ auto consume_char(const char *ptr, int64_t size, Token *tok = nullptr)
 
   // Otherwise, reparse it to get the right size.
   size = 0;
-  peek_char_and_size(ptr, size, tok);
+  peek_char_and_size_nontrivial(ptr, size, &tok);
   return ptr + size;
 }
 
@@ -196,36 +228,50 @@ auto consume_char(const char *ptr, int64_t size, Token *tok = nullptr)
 //       hexadecimal-digit hexadecimal-digit
 
 // Tries to read a universal character name.
-auto try_read_ucn(Lexer &lex, const char *start_ptr, int64_t &size,
+auto try_read_ucn(Lexer &lex, const char *&start_ptr, const char *slash_ptr,
                   Token *tok = nullptr) -> uint32_t
 {
-  const auto kind = peek_char_and_size(start_ptr, size, tok);
+  int64_t char_size = 0;
+  const auto kind = peek_char_and_size(start_ptr, char_size);
   const int num_hexdigits = kind == 'u' ? 4 : kind == 'U' ? 8 : 0;
 
   if (num_hexdigits == 0)
     return 0;
 
-  auto cur_ptr = start_ptr + size;
+  auto cur_ptr = start_ptr + char_size;
+  const auto slash_loc = lex.location_for_ptr(slash_ptr);
   uint32_t code_point = 0;
 
+  // Parses the UCN, ignoring any escaped newlines.
   for (int i = 0; i < num_hexdigits; ++i)
   {
-    int64_t c_size = 0;
-    const char c = peek_char_and_size(cur_ptr, c_size, tok);
+    const char c = peek_char_and_size(cur_ptr, char_size);
     const uint32_t value = hexdigit_value(c);
     if (value == -1U)
     {
-      lex.diag.report(lex.location_for_ptr(cur_ptr),
-                      diag::warn_ucn_incomplete);
+      lex.diag.report(slash_loc, diag::warn_ucn_incomplete);
       return 0;
     }
     code_point <<= 4;
     code_point += value;
-    cur_ptr += c_size;
-    size += c_size;
+    cur_ptr += char_size;
   }
 
-  const auto slash_loc = lex.location_for_ptr(start_ptr - 1);
+  // Take into account that this token might have escaped newlines,
+  // so make any needed changes to tok. If no token is passed, then
+  // just set start_ptr, it's good to go.
+  if (tok)
+  {
+    tok->set_flags(Token::HasUCN);
+    // Just set start_ptr if the UCN isn't dirty.
+    if (std::distance(start_ptr, cur_ptr) == num_hexdigits + 2)
+      start_ptr = cur_ptr;
+    else
+      while (start_ptr != cur_ptr)
+        peek_char_advance(start_ptr, *tok);
+  }
+  else
+    start_ptr = cur_ptr;
 
   // C11 6.4.3/2: A universal character name shall not specify a character
   // whose short identifier is less than 00A0 other than 0024 ($), 0040 (@),
@@ -234,7 +280,7 @@ auto try_read_ucn(Lexer &lex, const char *start_ptr, int64_t &size,
   {
     if (code_point != 0x24 && code_point != 0x40 && code_point != 0x60)
     {
-      lex.diag.report(slash_loc, diag::err_ucn_control_character);
+      lex.diag.report(slash_loc, diag::err_ucn_invalid);
       return 0;
     }
   }
@@ -244,7 +290,6 @@ auto try_read_ucn(Lexer &lex, const char *start_ptr, int64_t &size,
     return 0;
   }
 
-  if (tok) tok->set_flags(Token::HasUCN);
   return code_point;
 }
 
@@ -280,58 +325,80 @@ auto try_read_ucn(Lexer &lex, const char *start_ptr, int64_t &size,
 // digit: one of
 //   0123456789
 
+// Note: `size` is the size of the peeked '\' character.
+auto try_advance_identifier_ucn(Lexer &lex, const char *&cur_ptr, int64_t size,
+                          Token &result) -> bool
+{
+  auto ucn_ptr = cur_ptr + size;
+  if (uint32_t code_point = try_read_ucn(lex, ucn_ptr, cur_ptr, nullptr);
+      code_point == 0)
+    return false;
+  const auto ucn_size = std::distance(cur_ptr, ucn_ptr);
+  if ((ucn_size == 6 && cur_ptr[1] == 'u') ||
+      (ucn_size == 10 && cur_ptr[1] == 'U'))
+    cur_ptr = ucn_ptr;
+  else
+    while (cur_ptr != ucn_ptr)
+      peek_char_advance(cur_ptr, result);
+  return true;
+}
+
 // Parses an identifier
 //
 // Assumes that the identifier's head is already parsed.
 auto parse_identifier(Lexer &lex, const char *cur_ptr, Token &result) -> bool
 {
-  char c = *cur_ptr;
+  char c = *cur_ptr++;
 
+  // Most of the heavy work can be avoided if the identifier is
+  // formed by ASCII characters only.
   while (is_nondigit(c) || is_digit(c))
     c = *cur_ptr++;
 
+  // Backs up to correspond to `c`.
   --cur_ptr;
 
-  // Simple ASCII identifier, no need to parse any UCN.
-  if (c != '\\')
+  // There's dirt, lexes the rest of the identifier.
+  if (c == '\\')
   {
-    lex.finish_lexing_token(result, cur_ptr, TokenKind::raw_identifier);
+    int64_t size = 0;
+    c = peek_char_and_size(cur_ptr, size);
+    while (true)
+    {
+      if (c == '\\' && try_advance_identifier_ucn(lex, cur_ptr, size, result))
+      {
+        c = peek_char_and_size(cur_ptr, size);
+        continue;
+      }
+      else if (!(is_nondigit(c) || is_digit(c)))
+        break; // We're done.
+
+      cur_ptr = consume_char(cur_ptr, size, result);
+      c = peek_char_and_size(cur_ptr, size);
+
+      // Handles escaped newlines and trigraphs.
+      while (is_nondigit(c) || is_digit(c))
+      {
+        cur_ptr = consume_char(cur_ptr, size, result);
+        c = peek_char_and_size(cur_ptr, size);
+      }
+    }
+  }
+
+  lex.form_token(result, cur_ptr, TokenKind::identifier);
+
+  if (!result.has_UCN())
+  {
+    // Changes the token's kind to a keyword if this happens to be one.
     const auto tok_spell = lex.source_mgr.text_slice(result.range);
     for (const TokenKind kw : KEYWORD_KINDS)
     {
-      const auto kw_spell = to_string(kw);
-      if (tok_spell == kw_spell)
+      if (tok_spell == to_string(kw))
       {
         result.kind = kw;
         break;
       }
     }
-  }
-  else
-  {
-    int64_t size = 0;
-    c = peek_char_and_size(cur_ptr, size);
-    cur_ptr = consume_char(cur_ptr, size, &result);
-    while (true)
-    {
-      if (size = 0; c == '\\' && try_read_ucn(lex, cur_ptr, size, &result))
-      {
-        cur_ptr += size;
-        c = peek_char_and_size(cur_ptr, size);
-        continue;
-      }
-      else if (!(is_nondigit(c) || is_digit(c)))
-        break;
-
-      c = peek_char_and_size(cur_ptr, size, &result);
-      while (is_nondigit(c) || is_digit(c))
-      {
-        cur_ptr = consume_char(cur_ptr, size);
-        c = peek_char_and_size(cur_ptr, size, &result);
-      }
-    }
-
-    lex.finish_lexing_token(result, cur_ptr, TokenKind::identifier);
   }
 
   return true;
@@ -395,8 +462,8 @@ auto Lexer::lex(Token &result) -> bool
   auto cur_ptr = buffer_ptr =
     std::find_if_not(buffer_ptr, buffer_end, is_whitespace);
   int64_t size = 0;
-  char ch = peek_char_and_size(cur_ptr, size, &result);
-  std::advance(cur_ptr, size);
+  char ch = peek_char_and_size(cur_ptr, size);
+  cur_ptr += size;
 
   switch (ch)
   {
@@ -404,10 +471,11 @@ auto Lexer::lex(Token &result) -> bool
       return false;
 
     case '\\':
-      if (size = 0; try_read_ucn(*this, cur_ptr, size, &result))
+      if (uint32_t code_point = try_read_ucn(*this, cur_ptr, buffer_ptr, nullptr);
+          code_point != 0)
         return parse_identifier(*this, buffer_ptr, result);
       else
-        cci_unreachable();
+        break;
 
     case 'a': case 'b': case 'c': case 'd': case 'e': case 'f': case 'g':
     case 'h': case 'i': case 'j': case 'k': case 'l': case 'm': case 'n':
@@ -420,9 +488,11 @@ auto Lexer::lex(Token &result) -> bool
       return parse_identifier(*this, cur_ptr, result);
 
     default:
-      diag.report(location_for_ptr(buffer_ptr), diag::err_unknown_character, ch);
       break;
   }
+
+  diag.report(location_for_ptr(buffer_ptr), diag::err_unknown_character, ch);
+  form_token(result, cur_ptr, TokenKind::unknown);
 
   return true;
 }
@@ -551,10 +621,11 @@ auto to_string(TokenKind k) -> std::string_view
     case TokenKind::kw__Thread_local:
       return "_Thread_local";
     case TokenKind::identifier:
-    case TokenKind::raw_identifier:
       return "identifier";
     case TokenKind::integer_constant:
       return "integer constant";
+    case TokenKind::unknown:
+      return "<unknown>";
     case TokenKind::eof:
       return "<end of input>";
   }

@@ -124,7 +124,7 @@ public:
     Fatal, //< Stops the whole program.
   };
 
-  explicit CompilerDiagnostics(const DiagnosticsOptions &opts,
+  explicit CompilerDiagnostics(DiagnosticsOptions &opts,
                                std::FILE *out_stream = stderr)
     : source_mgr(nullptr), opts(opts), out_stream(out_stream)
   {}

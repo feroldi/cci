@@ -59,12 +59,13 @@ enum class TokenKind
 
   // 6.4.2 Identifiers
   identifier,
-  raw_identifier, //< Has no UCNs.
 
   // 6.4.4. Constants
   integer_constant,
   // TODO String-literal
   // TODO Punctuator
+
+  unknown,
 
   // End of input.
   eof,
@@ -141,7 +142,7 @@ struct Lexer
     cci_expects(buffer_end[0] == '\0');
   }
 
-  void finish_lexing_token(Token &tok, const char *tok_end, TokenKind kind)
+  void form_token(Token &tok, const char *tok_end, TokenKind kind)
   {
     tok.kind = kind;
     tok.range = range_for_ptrs(buffer_ptr, tok_end);

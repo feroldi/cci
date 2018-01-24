@@ -17,7 +17,8 @@ TEST(SourceManagerTest, calcLineOffsets)
     "  return 0;\n"
     "}\n";
 
-  cci::CompilerDiagnostics diag(cci::DiagnosticsOptions(), stderr);
+  cci::DiagnosticsOptions opts;
+  cci::CompilerDiagnostics diag(opts);
   auto src_mgr = cci::SourceManager::from_buffer(diag, std::string(code));
 
   ASSERT_EQ(code, src_mgr.full_text());
