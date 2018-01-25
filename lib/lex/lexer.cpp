@@ -112,12 +112,13 @@ constexpr auto hexdigit_value(char C) -> uint32_t
 
 namespace {
 
-// The following helper functions are based off on Clang's
-// lexer implementation.
+// The following helper functions are based off on Clang's lexer implementation.
+//
+// TODO: These helper functions would better benefit from more comments
+// and documentation.
 
-// Calculates the size of an escaped new line. Assumes
-// that the slash is already consumed.
-// Based on Clang's Lexer::getEscapedNewlineSize.
+// Calculates the size of an escaped new line. Assumes that the slash is already
+// consumed.
 auto size_for_escaped_newline(const char *ptr) -> int64_t
 {
   cci_expects(*std::prev(ptr) == '\\');
@@ -149,12 +150,11 @@ constexpr bool is_trivial_character(char c)
   return c != '\\';
 }
 
-// Peeks a character from the input stream and returns it, setting
-// the size to how many characters are to be skipped over.
-// This handles special cases like escaped newlines and trigraphs*.
+// Peeks a character from the input stream and returns it, setting the size to
+// how many characters are to be skipped over. This handles special cases like
+// escaped newlines and trigraphs*.
 //
 // * TODO: Will handle trigraphs eventually.
-
 auto peek_char_and_size_nontrivial(const char *ptr, int64_t &size,
                                    Token *tok = nullptr) -> char
 {
@@ -185,7 +185,7 @@ auto peek_char_and_size_nontrivial(const char *ptr, int64_t &size,
   return *ptr;
 }
 
-auto peek_char_advance(const char *ptr, Token &tok) -> char
+auto peek_char_advance(const char *&ptr, Token &tok) -> char
 {
   if (is_trivial_character(*ptr)) return *ptr++;
   int64_t size = 0;
@@ -219,6 +219,7 @@ auto consume_char(const char *ptr, int64_t size, Token &tok)
   return ptr + size;
 }
 
+// FIXME: missing standard reference.
 // universal-character-name:
 //     \u hex-quad
 //     \U hex-quad  hex-quad
@@ -327,7 +328,7 @@ auto try_read_ucn(Lexer &lex, const char *&start_ptr, const char *slash_ptr,
 
 // Note: `size` is the size of the peeked '\' character.
 auto try_advance_identifier_ucn(Lexer &lex, const char *&cur_ptr, int64_t size,
-                          Token &result) -> bool
+                                Token &result) -> bool
 {
   auto ucn_ptr = cur_ptr + size;
   if (uint32_t code_point = try_read_ucn(lex, ucn_ptr, cur_ptr, nullptr);
@@ -346,7 +347,7 @@ auto try_advance_identifier_ucn(Lexer &lex, const char *&cur_ptr, int64_t size,
 // Parses an identifier
 //
 // Assumes that the identifier's head is already parsed.
-auto parse_identifier(Lexer &lex, const char *cur_ptr, Token &result) -> bool
+auto lex_identifier(Lexer &lex, const char *cur_ptr, Token &result) -> bool
 {
   char c = *cur_ptr++;
 
@@ -450,17 +451,49 @@ auto parse_identifier(Lexer &lex, const char *cur_ptr, Token &result) -> bool
 // long-long-suffix: one of
 //   ll LL
 
-//auto parse_integer_constant(Lexer &, const char *cur_ptr) -> const char *
-//{
-//  cci_unreachable();
-//}
+auto lex_numeric_constant(Lexer &lex, const char *cur_ptr, Token &result)
+  -> bool
+{
+  int64_t digit_size = 0;
+  char prev = *cur_ptr;
+  char c = peek_char_and_size(cur_ptr, digit_size);
+
+  while (is_digit(c) || is_nondigit(c) || c == '.')
+  {
+    cur_ptr = consume_char(cur_ptr, digit_size, result);
+    prev = c;
+    c = peek_char_and_size(cur_ptr, digit_size);
+  }
+
+  // exponent-part: [C11 6.4.4.2]
+  //   'e' sign[opt] digit-sequence
+  //   'E' sign[opt] digit-sequence
+  if ((c == '+' || c == '-') || (prev == 'e' || prev == 'E'))
+    return lex_numeric_constant(
+      lex, consume_char(cur_ptr, digit_size, result), result);
+
+  // binary-exponent-part:
+  //    'p' sign[opt] digit-sequence
+  //    'P' sign[opt] digit-sequence
+  if ((c == '+' || c == '-') || (prev == 'p' || prev == 'P'))
+    return lex_numeric_constant(
+      lex, consume_char(cur_ptr, digit_size, result), result);
+
+  // Found a possibly UCN, lex it and continue.
+  if (c == '\\' && try_advance_identifier_ucn(lex, cur_ptr, digit_size, result))
+    return lex_numeric_constant(lex, cur_ptr, result);
+
+  lex.form_token(result, cur_ptr, TokenKind::numeric_constant);
+  result.set_flags(Token::IsLiteral);
+  return true;
+}
 
 } // namespace
 
 auto Lexer::lex(Token &result) -> bool
 {
   auto cur_ptr = buffer_ptr =
-    std::find_if_not(buffer_ptr, buffer_end, is_whitespace);
+    std::find_if(buffer_ptr, buffer_end, std::not_fn(is_whitespace));
   int64_t size = 0;
   char ch = peek_char_and_size(cur_ptr, size);
   cur_ptr += size;
@@ -473,9 +506,24 @@ auto Lexer::lex(Token &result) -> bool
     case '\\':
       if (uint32_t code_point = try_read_ucn(*this, cur_ptr, buffer_ptr, nullptr);
           code_point != 0)
-        return parse_identifier(*this, buffer_ptr, result);
+        return lex_identifier(*this, buffer_ptr, result);
       else
         break;
+
+    case '0': case '1': case '2': case '3': case '4':
+    case '5': case '6': case '7': case '8': case '9':
+      return lex_numeric_constant(*this, cur_ptr, result);
+
+    case '.':
+    {
+      int64_t size = 0;
+      char c = peek_char_and_size(cur_ptr, size);
+      if (is_digit(c))
+        return lex_numeric_constant(*this, consume_char(cur_ptr, size, result),
+                                    result);
+      else
+        cci_unreachable();
+    }
 
     case 'a': case 'b': case 'c': case 'd': case 'e': case 'f': case 'g':
     case 'h': case 'i': case 'j': case 'k': case 'l': case 'm': case 'n':
@@ -485,7 +533,7 @@ auto Lexer::lex(Token &result) -> bool
     case 'J': case 'K': case 'L': case 'M': case 'N': case 'O': case 'P':
     case 'Q': case 'R': case 'S': case 'T': case 'U': case 'V': case 'W':
     case 'X': case 'Y': case 'Z': case '_':
-      return parse_identifier(*this, cur_ptr, result);
+      return lex_identifier(*this, cur_ptr, result);
 
     default:
       break;
@@ -622,8 +670,8 @@ auto to_string(TokenKind k) -> std::string_view
       return "_Thread_local";
     case TokenKind::identifier:
       return "identifier";
-    case TokenKind::integer_constant:
-      return "integer constant";
+    case TokenKind::numeric_constant:
+      return "numeric constant";
     case TokenKind::unknown:
       return "<unknown>";
     case TokenKind::eof:

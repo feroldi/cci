@@ -58,7 +58,34 @@ TEST(LexerTest, universalCharacterNames)
   EXPECT_EQ("UABCD", source.text_slice(tstream.consume().source_range()));
 
   EXPECT_TRUE(tstream.empty());
-
   EXPECT_TRUE(diag.has_errors() || diag.has_warnings());
 }
+
+TEST(LexerTest, numericConstants)
+{
+  const char *code = R"(
+42ULL 3.14f 161.80e-3 1.9E377P+1 .999
+)";
+  const std::string_view corrects[] {
+    "42ULL",
+    "3.14f",
+    "161.80e-3",
+    "1.9E377P+1",
+    ".999",
+  };
+  cci::DiagnosticsOptions opts;
+  cci::CompilerDiagnostics diag(opts);
+  auto source = cci::SourceManager::from_buffer(diag, code);
+  auto tstream = cci::TokenStream::tokenize(source);
+
+  for (const auto correct : corrects)
+  {
+    EXPECT_TRUE(tstream.peek().is(cci::TokenKind::numeric_constant));
+    EXPECT_EQ(correct, source.text_slice(tstream.consume().source_range()));
+  }
+
+  EXPECT_TRUE(tstream.empty());
+  EXPECT_FALSE(diag.has_errors() || diag.has_warnings());
+}
+
 } // namespace

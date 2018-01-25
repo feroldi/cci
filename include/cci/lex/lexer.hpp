@@ -61,11 +61,12 @@ enum class TokenKind
   identifier,
 
   // 6.4.4. Constants
-  integer_constant,
+  numeric_constant,
+
   // TODO String-literal
   // TODO Punctuator
 
-  unknown,
+  unknown, //< Some stray character.
 
   // End of input.
   eof,
@@ -85,6 +86,7 @@ struct Token
   {
     HasUCN = 1 << 0, //< Contains universal character names.
     IsDirty = 1 << 1, //< Contains escaped new lines or trigraphs.
+    IsLiteral = 1 << 2, //< Is a string/char literal, or numeric constant.
     None = 0,
   };
 
