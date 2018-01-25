@@ -84,10 +84,10 @@ struct Token
 {
   enum TokenFlags
   {
+    None = 0,
     HasUCN = 1 << 0, //< Contains universal character names.
     IsDirty = 1 << 1, //< Contains escaped new lines or trigraphs.
     IsLiteral = 1 << 2, //< Is a string/char literal, or numeric constant.
-    None = 0,
   };
 
   // Token's syntactic category, e.g. kw_return, identifier etc.

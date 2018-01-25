@@ -76,12 +76,6 @@ constexpr auto is_nondigit(char C) -> bool
 
 constexpr auto is_digit(char C) -> bool { return C >= '0' && C <= '9'; }
 
-[[maybe_unused]]
-constexpr auto is_nonzero_digit(char C) -> bool { return C >= '1' && C <= '9'; }
-
-[[maybe_unused]]
-constexpr auto is_octdigit(char C) -> bool { return C >= '0' && C <= '7'; }
-
 constexpr auto is_hexdigit(char C) -> bool
 {
   return (C >= '0' && C <= '9') || (C >= 'a' && C <= 'f') ||
@@ -114,11 +108,27 @@ namespace {
 
 // The following helper functions are based off on Clang's lexer implementation.
 //
-// TODO: These helper functions would better benefit from more comments
-// and documentation.
+// The lexer works with a few useful functions. Because the C grammar is a
+// little complex, it is not possible to implement a lexer that iterates over
+// ASCII characters char by char without any special handling. There are things
+// like escaped newlines, trigraphs and UCNs which make lexing a bit more
+// difficult. With that said, these few functions implement a "peek and consume"
+// interface that handles all of those special syntax. The ideia is that in
+// order to consume a character, you specify the size of it, i.e. the number of
+// characters that theoretically compose only one character. For example, a
+// trigraph like '??|' would have size 3, where the first '?' would signal that
+// it is not a trivial character, and needs special care. After peeking it, you
+// get the first character ('?'), and the size to be skipped over (3). When
+// consuming this peeked character, the buffer pointer will end up past the end
+// of the trigraph, i.e. `ptr + 3`, where `ptr` is the current buffer pointer.
 
-// Calculates the size of an escaped new line. Assumes that the slash is already
-// consumed.
+// Calculates the size of an escaped newline. Assumes that the slash character
+// is already consumed. Whitespaces between the slash and the newline are
+// considered as well-formed.
+//
+// \param ptr The position past the slash ('\') character.
+// \return The distance between `ptr` and the first character after the escaped
+//         newline.
 auto size_for_escaped_newline(const char *ptr) -> int64_t
 {
   cci_expects(*std::prev(ptr) == '\\');
@@ -130,7 +140,8 @@ auto size_for_escaped_newline(const char *ptr) -> int64_t
     ++size;
 
     // Might be a \v, \t, or something like that.  In case there isn't any
-    // newline, this eventually resolves to a zero size.
+    // newline, this eventually resolves to a zero size. Otherwise,
+    // whitespaces are considered as part of the escaped newline.
     if (!is_newline(ptr[size - 1]))
       continue;
 
@@ -145,14 +156,28 @@ auto size_for_escaped_newline(const char *ptr) -> int64_t
   return 0;
 }
 
+// Checks whether a character needs any special care.
+//
+// Things like trigraphs and escaped newlines are examples of such special
+// characters. They need to be properly consumed, therefore you can't just
+// advance the buffer pointer by 1.
+//
+// \param c The character to be checked.
+// \return true if character doesn't need special care.
 constexpr bool is_trivial_character(char c)
 {
-  return c != '\\';
+  return c != '?' && c != '\\';
 }
 
 // Peeks a character from the input stream and returns it, setting the size to
 // how many characters are to be skipped over. This handles special cases like
 // escaped newlines and trigraphs*.
+//
+// \param ptr Buffer pointer from which to peek a character.
+// \param size Variable to set the distance to the next simple character.
+// \param tok Token being formed, if any.
+//
+// \return The character pointed by `ptr`.
 //
 // * TODO: Will handle trigraphs eventually.
 auto peek_char_and_size_nontrivial(const char *ptr, int64_t &size,
@@ -185,6 +210,15 @@ auto peek_char_and_size_nontrivial(const char *ptr, int64_t &size,
   return *ptr;
 }
 
+// Peeks a character from `ptr` and advances it.
+//
+// This is the same as peek_char_and_size, except that the buffer pointer is
+// properly advanced to the next simple character in the buffer.
+//
+// \param ptr Buffer pointer from which to peek and advance.
+// \param tok Token being formed.
+//
+// \return The character pointed by ptr before advancing.
 auto peek_char_advance(const char *&ptr, Token &tok) -> char
 {
   if (is_trivial_character(*ptr)) return *ptr++;
@@ -194,6 +228,16 @@ auto peek_char_advance(const char *&ptr, Token &tok) -> char
   return c;
 }
 
+// Peeks a character from the buffer pointer.
+//
+// If the character pointed by `ptr` is simple, then this is the fast path: it
+// returns `*ptr` and sets `size` to 1. Otherwise, this function falls back to
+// `peek_char_and_size_nontrivial`.
+//
+// \param ptr Buffer pointer from which to peek a character.
+// \param size Variable to set the distance to the next simple character.
+//
+// \return The character pointed by `ptr`.
 auto peek_char_and_size(const char *ptr, int64_t &size)
   -> char
 {
@@ -206,6 +250,18 @@ auto peek_char_and_size(const char *ptr, int64_t &size)
   return peek_char_and_size_nontrivial(ptr, size, nullptr);
 }
 
+// Consumes the buffer pointer.
+//
+// This is meant to be used along with `peek_char_and_size`, as it returns a
+// buffer pointer by repeeking the same character if `size` doesn't correspond
+// to the size of a simple character.  This reiteration is needed in order to
+// set any special flags to the token `tok` being formed.
+//
+// \param ptr Buffer pointer from which to consume a peeked character.
+// \param size The size of the character to be consumed.
+// \param tok Token being formed.
+//
+// \return A buffer pointer past the peeked (non-)trivial character.
 auto consume_char(const char *ptr, int64_t size, Token &tok)
   -> const char *
 {
@@ -219,16 +275,27 @@ auto consume_char(const char *ptr, int64_t size, Token &tok)
   return ptr + size;
 }
 
-// FIXME: missing standard reference.
-// universal-character-name:
-//     \u hex-quad
-//     \U hex-quad  hex-quad
+// universal-character-name: [C11 6.4.3/1]
+//     '\u' hex-quad
+//     '\U' hex-quad  hex-quad
 //
 // hex-quad:
 //   hexadecimal-digit hexadecimal-digit
 //       hexadecimal-digit hexadecimal-digit
-
-// Tries to read a universal character name.
+//
+// Reads a universal character name.
+//
+// Parses a \u or \U UCN and calculates the code point represented by it. If
+// such code point isn't in a valid range as defined by [C11 6.4.3], reports
+// diagnostics and returns 0, but still consumes the buffer pointer.  Ill-formed
+// UCNs prevent the buffer pointer from being consumed, however.
+//
+// \param lex The lexer.
+// \param start_ptr Buffer pointer to the UCN kind ('u' or 'U').
+// \param slash_ptr Buffer pointer to the UCN slash ('\') before its kind.
+// \param tok The token being formed, if any.
+//
+// \return The code point represented by the UCN.
 auto try_read_ucn(Lexer &lex, const char *&start_ptr, const char *slash_ptr,
                   Token *tok = nullptr) -> uint32_t
 {
@@ -294,39 +361,18 @@ auto try_read_ucn(Lexer &lex, const char *&start_ptr, const char *slash_ptr,
   return code_point;
 }
 
-// 6.4.1
-// keyword: one of
-//   auto      else    long      switch    _Atomic
-//   break     enum    register  typedef   _Bool
-//   case      extern  restrict  union     _Complex
-//   char      float   return    unsigned  _Generic
-//   const     for     short     void      _Imaginary
-//   continue  goto    signed    volatile  _Noreturn
-//   default   if      sizeof    while     _Static_assert
-//   do        inline  static    _Alignas  _Thread_local
-//   double    int     struct    _Alignof
+// Lexes a UCN that is part of an identifier.
 //
-// 6.4.2
-// identifier-nondigit:
-//   nondigit
-//   universal-character-name
-//   other implementation-defined characters
+// This makes sure that the lexed UCN is a valid character for an identifier.
 //
-// identifier:
-//   identifier-nondigit
-//   identifier  identifier-nondigit
-//   identifier  digit
+// \param lex The lexer.
+// \param cur_ptr Buffer pointer that points to the slash ('\'). This pointer
+//                is updated to point past the end of the UCN only if the UCN
+//                is well-formed in an identifier.
+// \param size Size of the peeked slash character ('\').
+// \param result Token being formed.
 //
-// nondigit: one of
-//   _abcdefghijklm
-//   nopqrstuvwxyz
-//   ABCDEFGHIJKLM
-//   NOPQRSTUVWXYZ
-//
-// digit: one of
-//   0123456789
-
-// Note: `size` is the size of the peeked '\' character.
+// \return true if UCN is well-formed for an identifier.
 auto try_advance_identifier_ucn(Lexer &lex, const char *&cur_ptr, int64_t size,
                                 Token &result) -> bool
 {
@@ -344,9 +390,33 @@ auto try_advance_identifier_ucn(Lexer &lex, const char *&cur_ptr, int64_t size,
   return true;
 }
 
-// Parses an identifier
+// identifier: [C11 6.4.2]
+//   identifier-nondigit
+//   identifier  identifier-nondigit
+//   identifier  digit
 //
-// Assumes that the identifier's head is already parsed.
+// identifier-nondigit:
+//   nondigit
+//   universal-character-name
+//   other implementation-defined characters
+//
+// nondigit: one of
+//   _abcdefghijklm
+//   nopqrstuvwxyz
+//   ABCDEFGHIJKLM
+//   NOPQRSTUVWXYZ
+//
+// digit: one of
+//   0123456789
+//
+// Lexes an identifier. Assumes that the identifier's head is already consumed.
+//
+// \param lex The lexer.
+// \param cur_ptr A pointer into the buffer that is past the first identifier's
+//                character.
+// \param result Token being formed.
+//
+// \return true if identifier was successfully formed.
 auto lex_identifier(Lexer &lex, const char *cur_ptr, Token &result) -> bool
 {
   char c = *cur_ptr++;
@@ -388,6 +458,8 @@ auto lex_identifier(Lexer &lex, const char *cur_ptr, Token &result) -> bool
 
   lex.form_token(result, cur_ptr, TokenKind::identifier);
 
+  // FIXME: Comparing the raw identifier is wrong. This check
+  // should be delayed to be later done by a sane identifier checker.
   if (!result.has_UCN())
   {
     // Changes the token's kind to a keyword if this happens to be one.
@@ -405,52 +477,17 @@ auto lex_identifier(Lexer &lex, const char *cur_ptr, Token &result) -> bool
   return true;
 }
 
-// integer-constant:
-//   decimal-constant integer-suffix[opt]
-//   octal-constant integer-suffix[opt]
-//   hexadecimal-constant integer-suffix[opt]
+// Lexes a numeric literal constant, i.e. integer-constant and
+// floating-constant. Assumes that the first digit is already consumed.
 //
-// decimal-constant:
-//   nonzero-digit
-//   decimal-constant digit
+// This just matches a regex that validates such constants. Syntax checking is
+// delayed to semantic analyses.
 //
-// octal-constant:
-//   0
-//   octal-constant octal-digit
+// \param lex The lexer.
+// \param cur_ptr Pointer past the first digit of the numeric constant.
+// \param result Token being formed.
 //
-// hexadecimal-constant:
-//   hexadecimal-prefix hexadecimal-digit
-//   hexadecimal-constant hexadecimal-digit
-//
-// hexadecimal-prefix: one of
-//   0x 0X
-//
-// nonzero-digit: one of
-//   1 2 3 4 5 6 7 8
-//
-// octal-digit: one of
-//   0 1 2 3 4 5 6 7
-//
-// hexadecimal-digit: one of
-//   0 1 2 3 4 5 6 7
-//   a b c d e f
-//   A B C D E F
-//
-// integer-suffix:
-//   unsigned-suffix long-suffix[opt]
-//   unsigned-suffix long-long-suffix
-//   long-suffix unsigned-suffix[opt]
-//   long-long-suffix unsigned-suffix[opt]
-//
-// unsigned-suffix: one of
-//   u U
-//
-// long-suffix: one of
-//   l L
-//
-// long-long-suffix: one of
-//   ll LL
-
+// \return true if numeric constant was successfully formed.
 auto lex_numeric_constant(Lexer &lex, const char *cur_ptr, Token &result)
   -> bool
 {
@@ -458,12 +495,17 @@ auto lex_numeric_constant(Lexer &lex, const char *cur_ptr, Token &result)
   char prev = *cur_ptr;
   char c = peek_char_and_size(cur_ptr, digit_size);
 
+  // Matches the regex /[0-9_a-zA-Z.]*/.
   while (is_digit(c) || is_nondigit(c) || c == '.')
   {
     cur_ptr = consume_char(cur_ptr, digit_size, result);
     prev = c;
     c = peek_char_and_size(cur_ptr, digit_size);
   }
+
+  // If we stumbled upon something that doesn't seem to be part of a numeric
+  // constant, then check whether it's an exponent of a floating constant. If
+  // so, continue lexing, otherwise finish the token.
 
   // exponent-part: [C11 6.4.4.2]
   //   'e' sign[opt] digit-sequence
@@ -488,42 +530,40 @@ auto lex_numeric_constant(Lexer &lex, const char *cur_ptr, Token &result)
   return true;
 }
 
-} // namespace
-
-auto Lexer::lex(Token &result) -> bool
+auto lex_token(Lexer &lex, const char *cur_ptr, Token &result) -> bool
 {
-  auto cur_ptr = buffer_ptr =
-    std::find_if(buffer_ptr, buffer_end, std::not_fn(is_whitespace));
-  int64_t size = 0;
-  char ch = peek_char_and_size(cur_ptr, size);
-  cur_ptr += size;
+  int64_t ch_size = 0;
+  char ch = peek_char_and_size(cur_ptr, ch_size);
+  cur_ptr += ch_size;
 
   switch (ch)
   {
     case '\0':
-      return false;
+      return false; // End of input.
 
     case '\\':
-      if (uint32_t code_point = try_read_ucn(*this, cur_ptr, buffer_ptr, nullptr);
+      // FIXME: This might be wrong. A UCN may represent a whitespace, or some
+      // other code point that isn't allowed to appear as the first character
+      // in an identifier.
+      if (uint32_t code_point = try_read_ucn(lex, cur_ptr, lex.buffer_ptr, nullptr);
           code_point != 0)
-        return lex_identifier(*this, buffer_ptr, result);
+        // cur_ptr now points past the UCN.
+        return lex_identifier(lex, cur_ptr, result);
       else
         break;
 
     case '0': case '1': case '2': case '3': case '4':
     case '5': case '6': case '7': case '8': case '9':
-      return lex_numeric_constant(*this, cur_ptr, result);
+      return lex_numeric_constant(lex, cur_ptr, result);
 
     case '.':
-    {
-      int64_t size = 0;
-      char c = peek_char_and_size(cur_ptr, size);
-      if (is_digit(c))
-        return lex_numeric_constant(*this, consume_char(cur_ptr, size, result),
+      ch = peek_char_and_size(cur_ptr, ch_size);
+      if (is_digit(ch))
+        return lex_numeric_constant(lex, consume_char(cur_ptr, ch_size, result),
                                     result);
       else
+        // TODO: Lex other tokens that start with '.'.
         cci_unreachable();
-    }
 
     case 'a': case 'b': case 'c': case 'd': case 'e': case 'f': case 'g':
     case 'h': case 'i': case 'j': case 'k': case 'l': case 'm': case 'n':
@@ -533,16 +573,34 @@ auto Lexer::lex(Token &result) -> bool
     case 'J': case 'K': case 'L': case 'M': case 'N': case 'O': case 'P':
     case 'Q': case 'R': case 'S': case 'T': case 'U': case 'V': case 'W':
     case 'X': case 'Y': case 'Z': case '_':
-      return lex_identifier(*this, cur_ptr, result);
+      return lex_identifier(lex, cur_ptr, result);
 
     default:
       break;
   }
 
-  diag.report(location_for_ptr(buffer_ptr), diag::err_unknown_character, ch);
-  form_token(result, cur_ptr, TokenKind::unknown);
+  lex.diag.report(lex.location_for_ptr(lex.buffer_ptr),
+                  diag::err_unknown_character, ch);
+  lex.form_token(result, cur_ptr, TokenKind::unknown);
 
   return true;
+}
+
+} // namespace
+
+// Lexes a token from the current pointer into the source buffer `buffer_ptr`.
+// Most of the lexing occurs here.
+//
+// \param result The token being formed. When it's done lexing, `result` is set
+//               to the produced token on success.
+//
+// \return true if a token was lexed, or false if it has hit the end of the
+//              input.
+auto Lexer::lex(Token &result) -> bool
+{
+  // Skips any whitespace before the token.
+  buffer_ptr = std::find_if(buffer_ptr, buffer_end, std::not_fn(is_whitespace));
+  return lex_token(*this, buffer_ptr, result);
 }
 
 auto TokenStream::tokenize(const SourceManager &source_mgr) -> TokenStream
