@@ -88,4 +88,33 @@ TEST(LexerTest, numericConstants)
   EXPECT_FALSE(diag.has_errors() || diag.has_warnings());
 }
 
+TEST(LexerTest, comments)
+{
+  const char *code = R"(
+dont_skip_1 // this should be skipped, \
+all of your base are belong to us
+// skip this \too
+/\
+/ and this too
+dont_skip_2
+)";
+  const std::string_view corrects[] {
+    "dont_skip_1",
+    "dont_skip_2",
+  };
+  cci::DiagnosticsOptions opts;
+  cci::CompilerDiagnostics diag(opts);
+  auto source = cci::SourceManager::from_buffer(diag, code);
+  auto tstream = cci::TokenStream::tokenize(source);
+
+  for (const auto correct : corrects)
+  {
+    EXPECT_TRUE(tstream.peek().is(cci::TokenKind::identifier));
+    EXPECT_EQ(correct, source.text_slice(tstream.consume().source_range()));
+  }
+
+  EXPECT_TRUE(tstream.empty());
+  EXPECT_FALSE(diag.has_errors() || diag.has_warnings());
+}
+
 } // namespace

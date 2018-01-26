@@ -530,11 +530,49 @@ auto lex_numeric_constant(Lexer &lex, const char *cur_ptr, Token &result)
   return true;
 }
 
+// Skips a line comment, returning a pointer past the end of the comment.
+// Assumes that the "//" part is already lexed.
+//
+// \param lex The lexer.
+// \param cur_ptr Buffer pointer which points past the second '/' comment
+//                character.
+//
+// \return A pointer past the end of the comment, i.e. the newline.
+auto skip_line_comment(Lexer &lex, const char *cur_ptr) -> const char *
+{
+  cur_ptr = std::find_if(cur_ptr, lex.buffer_end, [](char c) {
+    return is_newline(c) || c == '\\' || c == '\0';
+  });
+
+  int64_t char_size = 0;
+
+  // Escaped newline; lex it and continue.
+  if (*cur_ptr == '\\')
+  {
+    peek_char_and_size(cur_ptr, char_size);
+    return skip_line_comment(lex, cur_ptr + char_size);
+  }
+  // End of input; ill-formed program. Even though this is assured to never
+  // happen, we still let this check here.
+  else if (*cur_ptr == '\0')
+    lex.diag.report(lex.location_for_ptr(cur_ptr), diag::err_line_comment_eof,
+                    "line", "newline");
+
+  return cur_ptr;
+}
+
+// TODO: Documentation.
 auto lex_token(Lexer &lex, const char *cur_ptr, Token &result) -> bool
 {
+  // Skips any whitespace before the token.
+  cur_ptr = std::find_if(cur_ptr, lex.buffer_end, std::not_fn(is_whitespace));
+  lex.buffer_ptr = cur_ptr;
+
   int64_t ch_size = 0;
   char ch = peek_char_and_size(cur_ptr, ch_size);
   cur_ptr += ch_size;
+
+  auto kind = TokenKind::unknown;
 
   switch (ch)
   {
@@ -565,6 +603,17 @@ auto lex_token(Lexer &lex, const char *cur_ptr, Token &result) -> bool
         // TODO: Lex other tokens that start with '.'.
         cci_unreachable();
 
+    case '/':
+      ch = peek_char_and_size(cur_ptr, ch_size);
+      if (ch == '/')
+      {
+        lex.buffer_ptr = skip_line_comment(lex, cur_ptr + ch_size);
+        return lex_token(lex, lex.buffer_ptr, result);
+      }
+      else
+        // TODO: Lex other tokens that start with '/'.
+        cci_unreachable();
+
     case 'a': case 'b': case 'c': case 'd': case 'e': case 'f': case 'g':
     case 'h': case 'i': case 'j': case 'k': case 'l': case 'm': case 'n':
     case 'o': case 'p': case 'q': case 'r': case 's': case 't': case 'u':
@@ -581,7 +630,7 @@ auto lex_token(Lexer &lex, const char *cur_ptr, Token &result) -> bool
 
   lex.diag.report(lex.location_for_ptr(lex.buffer_ptr),
                   diag::err_unknown_character, ch);
-  lex.form_token(result, cur_ptr, TokenKind::unknown);
+  lex.form_token(result, cur_ptr, kind);
 
   return true;
 }
@@ -598,8 +647,6 @@ auto lex_token(Lexer &lex, const char *cur_ptr, Token &result) -> bool
 //              input.
 auto Lexer::lex(Token &result) -> bool
 {
-  // Skips any whitespace before the token.
-  buffer_ptr = std::find_if(buffer_ptr, buffer_end, std::not_fn(is_whitespace));
   return lex_token(*this, buffer_ptr, result);
 }
 
