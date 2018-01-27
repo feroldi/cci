@@ -57,16 +57,66 @@ enum class TokenKind
   kw__Static_assert,
   kw__Thread_local,
 
-  // 6.4.2 Identifiers
+  // 6.4.2 Identifiers.
   identifier,
 
-  // 6.4.4. Constants
+  // 6.4.4 Constants.
   numeric_constant,
 
-  // TODO String-literal
-  // TODO Punctuator
+  // 6.4.6 Punctuators.
+  l_bracket,
+  r_bracket,
+  l_paren,
+  r_paren,
+  l_brace,
+  r_brace,
+  period,
+  arrow,
+  plusplus,
+  minusminus,
+  ampersand,
+  star,
+  plus,
+  minus,
+  tilde,
+  exclama,
+  slash,
+  percent,
+  lessless,
+  greatergreater,
+  less,
+  greater,
+  lesslessequal,
+  greatergreaterequal,
+  equalequal,
+  exclamaequal,
+  caret,
+  pipe,
+  ampamp,
+  pipepipe,
+  question,
+  colon,
+  semi,
+  ellipsis,
+  equal,
+  starequal,
+  slashequal,
+  percentequal,
+  plusequal,
+  minusequal,
+  lessequal,
+  greaterequal,
+  ampequal,
+  caretequal,
+  pipeequal,
+  comma,
+  hash,
+  hashhash,
 
-  unknown, //< Some stray character.
+  // TODO String-literal.
+
+  // Some stray character.
+  unknown,
 
   // End of input.
   eof,
@@ -117,6 +167,11 @@ struct Token
 
   // Returns a `SourceRange` for the token's text (spelling).
   auto source_range() const -> SourceRange { return range; }
+
+  auto spelling(const SourceManager &src_mgr) const -> std::string_view
+  {
+    return src_mgr.text_slice(this->source_range());
+  }
 
   void set_flags(TokenFlags fs) { flags |= fs; }
   void clear_flags(TokenFlags fs) { flags &= ~fs; }

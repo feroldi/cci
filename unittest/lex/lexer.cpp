@@ -81,7 +81,7 @@ TEST(LexerTest, numericConstants)
   for (const auto correct : corrects)
   {
     EXPECT_TRUE(tstream.peek().is(cci::TokenKind::numeric_constant));
-    EXPECT_EQ(correct, source.text_slice(tstream.consume().source_range()));
+    EXPECT_EQ(correct, tstream.consume().spelling(source));
   }
 
   EXPECT_TRUE(tstream.empty());
@@ -90,27 +90,48 @@ TEST(LexerTest, numericConstants)
 
 TEST(LexerTest, comments)
 {
+  // TODO: "a//b" // string literal
   const char *code = R"(
 dont_skip_1 // this should be skipped, \
-all of your base are belong to us
+WE GET SIGNAL!
 // skip this \too
 /\
 / and this too
 dont_skip_2
+// */         // comment, not syntax error
+f = g/**//h   // f = g / h
+//\
+x             // first two-line comment
+/\
+/ y           // second two-line comment
+/*//*/ z      // z
+m = n//**/o
+  + p         // m = n + p
 )";
-  const std::string_view corrects[] {
-    "dont_skip_1",
-    "dont_skip_2",
+  const std::pair<std::string_view, cci::TokenKind> corrects[]{
+    {"dont_skip_1", cci::TokenKind::identifier},
+    {"dont_skip_2", cci::TokenKind::identifier},
+    {"f", cci::TokenKind::identifier},
+    {"=", cci::TokenKind::equal},
+    {"g", cci::TokenKind::identifier},
+    {"/", cci::TokenKind::slash},
+    {"h", cci::TokenKind::identifier}, // f = g / h
+    {"z", cci::TokenKind::identifier}, // z
+    {"m", cci::TokenKind::identifier},
+    {"=", cci::TokenKind::equal},
+    {"n", cci::TokenKind::identifier},
+    {"+", cci::TokenKind::plus},
+    {"p", cci::TokenKind::identifier}, // m = n + p
   };
   cci::DiagnosticsOptions opts;
   cci::CompilerDiagnostics diag(opts);
   auto source = cci::SourceManager::from_buffer(diag, code);
   auto tstream = cci::TokenStream::tokenize(source);
 
-  for (const auto correct : corrects)
+  for (const auto [spell, kind] : corrects)
   {
-    EXPECT_TRUE(tstream.peek().is(cci::TokenKind::identifier));
-    EXPECT_EQ(correct, source.text_slice(tstream.consume().source_range()));
+    EXPECT_EQ(kind, tstream.peek().kind);
+    EXPECT_EQ(spell, tstream.consume().spelling(source));
   }
 
   EXPECT_TRUE(tstream.empty());

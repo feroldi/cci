@@ -124,32 +124,28 @@ namespace {
 
 // Calculates the size of an escaped newline. Assumes that the slash character
 // is already consumed. Whitespaces between the slash and the newline are
-// considered as well-formed.
+// considered as ill-formed.
 //
-// \param ptr The position past the slash ('\') character.
+// \param ptr The position past the backslash ('\') character.
+//
 // \return The distance between `ptr` and the first character after the escaped
 //         newline.
-auto size_for_escaped_newline(const char *ptr) -> int64_t
+auto size_for_escaped_newline(const char *ptr)
+  -> int64_t
 {
+  // FIXME: This assert is wrong, could be a `??/` trigraph.
   cci_expects(*std::prev(ptr) == '\\');
-  int64_t size = 0;
+  int64_t nl_size = 0;
 
-  // Considers only whitespaces.
-  while (is_whitespace(ptr[size]))
+  if (is_newline(ptr[nl_size]))
   {
-    ++size;
-
-    // Might be a \v, \t, or something like that.  In case there isn't any
-    // newline, this eventually resolves to a zero size. Otherwise,
-    // whitespaces are considered as part of the escaped newline.
-    if (!is_newline(ptr[size - 1]))
-      continue;
+    ++nl_size;
 
     // Consumes a pair of \r\n or \n\r if there is any.
-    if (is_newline(ptr[size]) && ptr[size - 1] != ptr[size])
-      ++size;
+    if (is_newline(ptr[nl_size]) && ptr[nl_size - 1] != ptr[nl_size])
+      ++nl_size;
 
-    return size;
+    return nl_size;
   }
 
   // Not a newline.
@@ -492,8 +488,8 @@ auto lex_numeric_constant(Lexer &lex, const char *cur_ptr, Token &result)
   -> bool
 {
   int64_t digit_size = 0;
-  char prev = *cur_ptr;
   char c = peek_char_and_size(cur_ptr, digit_size);
+  char prev = c;
 
   // Matches the regex /[0-9_a-zA-Z.]*/.
   while (is_digit(c) || is_nondigit(c) || c == '.')
@@ -540,28 +536,92 @@ auto lex_numeric_constant(Lexer &lex, const char *cur_ptr, Token &result)
 // \return A pointer past the end of the comment, i.e. the newline.
 auto skip_line_comment(Lexer &lex, const char *cur_ptr) -> const char *
 {
-  cur_ptr = std::find_if(cur_ptr, lex.buffer_end, [](char c) {
-    return is_newline(c) || c == '\\' || c == '\0';
-  });
+  int64_t c_size = 0;
+  char c = peek_char_and_size(cur_ptr, c_size);
 
-  int64_t char_size = 0;
-
-  // Escaped newline; lex it and continue.
-  if (*cur_ptr == '\\')
+  // C11 6.4.9/2: Except within a character constant, a string literal, or a
+  // comment, the characters // introduce a comment that includes all multibyte
+  // characters up to, but not including, the next new-line character. The
+  // contents of such a comment are examined only to identify multibyte
+  // characters and to find the terminating new-line character.
+  while (true)
   {
-    peek_char_and_size(cur_ptr, char_size);
-    return skip_line_comment(lex, cur_ptr + char_size);
+    if (is_newline(c))
+    {
+      cur_ptr += c_size;
+      break; // We're done.
+    }
+
+    // End of input; ill-formed program. Even though this is assured to never
+    // happen, we still let this check here.
+    if (c == '\0')
+    {
+      lex.diag.report(lex.location_for_ptr(cur_ptr), diag::err_unterminated_comment,
+                      "line");
+      break;
+    }
+
+    cur_ptr += c_size;
+    c = peek_char_and_size(cur_ptr, c_size);
   }
-  // End of input; ill-formed program. Even though this is assured to never
-  // happen, we still let this check here.
-  else if (*cur_ptr == '\0')
-    lex.diag.report(lex.location_for_ptr(cur_ptr), diag::err_line_comment_eof,
-                    "line", "newline");
 
   return cur_ptr;
 }
 
-// TODO: Documentation.
+// Skips a block comment, returning a pointer past the end of the comment, i.e.
+// after the "*/" part. Assumes that the "//" part is already lexed.
+//
+// \param lex The lexer.
+// \param cur_ptr Buffer pointer which points past the '*' from "/*"
+//                string.
+//
+// \return A pointer past the end of the comment.
+auto skip_block_comment(Lexer &lex, const char *cur_ptr) -> const char *
+{
+  int64_t c_size = 0;
+  char c = peek_char_and_size(cur_ptr, c_size);
+  char prev = c;
+
+  // Could be recursive, but that might not be a good idea.  This also could be
+  // improved upon. Right now it handles trigraphs and escaped newlines, which
+  // does the job just fine.
+  while (true)
+  {
+    // C11 6.4.9/1: Except within a character constant, a string literal, or a
+    // comment, the characters /* introduce a comment. The contents of such a
+    // comment are examined only to identify multibyte characters and to find the
+    // characters */ that terminate it. 83)
+    //
+    // 83) Thus, /* ... */ comments do not nest.
+    if (c == '/' && prev == '*')
+    {
+      cur_ptr += c_size;
+      break; // We're done.
+    }
+
+    // Missing the terminating */ block comment.
+    if (c == '\0')
+    {
+      lex.diag.report(lex.location_for_ptr(cur_ptr),
+                      diag::err_unterminated_comment, "block");
+      break;
+    }
+
+    cur_ptr += c_size;
+    prev = c;
+    c = peek_char_and_size(cur_ptr, c_size);
+  }
+
+  return cur_ptr;
+}
+
+// Lexes the next token in the source buffer.
+//
+// \param lex The lexer.
+// \param cur_ptr Pointer into the source buffer from which to lex a token.
+// \param result Output parameter to which a lexed token is set on success.
+//
+// \return true if a token was lexed, and false if end of input is reached.
 auto lex_token(Lexer &lex, const char *cur_ptr, Token &result) -> bool
 {
   // Skips any whitespace before the token.
@@ -570,7 +630,7 @@ auto lex_token(Lexer &lex, const char *cur_ptr, Token &result) -> bool
 
   int64_t ch_size = 0;
   char ch = peek_char_and_size(cur_ptr, ch_size);
-  cur_ptr += ch_size;
+  cur_ptr = consume_char(cur_ptr, ch_size, result);
 
   auto kind = TokenKind::unknown;
 
@@ -590,29 +650,316 @@ auto lex_token(Lexer &lex, const char *cur_ptr, Token &result) -> bool
       else
         break;
 
-    case '0': case '1': case '2': case '3': case '4':
-    case '5': case '6': case '7': case '8': case '9':
-      return lex_numeric_constant(lex, cur_ptr, result);
+    case '[':
+      kind = TokenKind::l_bracket;
+      break;
+    case ']':
+      kind = TokenKind::r_bracket;
+      break;
+    case '(':
+      kind = TokenKind::l_paren;
+      break;
+    case ')':
+      kind = TokenKind::r_paren;
+      break;
+    case '{':
+      kind = TokenKind::l_brace;
+      break;
+    case '}':
+      kind = TokenKind::r_brace;
+      break;
 
     case '.':
       ch = peek_char_and_size(cur_ptr, ch_size);
       if (is_digit(ch))
         return lex_numeric_constant(lex, consume_char(cur_ptr, ch_size, result),
                                     result);
+      else if (ch == '.')
+      {
+        if (int64_t after_size; peek_char_and_size(cur_ptr + ch_size, after_size) == '.')
+        {
+          kind = TokenKind::ellipsis;
+          cur_ptr = consume_char(consume_char(cur_ptr, ch_size, result),
+                                 after_size, result);
+        }
+      }
       else
-        // TODO: Lex other tokens that start with '.'.
-        cci_unreachable();
+        kind = TokenKind::period;
+      break;
+
+    case '-':
+      ch = peek_char_and_size(cur_ptr, ch_size);
+      if (ch == '>')
+      {
+        kind = TokenKind::arrow;
+        cur_ptr = consume_char(cur_ptr, ch_size, result);
+      }
+      else if (ch == '-')
+      {
+        kind = TokenKind::minusminus;
+        cur_ptr = consume_char(cur_ptr, ch_size, result);
+      }
+      else if (ch == '=')
+      {
+        kind = TokenKind::minusequal;
+        cur_ptr = consume_char(cur_ptr, ch_size, result);
+      }
+      else
+        kind = TokenKind::minus;
+      break;
+
+    case '+':
+      ch = peek_char_and_size(cur_ptr, ch_size);
+      if (ch == '+')
+      {
+        kind = TokenKind::plusplus;
+        cur_ptr = consume_char(cur_ptr, ch_size, result);
+      }
+      else if (ch == '=')
+      {
+        kind = TokenKind::plusequal;
+        cur_ptr = consume_char(cur_ptr, ch_size, result);
+      }
+      else
+        kind = TokenKind::plus;
+      break;
+
+    case '&':
+      ch = peek_char_and_size(cur_ptr, ch_size);
+      if (ch == '&')
+      {
+        kind = TokenKind::ampamp;
+        cur_ptr = consume_char(cur_ptr, ch_size, result);
+      }
+      else if (ch == '=')
+      {
+        kind = TokenKind::ampequal;
+        cur_ptr = consume_char(cur_ptr, ch_size, result);
+      }
+      else
+        kind = TokenKind::ampersand;
+      break;
+
+    case '*':
+      ch = peek_char_and_size(cur_ptr, ch_size);
+      if (ch == '=')
+      {
+        kind = TokenKind::starequal;
+        cur_ptr = consume_char(cur_ptr, ch_size, result);
+      }
+      else
+        kind = TokenKind::star;
+      break;
+
+    case '~':
+      kind = TokenKind::tilde;
+      break;
 
     case '/':
       ch = peek_char_and_size(cur_ptr, ch_size);
       if (ch == '/')
       {
+        // NOTE: Don't handle line comments that are actually an operator and a
+        // block comment in C89. E.g. `a //**/ b`, which should be `a / b` in
+        // C89, but is currently parsed as `a`, because C11 has line comments.
         lex.buffer_ptr = skip_line_comment(lex, cur_ptr + ch_size);
         return lex_token(lex, lex.buffer_ptr, result);
       }
+      else if (ch == '*')
+      {
+        lex.buffer_ptr = skip_block_comment(lex, cur_ptr + ch_size);
+        return lex_token(lex, lex.buffer_ptr, result);
+      }
+      else if (ch == '=')
+      {
+        kind = TokenKind::slashequal;
+        cur_ptr = consume_char(cur_ptr, ch_size, result);
+      }
       else
-        // TODO: Lex other tokens that start with '/'.
-        cci_unreachable();
+        kind = TokenKind::slash;
+      break;
+
+    case '%':
+      ch = peek_char_and_size(cur_ptr, ch_size);
+      if (ch == '=')
+      {
+        kind = TokenKind::percentequal;
+        cur_ptr = consume_char(cur_ptr, ch_size, result);
+      }
+      else if (ch == '>') // %> digraph.
+      {
+        kind = TokenKind::r_brace;
+        cur_ptr = consume_char(cur_ptr, ch_size, result);
+      }
+      else if (ch == ':') // %: digraph.
+      {
+        cur_ptr = consume_char(cur_ptr, ch_size, result);
+        if (int64_t after_size;
+            peek_char_and_size(cur_ptr, ch_size) == '%' &&
+            peek_char_and_size(cur_ptr + ch_size, after_size) == ':')
+        {
+          // %:%: digraph
+          kind = TokenKind::hashhash;
+          cur_ptr = consume_char(consume_char(cur_ptr, ch_size, result),
+                                 after_size, result);
+        }
+        else
+          kind = TokenKind::hash;
+      }
+      else
+        kind = TokenKind::percent;
+      break;
+
+    case '<':
+      ch = peek_char_and_size(cur_ptr, ch_size);
+      if (ch == '<')
+      {
+        int64_t after_size;
+        if (char after = peek_char_and_size(cur_ptr + ch_size, after_size);
+            after == '=')
+        {
+          kind = TokenKind::lesslessequal;
+          cur_ptr = consume_char(consume_char(cur_ptr, ch_size, result),
+                                 after_size, result);
+        }
+        else
+        {
+          kind = TokenKind::lessless;
+          cur_ptr = consume_char(cur_ptr, ch_size, result);
+        }
+      }
+      else if (ch == '=')
+      {
+        kind = TokenKind::lessequal;
+        cur_ptr = consume_char(cur_ptr, ch_size, result);
+      }
+      else if (ch == ':') // <: digraph.
+      {
+        kind = TokenKind::l_bracket;
+        cur_ptr = consume_char(cur_ptr, ch_size, result);
+      }
+      else if (ch == '%') // <% digraph.
+      {
+        kind = TokenKind::l_brace;
+        cur_ptr = consume_char(cur_ptr, ch_size, result);
+      }
+      else
+        kind = TokenKind::less;
+      break;
+
+    case '>':
+      ch = peek_char_and_size(cur_ptr, ch_size);
+      if (ch == '>')
+      {
+        int64_t after_size;
+        if (char after = peek_char_and_size(cur_ptr + ch_size, after_size);
+            after == '=')
+        {
+          kind = TokenKind::greatergreaterequal;
+          cur_ptr = consume_char(consume_char(cur_ptr, ch_size, result),
+                                 after_size, result);
+        }
+        else
+        {
+          kind = TokenKind::greater;
+          cur_ptr = consume_char(cur_ptr, ch_size, result);
+        }
+      }
+      else if (ch == '=')
+      {
+        kind = TokenKind::greaterequal;
+        cur_ptr = consume_char(cur_ptr, ch_size, result);
+      }
+      else
+        kind = TokenKind::greater;
+      break;
+
+    case '=':
+      ch = peek_char_and_size(cur_ptr, ch_size);
+      if (ch == '=')
+      {
+        kind = TokenKind::equalequal;
+        cur_ptr = consume_char(cur_ptr, ch_size, result);
+      }
+      else
+        kind = TokenKind::equal;
+      break;
+
+    case '!':
+      ch = peek_char_and_size(cur_ptr, ch_size);
+      if (ch == '=')
+      {
+        kind = TokenKind::exclamaequal;
+        cur_ptr = consume_char(cur_ptr, ch_size, result);
+      }
+      else
+        kind = TokenKind::exclama;
+      break;
+
+    case '^':
+      ch = peek_char_and_size(cur_ptr, ch_size);
+      if (ch == '=')
+      {
+        kind = TokenKind::caretequal;
+        cur_ptr = consume_char(cur_ptr, ch_size, result);
+      }
+      else
+        kind = TokenKind::caret;
+      break;
+
+    case '|':
+      ch = peek_char_and_size(cur_ptr, ch_size);
+      if (ch == '|')
+      {
+        kind = TokenKind::pipepipe;
+        cur_ptr = consume_char(cur_ptr, ch_size, result);
+      }
+      else if (ch == '=')
+      {
+        kind = TokenKind::pipeequal;
+        cur_ptr = consume_char(cur_ptr, ch_size, result);
+      }
+      else
+        kind = TokenKind::pipe;
+      break;
+
+    case '?':
+      kind = TokenKind::question;
+      break;
+
+    case ':':
+      ch = peek_char_and_size(cur_ptr, ch_size);
+      if (ch == '>') // :> digraph.
+      {
+        kind = TokenKind::r_bracket;
+        cur_ptr = consume_char(cur_ptr, ch_size, result);
+      }
+      else
+        kind = TokenKind::colon;
+      break;
+
+    case ';':
+      kind = TokenKind::semi;
+      break;
+
+    case ',':
+      kind = TokenKind::comma;
+      break;
+
+    case '#':
+      ch = peek_char_and_size(cur_ptr, ch_size);
+      if (ch == '#')
+      {
+        kind = TokenKind::hashhash;
+        cur_ptr = consume_char(cur_ptr, ch_size, result);
+      }
+      else
+        kind = TokenKind::hash;
+      break;
+
+    case '0': case '1': case '2': case '3': case '4':
+    case '5': case '6': case '7': case '8': case '9':
+      return lex_numeric_constant(lex, cur_ptr, result);
 
     case 'a': case 'b': case 'c': case 'd': case 'e': case 'f': case 'g':
     case 'h': case 'i': case 'j': case 'k': case 'l': case 'm': case 'n':
@@ -628,10 +975,11 @@ auto lex_token(Lexer &lex, const char *cur_ptr, Token &result) -> bool
       break;
   }
 
-  lex.diag.report(lex.location_for_ptr(lex.buffer_ptr),
-                  diag::err_unknown_character, ch);
-  lex.form_token(result, cur_ptr, kind);
+  if (kind == TokenKind::unknown)
+    lex.diag.report(lex.location_for_ptr(lex.buffer_ptr),
+                    diag::err_unknown_character, ch);
 
+  lex.form_token(result, cur_ptr, kind);
   return true;
 }
 
@@ -777,6 +1125,102 @@ auto to_string(TokenKind k) -> std::string_view
       return "identifier";
     case TokenKind::numeric_constant:
       return "numeric constant";
+    case TokenKind::l_bracket:
+      return "[";
+    case TokenKind::r_bracket:
+      return "]";
+    case TokenKind::l_paren:
+      return "(";
+    case TokenKind::r_paren:
+      return ")";
+    case TokenKind::l_brace:
+      return "{";
+    case TokenKind::r_brace:
+      return "}";
+    case TokenKind::period:
+      return ".";
+    case TokenKind::arrow:
+      return "->";
+    case TokenKind::plusplus:
+      return "++";
+    case TokenKind::minusminus:
+      return "--";
+    case TokenKind::ampersand:
+      return "&";
+    case TokenKind::star:
+      return "*";
+    case TokenKind::plus:
+      return "+";
+    case TokenKind::minus:
+      return "-";
+    case TokenKind::tilde:
+      return "~";
+    case TokenKind::exclama:
+      return "!";
+    case TokenKind::slash:
+      return "/";
+    case TokenKind::percent:
+      return "%";
+    case TokenKind::lessless:
+      return "<<";
+    case TokenKind::greatergreater:
+      return ">>";
+    case TokenKind::less:
+      return "<";
+    case TokenKind::greater:
+      return ">";
+    case TokenKind::lesslessequal:
+      return "<<=";
+    case TokenKind::greatergreaterequal:
+      return ">>=";
+    case TokenKind::equalequal:
+      return "==";
+    case TokenKind::exclamaequal:
+      return "!=";
+    case TokenKind::caret:
+      return "^";
+    case TokenKind::pipe:
+      return "|";
+    case TokenKind::ampamp:
+      return "&&";
+    case TokenKind::pipepipe:
+      return "||";
+    case TokenKind::question:
+      return "?";
+    case TokenKind::colon:
+      return ":";
+    case TokenKind::semi:
+      return ";";
+    case TokenKind::ellipsis:
+      return "...";
+    case TokenKind::equal:
+      return "=";
+    case TokenKind::starequal:
+      return "*=";
+    case TokenKind::slashequal:
+      return "/=";
+    case TokenKind::percentequal:
+      return "%=";
+    case TokenKind::plusequal:
+      return "+=";
+    case TokenKind::minusequal:
+      return "-=";
+    case TokenKind::lessequal:
+      return "<=";
+    case TokenKind::greaterequal:
+      return ">=";
+    case TokenKind::ampequal:
+      return "&=";
+    case TokenKind::caretequal:
+      return "^=";
+    case TokenKind::pipeequal:
+      return "|=";
+    case TokenKind::comma:
+      return ",";
+    case TokenKind::hash:
+      return "#";
+    case TokenKind::hashhash:
+      return "##";
     case TokenKind::unknown:
       return "<unknown>";
     case TokenKind::eof:
