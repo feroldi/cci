@@ -631,6 +631,48 @@ auto skip_block_comment(Lexer &lex, const char *cur_ptr) -> const char *
   return cur_ptr;
 }
 
+// character-constant: [C11 6.4.4.4]
+//    ' c-char-sequence '
+//    L' c-char-sequence '
+//    L' c-char-sequence '
+//    U' c-char-sequence '
+//
+// c-char-sequence:
+//    c-char
+//    c-char-sequence c-char
+//
+// c-char:
+//    any member of the source character set except
+//      the single-quote ', backslash \, or new-line character
+//    escape-sequence
+//
+// escape-sequence:
+//    simple-escape-sequence
+//    octal-escape-sequence
+//    hexadecimal-escape-sequence
+//    universal-character-name
+//
+// simple-escape-sequence: one of
+//    \' \" \? \\ \a \b \f \n \r \t \v
+//
+// octal-escape-sequence:
+//    \ octal-digit
+//    \ octal-digit octal-digit
+//    \ octal-digit octal-digit octal-digit
+//
+// hexadecimal-escape-sequence:
+//    \x hexadecimal-digit
+//    hexadecimal-escape-sequence hexadecimal-digit
+//
+// Lexes a character constant literal. Assumes that the prefix is already lexed.
+//
+// \param lex The lexer.
+// \param cur_ptr Buffer pointer past the ' character.
+// \param result Token being formed.
+// \paam char_kind Token kind of this character constant. This is given by the
+//                 character constant's prefix.
+//
+// \return true if character constant is successfully lexed.
 auto lex_character_constant(Lexer &lex, const char *cur_ptr, Token &result,
                             const TokenKind char_kind) -> bool
 {
@@ -666,8 +708,11 @@ auto lex_character_constant(Lexer &lex, const char *cur_ptr, Token &result,
   }
 
   lex.form_token(result, cur_ptr, char_kind);
+  result.set_flags(Token::IsLiteral);
   return true;
 }
+
+auto lex_string_literal(Lexer
 
 // Lexes the next token in the source buffer.
 //
