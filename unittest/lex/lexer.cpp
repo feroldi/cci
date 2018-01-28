@@ -8,6 +8,37 @@
 
 namespace {
 
+TEST(LexerTest, specialCharacters)
+{
+  const char *code = R"(
+// line continues??/
+here\
+and here!
+this_??/
+also_\
+works
+"invalid\??/
+"
+)";
+  const std::pair<std::string_view, cci::TokenKind> corrects[]{
+    {"this_\?\?/\nalso_\\\nworks", cci::TokenKind::identifier},
+    {R"("invalid\??/)", cci::TokenKind::unknown},
+    {"\"", cci::TokenKind::unknown},
+  };
+  cci::DiagnosticsOptions opts;
+  cci::CompilerDiagnostics diag(opts);
+  auto source = cci::SourceManager::from_buffer(diag, code);
+  auto tstream = cci::TokenStream::tokenize(source);
+
+  for (const auto [spell, kind] : corrects)
+  {
+    EXPECT_EQ(kind, tstream.peek().kind);
+    EXPECT_EQ(spell, tstream.consume().spelling(source));
+  }
+
+  EXPECT_TRUE(tstream.empty());
+}
+
 TEST(LexerTest, identifiers)
 {
   const char *code = R"(

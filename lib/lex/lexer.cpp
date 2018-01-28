@@ -152,8 +152,6 @@ void report(Lexer &lex, const char *ctx, ErrorCode err_code, Args&&... args)
 auto size_for_escaped_newline(const char *ptr)
   -> int64_t
 {
-  // FIXME: This assert is wrong, could be a `??/` trigraph.
-  cci_expects(*std::prev(ptr) == '\\');
   int64_t nl_size = 0;
 
   if (is_newline(ptr[nl_size]))
@@ -184,6 +182,24 @@ constexpr bool is_trivial_character(char c)
   return c != '?' && c != '\\';
 }
 
+// C11 5.2.1.1 Trigraph sequences.
+constexpr auto decode_trigraph_letter(char letter)
+{
+  switch (letter)
+  {
+    case '=': return '#';
+    case '(': return '[';
+    case '/': return '\\';
+    case ')': return ']';
+    case '\'': return '^';
+    case '<': return '{';
+    case '!': return '|';
+    case '>': return '}';
+    case '-': return '~';
+    default: return '\0';
+  }
+}
+
 // Peeks a character from the input stream and returns it, setting the size to
 // how many characters are to be skipped over. This handles special cases like
 // escaped newlines and trigraphs*.
@@ -192,9 +208,8 @@ constexpr bool is_trivial_character(char c)
 // \param size Variable to set the distance to the next simple character.
 // \param tok Token being formed, if any.
 //
-// \return The character pointed by `ptr`.
-//
-// * TODO: Will handle trigraphs eventually.
+// \return The character pointed by `ptr`, or a character after escaped
+// new-line, or a decoded trigraph.
 auto peek_char_and_size_nontrivial(const char *ptr, int64_t &size,
                                    Token *tok = nullptr) -> char
 {
@@ -203,6 +218,7 @@ auto peek_char_and_size_nontrivial(const char *ptr, int64_t &size,
     ++ptr;
     ++size;
 
+backslash:
     // There's no need to escape anything other than whitespaces.
     if (!is_whitespace(*ptr)) return '\\';
 
@@ -218,7 +234,18 @@ auto peek_char_and_size_nontrivial(const char *ptr, int64_t &size,
     return '\\';
   }
 
-  // TODO: Trigraphs.
+  // Trigraphs.
+  if (ptr[0] == '?' && ptr[1] == '?')
+  {
+    if (const char c = decode_trigraph_letter(ptr[2]))
+    {
+      size += 3;
+      ptr += 3;
+      if (tok) tok->set_flags(Token::IsDirty);
+      if (c == '\\') goto backslash;
+      return c;
+    }
+  }
 
   // Peek a simple character.
   ++size;
@@ -444,7 +471,7 @@ auto lex_identifier(Lexer &lex, const char *cur_ptr, Token &result) -> bool
   --cur_ptr;
 
   // There's dirt, lexes the rest of the identifier.
-  if (c == '\\')
+  if (!is_trivial_character(c))
   {
     int64_t size = 0;
     c = peek_char_and_size(cur_ptr, size);
