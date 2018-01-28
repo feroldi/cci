@@ -18,7 +18,7 @@ constexpr auto to_string(CompilerDiagnostics::Level level) -> std::string_view
       return "ignored";
     case CompilerDiagnostics::Level::Note:
       return "note";
-    case CompilerDiagnostics::Level::Mention:
+    case CompilerDiagnostics::Level::Remark:
       return "mention";
     case CompilerDiagnostics::Level::Warning:
       return "warning";
@@ -118,9 +118,9 @@ auto CompilerDiagnostics::get_output_level(Severity severity) const
   {
     case Severity::Note:
       return Level::Note;
-    case Severity::Mention:
+    case Severity::Remark:
       if (opts.is_verbose)
-        return Level::Mention;
+        return Level::Remark;
       else
         return Level::Ignore;
     case Severity::Extension:

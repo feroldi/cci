@@ -5,6 +5,7 @@
 #include <string_view>
 #include <memory>
 
+
 namespace cci {
 
 // TokenKind - This represents the kind of a token, e.g. identifier,
@@ -62,6 +63,12 @@ enum class TokenKind
 
   // 6.4.4 Constants.
   numeric_constant,
+
+  // 6.4.4.4 Character constants.
+  utf8_char_constant,
+  utf16_char_constant,
+  utf32_char_constant,
+  wide_char_constant,
 
   // 6.4.6 Punctuators.
   l_bracket,

@@ -116,7 +116,7 @@ TEST(DiagnosticsTest, outputLevelMapping)
     opts.is_verbose = false;
     cci::CompilerDiagnostics diag(opts);
     auto src_mgr = cci::SourceManager::from_buffer(diag, code);
-    diag.report(Severity::Mention, nocontext, "this should not be emitted");
+    diag.report(Severity::Remark, nocontext, "this should not be emitted");
     EXPECT_FALSE(diag.has_errors());
     EXPECT_FALSE(diag.has_warnings());
   }
@@ -125,7 +125,7 @@ TEST(DiagnosticsTest, outputLevelMapping)
     opts.is_verbose = true; //< Note true
     cci::CompilerDiagnostics diag(opts);
     auto src_mgr = cci::SourceManager::from_buffer(diag, code);
-    diag.report(Severity::Mention, nocontext, "this should be a mention");
+    diag.report(Severity::Remark, nocontext, "this should be a mention");
     EXPECT_FALSE(diag.has_errors());
     EXPECT_FALSE(diag.has_warnings());
   }

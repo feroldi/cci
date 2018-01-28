@@ -38,7 +38,7 @@ struct CompilerFatalError : std::exception
 enum class Severity
 {
   Note, //< Adds information to previous diagnostics.
-  Mention, //< Generic information (could be thought of as verbose).
+  Remark, //< Generic information (could be thought of as verbose).
   Warning, //< Used when some code is valid but dubious.
   Extension, //< Used to issue when some code is nonportable due to extensions.
   Error, //< Issues ill-formed code.
@@ -118,7 +118,7 @@ public:
   {
     Ignore, //< Ignores the diagnostic (doesn't report it).
     Note, //< Extra information for previous diagnostic.
-    Mention, //< Extra information (verbose).
+    Remark, //< Extra information (verbose).
     Warning, //< Compilation may continue.
     Error, //< Stops compiling process.
     Fatal, //< Stops the whole program.

@@ -138,4 +138,36 @@ m = n//**/o
   EXPECT_FALSE(diag.has_errors() || diag.has_warnings());
 }
 
+TEST(LexerTest, charConstants)
+{
+  const char *code = R"(
+'xxx' L'\'x\'' u'new\
+line' U'\u1234x\777\xffffffff'
+''
+'\\
+'\\'
+)";
+  const std::pair<std::string_view, cci::TokenKind> corrects[]{
+    {"'xxx'", cci::TokenKind::utf8_char_constant},
+    {"L'\\'x\\''", cci::TokenKind::wide_char_constant},
+    {"u'new\\\nline'", cci::TokenKind::utf16_char_constant},
+    {"U'\\u1234x\\777\\xffffffff'", cci::TokenKind::utf32_char_constant},
+    {"''", cci::TokenKind::unknown},
+    {"'\\\\\n", cci::TokenKind::unknown},
+    {"'\\\\'", cci::TokenKind::utf8_char_constant},
+  };
+  cci::DiagnosticsOptions opts;
+  cci::CompilerDiagnostics diag(opts);
+  auto source = cci::SourceManager::from_buffer(diag, code);
+  auto tstream = cci::TokenStream::tokenize(source);
+
+  for (const auto [spell, kind] : corrects)
+  {
+    EXPECT_EQ(kind, tstream.peek().kind);
+    EXPECT_EQ(spell, tstream.consume().spelling(source));
+  }
+
+  EXPECT_TRUE(tstream.empty());
+}
+
 } // namespace

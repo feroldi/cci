@@ -82,6 +82,11 @@ constexpr auto is_hexdigit(char C) -> bool
          (C >= 'A' && C <= 'F');
 }
 
+constexpr auto is_octdigit(char C) -> bool
+{
+  return (C >= '0' && C <= '7');
+}
+
 constexpr auto is_newline(char C) -> bool { return C == '\n' || C == '\r'; }
 
 constexpr auto is_whitespace(char C) -> bool
@@ -104,7 +109,21 @@ constexpr auto hexdigit_value(char C) -> uint32_t
   return -1U;
 }
 
+constexpr auto is_escape_sequence(char C) -> bool
+{
+  return C == '\'' || C == '"' || C == '?' || C == '\\' || C == 'a' ||
+         C == 'b' || C == 'f' || C == 'n' || C == 'r' || C == 't' || C == 'v' ||
+         is_octdigit(C) || C == 'x';
+}
+
 namespace {
+
+template <typename ErrorCode, typename... Args>
+void report(Lexer &lex, const char *ctx, ErrorCode err_code, Args&&... args)
+{
+  return lex.diag.report(lex.location_for_ptr(ctx), err_code,
+                         std::forward<Args>(args)...);
+}
 
 // The following helper functions are based off on Clang's lexer implementation.
 //
@@ -303,7 +322,6 @@ auto try_read_ucn(Lexer &lex, const char *&start_ptr, const char *slash_ptr,
     return 0;
 
   auto cur_ptr = start_ptr + char_size;
-  const auto slash_loc = lex.location_for_ptr(slash_ptr);
   uint32_t code_point = 0;
 
   // Parses the UCN, ignoring any escaped newlines.
@@ -313,7 +331,7 @@ auto try_read_ucn(Lexer &lex, const char *&start_ptr, const char *slash_ptr,
     const uint32_t value = hexdigit_value(c);
     if (value == -1U)
     {
-      lex.diag.report(slash_loc, diag::warn_ucn_incomplete);
+      report(lex, slash_ptr, diag::warn_ucn_incomplete);
       return 0;
     }
     code_point <<= 4;
@@ -344,13 +362,13 @@ auto try_read_ucn(Lexer &lex, const char *&start_ptr, const char *slash_ptr,
   {
     if (code_point != 0x24 && code_point != 0x40 && code_point != 0x60)
     {
-      lex.diag.report(slash_loc, diag::err_ucn_invalid);
+      report(lex, slash_ptr, diag::err_ucn_invalid);
       return 0;
     }
   }
   else if (code_point >= 0xD800 && code_point <= 0xDFFF)
   {
-    lex.diag.report(slash_loc, diag::err_ucn_invalid);
+    report(lex, slash_ptr, diag::err_ucn_invalid);
     return 0;
   }
 
@@ -456,7 +474,7 @@ auto lex_identifier(Lexer &lex, const char *cur_ptr, Token &result) -> bool
 
   // FIXME: Comparing the raw identifier is wrong. This check
   // should be delayed to be later done by a sane identifier checker.
-  if (!result.has_UCN())
+  if (!result.has_UCN() && !result.is_dirty())
   {
     // Changes the token's kind to a keyword if this happens to be one.
     const auto tok_spell = lex.source_mgr.text_slice(result.range);
@@ -527,7 +545,7 @@ auto lex_numeric_constant(Lexer &lex, const char *cur_ptr, Token &result)
 }
 
 // Skips a line comment, returning a pointer past the end of the comment.
-// Assumes that the "//" part is already lexed.
+// Assumes that the // part is already lexed.
 //
 // \param lex The lexer.
 // \param cur_ptr Buffer pointer which points past the second '/' comment
@@ -556,8 +574,7 @@ auto skip_line_comment(Lexer &lex, const char *cur_ptr) -> const char *
     // happen, we still let this check here.
     if (c == '\0')
     {
-      lex.diag.report(lex.location_for_ptr(cur_ptr), diag::err_unterminated_comment,
-                      "line");
+      report(lex, cur_ptr, diag::err_unterminated_comment, "line");
       break;
     }
 
@@ -569,10 +586,10 @@ auto skip_line_comment(Lexer &lex, const char *cur_ptr) -> const char *
 }
 
 // Skips a block comment, returning a pointer past the end of the comment, i.e.
-// after the "*/" part. Assumes that the "//" part is already lexed.
+// after the */ part. Assumes that the // part is already lexed.
 //
 // \param lex The lexer.
-// \param cur_ptr Buffer pointer which points past the '*' from "/*"
+// \param cur_ptr Buffer pointer which points past the '*' from /*
 //                string.
 //
 // \return A pointer past the end of the comment.
@@ -602,8 +619,7 @@ auto skip_block_comment(Lexer &lex, const char *cur_ptr) -> const char *
     // Missing the terminating */ block comment.
     if (c == '\0')
     {
-      lex.diag.report(lex.location_for_ptr(cur_ptr),
-                      diag::err_unterminated_comment, "block");
+      report(lex, cur_ptr, diag::err_unterminated_comment, "block");
       break;
     }
 
@@ -613,6 +629,44 @@ auto skip_block_comment(Lexer &lex, const char *cur_ptr) -> const char *
   }
 
   return cur_ptr;
+}
+
+auto lex_character_constant(Lexer &lex, const char *cur_ptr, Token &result,
+                            const TokenKind char_kind) -> bool
+{
+  cci_expects(char_kind == TokenKind::utf8_char_constant ||
+              char_kind == TokenKind::utf16_char_constant ||
+              char_kind == TokenKind::utf32_char_constant ||
+              char_kind == TokenKind::wide_char_constant);
+
+  char c = peek_char_advance(cur_ptr, result);
+
+  if (c == '\'')
+  {
+    report(lex, lex.buffer_ptr, diag::err_empty_character);
+    lex.form_token(result, cur_ptr, TokenKind::unknown);
+    return true;
+  }
+
+  while (c != '\'')
+  {
+    // Skips this character for now. Decoding and checking of escape sequences
+    // occur later on in semantic analyses.
+    if (c == '\\')
+      c = *cur_ptr++;
+
+    else if (is_newline(c) || c == '\0')
+    {
+      report(lex, lex.buffer_ptr, diag::err_unterminated_char_const);
+      lex.form_token(result, cur_ptr, TokenKind::unknown);
+      return true;
+    }
+
+    c = peek_char_advance(cur_ptr, result);
+  }
+
+  lex.form_token(result, cur_ptr, char_kind);
+  return true;
 }
 
 // Lexes the next token in the source buffer.
@@ -961,23 +1015,50 @@ auto lex_token(Lexer &lex, const char *cur_ptr, Token &result) -> bool
     case '5': case '6': case '7': case '8': case '9':
       return lex_numeric_constant(lex, cur_ptr, result);
 
+    case 'L':
+      ch = peek_char_and_size(cur_ptr, ch_size);
+      if (ch == '\'')
+        return lex_character_constant(lex,
+                                      consume_char(cur_ptr, ch_size, result),
+                                      result, TokenKind::wide_char_constant);
+      return lex_identifier(lex, cur_ptr, result);
+
+    case 'u':
+      ch = peek_char_and_size(cur_ptr, ch_size);
+      if (ch == '\'')
+        return lex_character_constant(lex,
+                                      consume_char(cur_ptr, ch_size, result),
+                                      result, TokenKind::utf16_char_constant);
+      return lex_identifier(lex, cur_ptr, result);
+
+    case 'U':
+      ch = peek_char_and_size(cur_ptr, ch_size);
+      if (ch == '\'')
+        return lex_character_constant(lex,
+                                      consume_char(cur_ptr, ch_size, result),
+                                      result, TokenKind::utf32_char_constant);
+      [[fallthrough]];
+
     case 'a': case 'b': case 'c': case 'd': case 'e': case 'f': case 'g':
     case 'h': case 'i': case 'j': case 'k': case 'l': case 'm': case 'n':
-    case 'o': case 'p': case 'q': case 'r': case 's': case 't': case 'u':
+    case 'o': case 'p': case 'q': case 'r': case 's': case 't': /*   'u'*/
     case 'v': case 'w': case 'x': case 'y': case 'z': case 'A': case 'B':
     case 'C': case 'D': case 'E': case 'F': case 'G': case 'H': case 'I':
-    case 'J': case 'K': case 'L': case 'M': case 'N': case 'O': case 'P':
-    case 'Q': case 'R': case 'S': case 'T': case 'U': case 'V': case 'W':
+    case 'J': case 'K': /*   'L'*/case 'M': case 'N': case 'O': case 'P':
+    case 'Q': case 'R': case 'S': case 'T': /*   'U'*/case 'V': case 'W':
     case 'X': case 'Y': case 'Z': case '_':
       return lex_identifier(lex, cur_ptr, result);
+
+    case '\'':
+      return lex_character_constant(lex, cur_ptr, result,
+                                    TokenKind::utf8_char_constant);
 
     default:
       break;
   }
 
   if (kind == TokenKind::unknown)
-    lex.diag.report(lex.location_for_ptr(lex.buffer_ptr),
-                    diag::err_unknown_character, ch);
+    report(lex, lex.buffer_ptr, diag::err_unknown_character, ch);
 
   lex.form_token(result, cur_ptr, kind);
   return true;
@@ -1033,198 +1114,106 @@ auto to_string(TokenKind k) -> std::string_view
 {
   switch (k)
   {
-    case TokenKind::kw_auto:
-      return "auto";
-    case TokenKind::kw_break:
-      return "break";
-    case TokenKind::kw_case:
-      return "case";
-    case TokenKind::kw_char:
-      return "char";
-    case TokenKind::kw_const:
-      return "const";
-    case TokenKind::kw_continue:
-      return "continue";
-    case TokenKind::kw_default:
-      return "default";
-    case TokenKind::kw_do:
-      return "do";
-    case TokenKind::kw_double:
-      return "double";
-    case TokenKind::kw_else:
-      return "else";
-    case TokenKind::kw_enum:
-      return "enum";
-    case TokenKind::kw_extern:
-      return "extern";
-    case TokenKind::kw_float:
-      return "float";
-    case TokenKind::kw_for:
-      return "for";
-    case TokenKind::kw_goto:
-      return "goto";
-    case TokenKind::kw_if:
-      return "if";
-    case TokenKind::kw_inline:
-      return "inline";
-    case TokenKind::kw_int:
-      return "int";
-    case TokenKind::kw_long:
-      return "long";
-    case TokenKind::kw_register:
-      return "register";
-    case TokenKind::kw_restrict:
-      return "restrict";
-    case TokenKind::kw_return:
-      return "return";
-    case TokenKind::kw_short:
-      return "short";
-    case TokenKind::kw_signed:
-      return "signed";
-    case TokenKind::kw_sizeof:
-      return "sizeof";
-    case TokenKind::kw_static:
-      return "static";
-    case TokenKind::kw_struct:
-      return "struct";
-    case TokenKind::kw_switch:
-      return "switch";
-    case TokenKind::kw_typedef:
-      return "typedef";
-    case TokenKind::kw_union:
-      return "union";
-    case TokenKind::kw_unsigned:
-      return "unsigned";
-    case TokenKind::kw_void:
-      return "void";
-    case TokenKind::kw_volatile:
-      return "volatile";
-    case TokenKind::kw_while:
-      return "while";
-    case TokenKind::kw__Alignas:
-      return "_Alignas";
-    case TokenKind::kw__Alignof:
-      return "_Alignof";
-    case TokenKind::kw__Atomic:
-      return "_Atomic";
-    case TokenKind::kw__Bool:
-      return "_Bool";
-    case TokenKind::kw__Complex:
-      return "_Complex";
-    case TokenKind::kw__Generic:
-      return "_Generic";
-    case TokenKind::kw__Imaginary:
-      return "_Imaginary";
-    case TokenKind::kw__Noreturn:
-      return "_Noreturn";
-    case TokenKind::kw__Static_assert:
-      return "_Static_assert";
-    case TokenKind::kw__Thread_local:
-      return "_Thread_local";
-    case TokenKind::identifier:
-      return "identifier";
-    case TokenKind::numeric_constant:
-      return "numeric constant";
-    case TokenKind::l_bracket:
-      return "[";
-    case TokenKind::r_bracket:
-      return "]";
-    case TokenKind::l_paren:
-      return "(";
-    case TokenKind::r_paren:
-      return ")";
-    case TokenKind::l_brace:
-      return "{";
-    case TokenKind::r_brace:
-      return "}";
-    case TokenKind::period:
-      return ".";
-    case TokenKind::arrow:
-      return "->";
-    case TokenKind::plusplus:
-      return "++";
-    case TokenKind::minusminus:
-      return "--";
-    case TokenKind::ampersand:
-      return "&";
-    case TokenKind::star:
-      return "*";
-    case TokenKind::plus:
-      return "+";
-    case TokenKind::minus:
-      return "-";
-    case TokenKind::tilde:
-      return "~";
-    case TokenKind::exclama:
-      return "!";
-    case TokenKind::slash:
-      return "/";
-    case TokenKind::percent:
-      return "%";
-    case TokenKind::lessless:
-      return "<<";
-    case TokenKind::greatergreater:
-      return ">>";
-    case TokenKind::less:
-      return "<";
-    case TokenKind::greater:
-      return ">";
-    case TokenKind::lesslessequal:
-      return "<<=";
-    case TokenKind::greatergreaterequal:
-      return ">>=";
-    case TokenKind::equalequal:
-      return "==";
-    case TokenKind::exclamaequal:
-      return "!=";
-    case TokenKind::caret:
-      return "^";
-    case TokenKind::pipe:
-      return "|";
-    case TokenKind::ampamp:
-      return "&&";
-    case TokenKind::pipepipe:
-      return "||";
-    case TokenKind::question:
-      return "?";
-    case TokenKind::colon:
-      return ":";
-    case TokenKind::semi:
-      return ";";
-    case TokenKind::ellipsis:
-      return "...";
-    case TokenKind::equal:
-      return "=";
-    case TokenKind::starequal:
-      return "*=";
-    case TokenKind::slashequal:
-      return "/=";
-    case TokenKind::percentequal:
-      return "%=";
-    case TokenKind::plusequal:
-      return "+=";
-    case TokenKind::minusequal:
-      return "-=";
-    case TokenKind::lessequal:
-      return "<=";
-    case TokenKind::greaterequal:
-      return ">=";
-    case TokenKind::ampequal:
-      return "&=";
-    case TokenKind::caretequal:
-      return "^=";
-    case TokenKind::pipeequal:
-      return "|=";
-    case TokenKind::comma:
-      return ",";
-    case TokenKind::hash:
-      return "#";
-    case TokenKind::hashhash:
-      return "##";
-    case TokenKind::unknown:
-      return "<unknown>";
-    case TokenKind::eof:
-      return "<end of input>";
+    case TokenKind::kw_auto: return "auto";
+    case TokenKind::kw_break: return "break";
+    case TokenKind::kw_case: return "case";
+    case TokenKind::kw_char: return "char";
+    case TokenKind::kw_const: return "const";
+    case TokenKind::kw_continue: return "continue";
+    case TokenKind::kw_default: return "default";
+    case TokenKind::kw_do: return "do";
+    case TokenKind::kw_double: return "double";
+    case TokenKind::kw_else: return "else";
+    case TokenKind::kw_enum: return "enum";
+    case TokenKind::kw_extern: return "extern";
+    case TokenKind::kw_float: return "float";
+    case TokenKind::kw_for: return "for";
+    case TokenKind::kw_goto: return "goto";
+    case TokenKind::kw_if: return "if";
+    case TokenKind::kw_inline: return "inline";
+    case TokenKind::kw_int: return "int";
+    case TokenKind::kw_long: return "long";
+    case TokenKind::kw_register: return "register";
+    case TokenKind::kw_restrict: return "restrict";
+    case TokenKind::kw_return: return "return";
+    case TokenKind::kw_short: return "short";
+    case TokenKind::kw_signed: return "signed";
+    case TokenKind::kw_sizeof: return "sizeof";
+    case TokenKind::kw_static: return "static";
+    case TokenKind::kw_struct: return "struct";
+    case TokenKind::kw_switch: return "switch";
+    case TokenKind::kw_typedef: return "typedef";
+    case TokenKind::kw_union: return "union";
+    case TokenKind::kw_unsigned: return "unsigned";
+    case TokenKind::kw_void: return "void";
+    case TokenKind::kw_volatile: return "volatile";
+    case TokenKind::kw_while: return "while";
+    case TokenKind::kw__Alignas: return "_Alignas";
+    case TokenKind::kw__Alignof: return "_Alignof";
+    case TokenKind::kw__Atomic: return "_Atomic";
+    case TokenKind::kw__Bool: return "_Bool";
+    case TokenKind::kw__Complex: return "_Complex";
+    case TokenKind::kw__Generic: return "_Generic";
+    case TokenKind::kw__Imaginary: return "_Imaginary";
+    case TokenKind::kw__Noreturn: return "_Noreturn";
+    case TokenKind::kw__Static_assert: return "_Static_assert";
+    case TokenKind::kw__Thread_local: return "_Thread_local";
+    case TokenKind::identifier: return "identifier";
+    case TokenKind::numeric_constant: return "numeric constant";
+    case TokenKind::utf8_char_constant: return "character constant";
+    case TokenKind::utf16_char_constant: return "char16_t character constant";
+    case TokenKind::utf32_char_constant: return "char32_t character constant";
+    case TokenKind::wide_char_constant: return "wide character constant";
+    case TokenKind::l_bracket: return "[";
+    case TokenKind::r_bracket: return "]";
+    case TokenKind::l_paren: return "(";
+    case TokenKind::r_paren: return ")";
+    case TokenKind::l_brace: return "{";
+    case TokenKind::r_brace: return "}";
+    case TokenKind::period: return ".";
+    case TokenKind::arrow: return "->";
+    case TokenKind::plusplus: return "++";
+    case TokenKind::minusminus: return "--";
+    case TokenKind::ampersand: return "&";
+    case TokenKind::star: return "*";
+    case TokenKind::plus: return "+";
+    case TokenKind::minus: return "-";
+    case TokenKind::tilde: return "~";
+    case TokenKind::exclama: return "!";
+    case TokenKind::slash: return "/";
+    case TokenKind::percent: return "%";
+    case TokenKind::lessless: return "<<";
+    case TokenKind::greatergreater: return ">>";
+    case TokenKind::less: return "<";
+    case TokenKind::greater: return ">";
+    case TokenKind::lesslessequal: return "<<=";
+    case TokenKind::greatergreaterequal: return ">>=";
+    case TokenKind::equalequal: return "==";
+    case TokenKind::exclamaequal: return "!=";
+    case TokenKind::caret: return "^";
+    case TokenKind::pipe: return "|";
+    case TokenKind::ampamp: return "&&";
+    case TokenKind::pipepipe: return "||";
+    case TokenKind::question: return "?";
+    case TokenKind::colon: return ":";
+    case TokenKind::semi: return ";";
+    case TokenKind::ellipsis: return "...";
+    case TokenKind::equal: return "=";
+    case TokenKind::starequal: return "*=";
+    case TokenKind::slashequal: return "/=";
+    case TokenKind::percentequal: return "%=";
+    case TokenKind::plusequal: return "+=";
+    case TokenKind::minusequal: return "-=";
+    case TokenKind::lessequal: return "<=";
+    case TokenKind::greaterequal: return ">=";
+    case TokenKind::ampequal: return "&=";
+    case TokenKind::caretequal: return "^=";
+    case TokenKind::pipeequal: return "|=";
+    case TokenKind::comma: return ",";
+    case TokenKind::hash: return "#";
+    case TokenKind::hashhash: return "##";
+    case TokenKind::unknown: return "<unknown>";
+    case TokenKind::eof: return "<end of input>";
   }
 
   cci_unreachable();
