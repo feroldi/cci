@@ -1,10 +1,12 @@
 #pragma once
 
 #include "cci/basic/source_manager.hpp"
-#include <vector>
+#include "cci/basic/diagnostics.hpp"
 #include <string_view>
+#include <memory>
 
-namespace cci::lex {
+
+namespace cci {
 
 // TokenKind - This represents the kind of a token, e.g. identifier,
 // keyword etc.
@@ -56,12 +58,80 @@ enum class TokenKind
   kw__Static_assert,
   kw__Thread_local,
 
-  // C11 6.4.2 Identifiers
+  // 6.4.2 Identifiers.
   identifier,
 
-  // TODO Constant
-  // TODO String-literal
-  // TODO Punctuator
+  // 6.4.4 Constants.
+  numeric_constant,
+
+  // 6.4.4.4 Character constants.
+  char_constant,
+  utf8_char_constant,
+  utf16_char_constant,
+  utf32_char_constant,
+  wide_char_constant,
+
+  // 6.4.5 String literals.
+  string_literal,
+  utf8_string_literal,
+  utf16_string_literal,
+  utf32_string_literal,
+  wide_string_literal,
+
+  // 6.4.6 Punctuators.
+  l_bracket,
+  r_bracket,
+  l_paren,
+  r_paren,
+  l_brace,
+  r_brace,
+  period,
+  arrow,
+  plusplus,
+  minusminus,
+  ampersand,
+  star,
+  plus,
+  minus,
+  tilde,
+  exclama,
+  slash,
+  percent,
+  lessless,
+  greatergreater,
+  less,
+  greater,
+  lesslessequal,
+  greatergreaterequal,
+  equalequal,
+  exclamaequal,
+  caret,
+  pipe,
+  ampamp,
+  pipepipe,
+  question,
+  colon,
+  semi,
+  ellipsis,
+  equal,
+  starequal,
+  slashequal,
+  percentequal,
+  plusequal,
+  minusequal,
+  lessequal,
+  greaterequal,
+  ampequal,
+  caretequal,
+  pipeequal,
+  comma,
+  hash,
+  hashhash,
+
+  // TODO String-literal.
+
+  // Some stray character.
+  unknown,
 
   // End of input.
   eof,
@@ -72,65 +142,114 @@ enum class TokenKind
 // For instance, the name of TokenKind::kw_auto is "auto",
 // TokenKind::identifier's name is "identifier", TokenKind::plusplus's
 // name is "++" etc.
-auto to_string(TokenKind K) -> std::string_view;
+auto to_string(TokenKind) -> std::string_view;
 
 // Token - A representation of a token as described in the C11 standard.
-// TODO: reference token definition in the standard.
-class Token
+struct Token
 {
-  // Token's kind, e.g. Kw_return, identifier etc.
+  enum TokenFlags
+  {
+    None = 0,
+    HasUCN = 1 << 0, //< Contains universal character names.
+    IsDirty = 1 << 1, //< Contains escaped new lines or trigraphs.
+    IsLiteral = 1 << 2, //< Is a string/char literal, or numeric constant.
+  };
+
+  // Token's syntactic category, e.g. kw_return, identifier etc.
   TokenKind kind;
 
   // Token's start and end locations on the source file.
   SourceRange range;
 
-public:
-  Token(TokenKind k, SourceRange r) : kind(k), range(r) {}
+  uint8_t flags = TokenFlags::None;
 
-  // Checks whether this token is of kind `K`.
-  bool is(TokenKind K) const { return kind == K; }
+  Token() = default;
+  Token(TokenKind k, SourceRange r) noexcept : kind(k), range(r) {}
 
-  // Checks whether this token is not of kind `K`.
-  bool is_not(TokenKind K) const { return kind != K; }
+  // Checks whether this token is of kind `k`.
+  bool is(TokenKind k) const { return kind == k; }
 
   // Checks wether this token is of any kind in `Ks`.
   template <typename... Kinds>
-  bool is_one_of(Kinds... Ks) const
+  bool is_one_of(const Kinds... ks) const
   {
     static_assert((std::is_same_v<TokenKind, Kinds> && ...));
-    return (is(Ks) || ...);
+    return (is(ks) || ...);
   }
 
-  // Returns the source location where this token starts.
-  auto source_loc() const -> SourceLocation { return range.start; }
+  // Returns the source location at which this token starts.
+  auto location() const -> SourceLocation { return range.start; }
 
-  // Returns the source range where this token is in the buffer.
+  // Returns a `SourceRange` for the token's text (spelling).
   auto source_range() const -> SourceRange { return range; }
 
-  // Returns the name of this token's kind.
-  auto spelling() const -> std::string_view { return to_string(kind); }
+  auto spelling(const SourceManager &src_mgr) const -> std::string_view
+  {
+    return src_mgr.text_slice(this->source_range());
+  }
+
+  void set_flags(TokenFlags fs) { flags |= fs; }
+  void clear_flags(TokenFlags fs) { flags &= ~fs; }
+
+  bool has_UCN() const { return flags & TokenFlags::HasUCN; }
+  bool is_dirty() const { return flags & TokenFlags::IsDirty; }
 };
 
-// TokenStream - This implements a tokenizer for the C language. It's
-// an iterable sequence of `Token`s.
+struct Lexer
+{
+  const SourceManager &source_mgr; //< Input to be tokenized.
+  CompilerDiagnostics &diag;
+
+  const char *buffer_begin; //< Iterator to the start of the buffer.
+  const char *buffer_end; //< Iterator to the end of the buffer.
+  const char *buffer_ptr; //< Current character to be analyzed.
+
+  Lexer(const SourceManager &src_mgr) noexcept
+    : source_mgr(src_mgr)
+    , diag(src_mgr.get_diagnostics())
+    , buffer_begin(src_mgr.full_text().begin())
+    , buffer_end(src_mgr.full_text().end())
+    , buffer_ptr(buffer_begin)
+  {
+    cci_expects(buffer_end[0] == '\0');
+  }
+
+  void form_token(Token &tok, const char *tok_end, TokenKind kind)
+  {
+    tok.kind = kind;
+    tok.range = range_for_ptrs(buffer_ptr, tok_end);
+    buffer_ptr = tok_end;
+  }
+
+  // Parses the next token in the input stream.
+  auto lex(Token &) -> bool;
+
+  auto location_for_ptr(const char *ptr) const -> SourceLocation
+  {
+    return SourceLocation::from_ptrs(buffer_begin, ptr);
+  }
+
+  auto range_for_ptrs(const char *start, const char *end) const -> SourceRange
+  {
+    return {location_for_ptr(start), location_for_ptr(end)};
+  }
+};
+
+
 class TokenStream
 {
-  // Sequence of tokens corresponding to a source file.
-  std::vector<Token> tokens;
+  Lexer lexer;
+  std::optional<Token> cur_tok;
 
-  TokenStream(std::vector<Token> tokens) : tokens(std::move(tokens)) {}
+  explicit TokenStream(Lexer lex) noexcept : lexer(std::move(lex)), cur_tok() {}
 
 public:
-  using iterator = std::vector<Token>::iterator;
-  using const_iterator = std::vector<Token>::const_iterator;
+  static auto tokenize(const SourceManager &) -> TokenStream;
 
-  // Tokenizes the content of a buffer.
-  //
-  // \returns A TokenStream containing all the tokens from a buffer.
-  static auto tokenize(const char *begin, const char *end) -> TokenStream;
-
-  auto begin() const -> const_iterator { return tokens.begin(); }
-  auto end() const -> const_iterator { return tokens.end(); }
+  auto peek() -> Token;
+  auto consume() -> Token;
+  auto empty() -> bool;
 };
 
-} // namespace cci::lex
+
+} // namespace cci

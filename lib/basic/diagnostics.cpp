@@ -1,7 +1,9 @@
 #include "cci/basic/diagnostics.hpp"
+#include "cci/basic/source_manager.hpp"
 #include "cci/util/contracts.hpp"
 #include "cci/util/variant.hpp"
 #include "fmt/format.h"
+#include <optional>
 #include <cstdio>
 #include <string>
 #include <string_view>
@@ -16,7 +18,7 @@ constexpr auto to_string(CompilerDiagnostics::Level level) -> std::string_view
       return "ignored";
     case CompilerDiagnostics::Level::Note:
       return "note";
-    case CompilerDiagnostics::Level::Mention:
+    case CompilerDiagnostics::Level::Remark:
       return "mention";
     case CompilerDiagnostics::Level::Warning:
       return "warning";
@@ -27,10 +29,10 @@ constexpr auto to_string(CompilerDiagnostics::Level level) -> std::string_view
   }
 }
 
-static auto format_error([[maybe_unused]] const DiagnosticsOptions &opts,
+static auto format_error(const CompilerDiagnostics &diag,
                          std::string_view from, size_t line_num,
                          size_t column_num, std::string_view type,
-                         std::optional<FullSourceLoc> source,
+                         std::optional<SourceLocation> source_loc,
                          std::string_view message) -> std::string
 {
   std::string out;
@@ -69,11 +71,12 @@ static auto format_error([[maybe_unused]] const DiagnosticsOptions &opts,
   {
     out += message;
 
-    if (source)
+    if (source_loc)
     {
       cci_expects(line_num && column_num);
+      cci_expects(diag.has_source_manager());
 
-      const auto snippet = source->text_line();
+      const auto snippet = diag.get_source_manager().text_line(*source_loc);
       std::string carret;
       carret.reserve(column_num);
 
@@ -88,21 +91,21 @@ static auto format_error([[maybe_unused]] const DiagnosticsOptions &opts,
   return out;
 }
 
-static auto format_error(const DiagnosticsOptions &opts,
-                         const SourceManager &src_mgr,
+static auto format_error(const CompilerDiagnostics &diag,
                          CompilerDiagnostics::Level level,
                          CompilerDiagnostics::Context context,
                          std::string_view message) -> std::string
 {
   return std::visit(overloaded {
     [&] (nocontext_t) {
-      return format_error(opts, "", 0ull, 0ull, to_string(level), std::nullopt, message);
+      return format_error(diag, "", 0ull, 0ull, to_string(level), std::nullopt, message);
     },
-    [&] (SourceLocation location) {
-      const FullSourceLoc loc(src_mgr, location);
-      const auto [line_num, col_num] = loc.translate_to_line_column();
-      const auto filename = loc.loaded_from_file() ? loc.file_path().c_str() : "<source>";
-      return format_error(opts, filename, line_num, col_num, to_string(level),
+    [&] (SourceLocation loc) {
+      cci_expects(diag.has_source_manager());
+      const FullSourceLoc full_loc(diag.get_source_manager(), loc);
+      const auto [line_num, col_num] = full_loc.translate_to_linecolumn();
+      const auto filename = full_loc.loaded_from_file() ? full_loc.file_path().c_str() : "<source>";
+      return format_error(diag, filename, line_num, col_num, to_string(level),
                           loc, message);
     }
   }, context);
@@ -115,9 +118,9 @@ auto CompilerDiagnostics::get_output_level(Severity severity) const
   {
     case Severity::Note:
       return Level::Note;
-    case Severity::Mention:
+    case Severity::Remark:
       if (opts.is_verbose)
-        return Level::Mention;
+        return Level::Remark;
       else
         return Level::Ignore;
     case Severity::Extension:
@@ -147,14 +150,13 @@ void CompilerDiagnostics::report_message(Severity severity, Context context,
 
   if (level != Level::Ignore)
   {
-    const auto out =
-      format_error(opts, src_mgr, level, std::move(context), message);
+    const auto out = format_error(*this, level, std::move(context), message);
     std::fprintf(this->out_stream, "%s\n", out.c_str());
 
     if (level == Level::Warning)
       ++warn_count;
     else if (level == Level::Error && ++error_count >= max_errors)
-      report(nocontext, diag::Common::fatal_too_many_errors);
+      report(nocontext, diag::fatal_too_many_errors);
     else if (level == Level::Fatal)
     {
       ++fatal_count;

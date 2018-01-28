@@ -26,7 +26,7 @@ set(CMAKE_INTERPROCEDURAL_OPTIMIZATION ON)
 # i.e. don't choose gnu++17 over c++17
 set(CMAKE_CXX_EXTENSIONS OFF)
 
-set(CMAKE_CXX_FLAGS "-Wall -Wextra -Wundef -fcolor-diagnostics -stdlib=libc++"
+set(CMAKE_CXX_FLAGS "-Werror -Wall -Wextra -Wundef -pedantic-errors -stdlib=libc++ -fcolor-diagnostics -march=native -fno-limit-debug-info"
   CACHE STRING "Toolchain C++ compiler flags." FORCE)
 
 set(CMAKE_EXE_LINKER_FLAGS "-stdlib=libc++ -lc++abi -fuse-ld=lld"
