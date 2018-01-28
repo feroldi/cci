@@ -664,19 +664,21 @@ auto skip_block_comment(Lexer &lex, const char *cur_ptr) -> const char *
 //    \x hexadecimal-digit
 //    hexadecimal-escape-sequence hexadecimal-digit
 //
-// Lexes a character constant literal. Assumes that the prefix is already lexed.
+// Lexes a character constant literal. Assumes that the prefix and ' are already
+// lexed.
 //
 // \param lex The lexer.
-// \param cur_ptr Buffer pointer past the ' character.
+// \param cur_ptr Buffer pointer that points past the ' character.
 // \param result Token being formed.
-// \paam char_kind Token kind of this character constant. This is given by the
-//                 character constant's prefix.
+// \param char_kind Token kind of this character constant. This is given by the
+//                 character constant's prefix (or the lack thereof).
 //
 // \return true if character constant is successfully lexed.
 auto lex_character_constant(Lexer &lex, const char *cur_ptr, Token &result,
                             const TokenKind char_kind) -> bool
 {
-  cci_expects(char_kind == TokenKind::utf8_char_constant ||
+  cci_expects(char_kind == TokenKind::char_constant ||
+              char_kind == TokenKind::utf8_char_constant ||
               char_kind == TokenKind::utf16_char_constant ||
               char_kind == TokenKind::utf32_char_constant ||
               char_kind == TokenKind::wide_char_constant);
@@ -699,8 +701,9 @@ auto lex_character_constant(Lexer &lex, const char *cur_ptr, Token &result,
 
     else if (is_newline(c) || c == '\0')
     {
-      report(lex, lex.buffer_ptr, diag::err_unterminated_char_const);
-      lex.form_token(result, cur_ptr, TokenKind::unknown);
+      report(lex, lex.buffer_ptr, diag::err_unterminated_char_or_string, '\'',
+             to_string(char_kind));
+      lex.form_token(result, std::prev(cur_ptr), TokenKind::unknown);
       return true;
     }
 
@@ -712,7 +715,66 @@ auto lex_character_constant(Lexer &lex, const char *cur_ptr, Token &result,
   return true;
 }
 
-auto lex_string_literal(Lexer
+// string-literal: [C11 6.4.5]
+//    encoding-prefix[opt] " s-char-sequence[opt] "
+//
+// encoding-prefix:
+//    u8
+//    u
+//    U
+//    L
+//
+// s-char-sequence:
+//    s-char
+//    s-char-sequence s-char
+//
+// s-char:
+//    any member of the source character set except
+//      the double-quote ", backslash \, or new-line character.
+//    escape-sequence
+//
+// Lexes a string literal. Assumes that the prefix and " are already lexed.
+//
+// \param lex The lexer.
+// \param cur_ptr Buffer pointer that points pat the " character.
+// \param result Token being formed.
+// \param str_kind Token kind of this string literal. This is given by the
+//                 string literals's prefix (or the lack thereof).
+//
+// \return true if string literal is successfully lexed.
+auto lex_string_literal(Lexer &lex, const char *cur_ptr, Token &result,
+                        const TokenKind str_kind) -> bool
+{
+  cci_expects(str_kind == TokenKind::string_literal ||
+              str_kind == TokenKind::utf8_string_literal ||
+              str_kind == TokenKind::utf16_string_literal ||
+              str_kind == TokenKind::utf32_string_literal ||
+              str_kind == TokenKind::wide_string_literal);
+
+  char c = peek_char_advance(cur_ptr, result);
+
+  while (c != '"')
+  {
+    // Skips this character for now. Decoding and checking of escape sequences
+    // occur later on in semantic analyses.
+    if (c == '\\')
+      c = *cur_ptr++;
+
+    else if (is_newline(c) || c == '\0')
+    {
+      report(lex, lex.buffer_ptr, diag::err_unterminated_char_or_string, '"',
+             to_string(str_kind));
+      lex.form_token(result, std::prev(cur_ptr), TokenKind::unknown);
+      return true;
+    }
+
+    c = peek_char_advance(cur_ptr, result);
+  }
+
+  lex.form_token(result, cur_ptr, str_kind);
+  result.set_flags(Token::IsLiteral);
+  return true;
+}
 
 // Lexes the next token in the source buffer.
 //
@@ -1066,6 +1128,9 @@ auto lex_token(Lexer &lex, const char *cur_ptr, Token &result) -> bool
         return lex_character_constant(lex,
                                       consume_char(cur_ptr, ch_size, result),
                                       result, TokenKind::wide_char_constant);
+      if (ch == '"')
+        return lex_string_literal(lex, consume_char(cur_ptr, ch_size, result),
+                                  result, TokenKind::wide_string_literal);
       return lex_identifier(lex, cur_ptr, result);
 
     case 'u':
@@ -1074,6 +1139,17 @@ auto lex_token(Lexer &lex, const char *cur_ptr, Token &result) -> bool
         return lex_character_constant(lex,
                                       consume_char(cur_ptr, ch_size, result),
                                       result, TokenKind::utf16_char_constant);
+      if (int64_t after_size;
+          ch == '8' && peek_char_and_size(cur_ptr + ch_size, after_size) == '"')
+      {
+        cur_ptr = consume_char(cur_ptr, ch_size, result);
+        return lex_string_literal(lex,
+                                  consume_char(cur_ptr, after_size, result),
+                                  result, TokenKind::utf8_string_literal);
+      }
+      if (ch == '"')
+        return lex_string_literal(lex, consume_char(cur_ptr, ch_size, result),
+                                  result, TokenKind::utf16_string_literal);
       return lex_identifier(lex, cur_ptr, result);
 
     case 'U':
@@ -1082,6 +1158,9 @@ auto lex_token(Lexer &lex, const char *cur_ptr, Token &result) -> bool
         return lex_character_constant(lex,
                                       consume_char(cur_ptr, ch_size, result),
                                       result, TokenKind::utf32_char_constant);
+      if (ch == '"')
+        return lex_string_literal(lex, consume_char(cur_ptr, ch_size, result),
+                                  result, TokenKind::utf32_string_literal);
       [[fallthrough]];
 
     case 'a': case 'b': case 'c': case 'd': case 'e': case 'f': case 'g':
@@ -1096,7 +1175,11 @@ auto lex_token(Lexer &lex, const char *cur_ptr, Token &result) -> bool
 
     case '\'':
       return lex_character_constant(lex, cur_ptr, result,
-                                    TokenKind::utf8_char_constant);
+                                    TokenKind::char_constant);
+
+    case '"':
+      return lex_string_literal(lex, cur_ptr, result,
+                                TokenKind::string_literal);
 
     default:
       break;
@@ -1205,10 +1288,16 @@ auto to_string(TokenKind k) -> std::string_view
     case TokenKind::kw__Thread_local: return "_Thread_local";
     case TokenKind::identifier: return "identifier";
     case TokenKind::numeric_constant: return "numeric constant";
-    case TokenKind::utf8_char_constant: return "character constant";
-    case TokenKind::utf16_char_constant: return "char16_t character constant";
-    case TokenKind::utf32_char_constant: return "char32_t character constant";
+    case TokenKind::char_constant: return "character constant";
+    case TokenKind::utf8_char_constant: return "utf-8 character constant";
+    case TokenKind::utf16_char_constant: return "utf-16 character constant";
+    case TokenKind::utf32_char_constant: return "utf-32 character constant";
     case TokenKind::wide_char_constant: return "wide character constant";
+    case TokenKind::string_literal: return "string literal";
+    case TokenKind::utf8_string_literal: return "utf-8 string literal";
+    case TokenKind::utf16_string_literal: return "utf-16 string literal";
+    case TokenKind::utf32_string_literal: return "utf-32 string literal";
+    case TokenKind::wide_string_literal: return "wide string literal";
     case TokenKind::l_bracket: return "[";
     case TokenKind::r_bracket: return "]";
     case TokenKind::l_paren: return "(";

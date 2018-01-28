@@ -65,10 +65,18 @@ enum class TokenKind
   numeric_constant,
 
   // 6.4.4.4 Character constants.
+  char_constant,
   utf8_char_constant,
   utf16_char_constant,
   utf32_char_constant,
   wide_char_constant,
+
+  // 6.4.5 String literals.
+  string_literal,
+  utf8_string_literal,
+  utf16_string_literal,
+  utf32_string_literal,
+  wide_string_literal,
 
   // 6.4.6 Punctuators.
   l_bracket,

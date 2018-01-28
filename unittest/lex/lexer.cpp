@@ -90,7 +90,6 @@ TEST(LexerTest, numericConstants)
 
 TEST(LexerTest, comments)
 {
-  // TODO: "a//b" // string literal
   const char *code = R"(
 dont_skip_1 // this should be skipped, \
 WE GET SIGNAL!
@@ -98,6 +97,7 @@ WE GET SIGNAL!
 /\
 / and this too
 dont_skip_2
+"a//b"        // string literal
 // */         // comment, not syntax error
 f = g/**//h   // f = g / h
 //\
@@ -111,6 +111,7 @@ m = n//**/o
   const std::pair<std::string_view, cci::TokenKind> corrects[]{
     {"dont_skip_1", cci::TokenKind::identifier},
     {"dont_skip_2", cci::TokenKind::identifier},
+    {"\"a//b\"", cci::TokenKind::string_literal},
     {"f", cci::TokenKind::identifier},
     {"=", cci::TokenKind::equal},
     {"g", cci::TokenKind::identifier},
@@ -143,18 +144,50 @@ TEST(LexerTest, charConstants)
   const char *code = R"(
 'xxx' L'\'x\'' u'new\
 line' U'\u1234x\777\xffffffff'
+'\\'
 ''
 '\\
-'\\'
 )";
   const std::pair<std::string_view, cci::TokenKind> corrects[]{
-    {"'xxx'", cci::TokenKind::utf8_char_constant},
+    {"'xxx'", cci::TokenKind::char_constant},
     {"L'\\'x\\''", cci::TokenKind::wide_char_constant},
     {"u'new\\\nline'", cci::TokenKind::utf16_char_constant},
     {"U'\\u1234x\\777\\xffffffff'", cci::TokenKind::utf32_char_constant},
+    {"'\\\\'", cci::TokenKind::char_constant},
     {"''", cci::TokenKind::unknown},
-    {"'\\\\\n", cci::TokenKind::unknown},
-    {"'\\\\'", cci::TokenKind::utf8_char_constant},
+    {"'\\\\", cci::TokenKind::unknown},
+  };
+  cci::DiagnosticsOptions opts;
+  cci::CompilerDiagnostics diag(opts);
+  auto source = cci::SourceManager::from_buffer(diag, code);
+  auto tstream = cci::TokenStream::tokenize(source);
+
+  for (const auto [spell, kind] : corrects)
+  {
+    EXPECT_EQ(kind, tstream.peek().kind);
+    EXPECT_EQ(spell, tstream.consume().spelling(source));
+  }
+
+  EXPECT_TRUE(tstream.empty());
+}
+
+TEST(LexerTest, stringLiterals)
+{
+  const char *code = R"(
+"xxx" L"\"abc\"" u"new\
+line" U"\u1234x\777\xffffffff"
+u8""
+"\\
+"\\"
+)";
+  const std::pair<std::string_view, cci::TokenKind> corrects[]{
+    {R"("xxx")", cci::TokenKind::string_literal},
+    {R"(L"\"abc\"")", cci::TokenKind::wide_string_literal},
+    {"u\"new\\\nline\"", cci::TokenKind::utf16_string_literal},
+    {R"(U"\u1234x\777\xffffffff")", cci::TokenKind::utf32_string_literal},
+    {R"(u8"")", cci::TokenKind::utf8_string_literal},
+    {R"("\\)", cci::TokenKind::unknown},
+    {R"("\\")", cci::TokenKind::string_literal},
   };
   cci::DiagnosticsOptions opts;
   cci::CompilerDiagnostics diag(opts);
