@@ -270,26 +270,23 @@ auto peek_char_advance(const char *&ptr, Token &tok) -> char
   return c;
 }
 
-// Peeks a character from the buffer pointer.
+// Peeks a character and its size from the buffer pointer.
 //
 // If the character pointed by `ptr` is simple, then this is the fast path: it
-// returns `*ptr` and sets `size` to 1. Otherwise, this function falls back to
+// returns `*ptr` and a size of 1. Otherwise, this function falls back to
 // `peek_char_and_size_nontrivial`.
 //
 // \param ptr Buffer pointer from which to peek a character.
-// \param size Variable to set the distance to the next simple character.
 //
-// \return The character pointed by `ptr`.
-auto peek_char_and_size(const char *ptr, int64_t &size)
-  -> char
+// \return The character pointed by `ptr`, and the size to get to the next
+//         consumable character.
+auto peek_char_and_size(const char *ptr) -> std::pair<char, int64_t>
 {
   if (is_trivial_character(*ptr))
-  {
-    size = 1;
-    return *ptr;
-  }
-  size = 0;
-  return peek_char_and_size_nontrivial(ptr, size, nullptr);
+    return {*ptr, 1};
+  int64_t size = 0;
+  const char c = peek_char_and_size_nontrivial(ptr, size, nullptr);
+  return {c, size};
 }
 
 // Consumes the buffer pointer.
@@ -341,20 +338,19 @@ auto consume_char(const char *ptr, int64_t size, Token &tok)
 auto try_read_ucn(Lexer &lex, const char *&start_ptr, const char *slash_ptr,
                   Token *tok = nullptr) -> uint32_t
 {
-  int64_t char_size = 0;
-  const auto kind = peek_char_and_size(start_ptr, char_size);
+  const auto [kind, kind_size] = peek_char_and_size(start_ptr);
   const int num_hexdigits = kind == 'u' ? 4 : kind == 'U' ? 8 : 0;
 
   if (num_hexdigits == 0)
     return 0;
 
-  auto cur_ptr = start_ptr + char_size;
+  auto cur_ptr = start_ptr + kind_size;
   uint32_t code_point = 0;
 
   // Parses the UCN, ignoring any escaped newlines.
   for (int i = 0; i < num_hexdigits; ++i)
   {
-    const char c = peek_char_and_size(cur_ptr, char_size);
+    const auto [c, char_size] = peek_char_and_size(cur_ptr);
     const uint32_t value = hexdigit_value(c);
     if (value == -1U)
     {
@@ -473,26 +469,25 @@ auto lex_identifier(Lexer &lex, const char *cur_ptr, Token &result) -> bool
   // There's dirt, lexes the rest of the identifier.
   if (!is_trivial_character(c))
   {
-    int64_t size = 0;
-    c = peek_char_and_size(cur_ptr, size);
+    auto [c, size] = peek_char_and_size(cur_ptr);
     while (true)
     {
       if (c == '\\' && try_advance_identifier_ucn(lex, cur_ptr, size, result))
       {
-        c = peek_char_and_size(cur_ptr, size);
+        std::tie(c, size) = peek_char_and_size(cur_ptr);
         continue;
       }
       else if (!(is_nondigit(c) || is_digit(c)))
         break; // We're done.
 
       cur_ptr = consume_char(cur_ptr, size, result);
-      c = peek_char_and_size(cur_ptr, size);
+      std::tie(c, size) = peek_char_and_size(cur_ptr);
 
       // Handles escaped newlines and trigraphs.
       while (is_nondigit(c) || is_digit(c))
       {
         cur_ptr = consume_char(cur_ptr, size, result);
-        c = peek_char_and_size(cur_ptr, size);
+        std::tie(c, size) = peek_char_and_size(cur_ptr);
       }
     }
   }
@@ -532,8 +527,7 @@ auto lex_identifier(Lexer &lex, const char *cur_ptr, Token &result) -> bool
 auto lex_numeric_constant(Lexer &lex, const char *cur_ptr, Token &result)
   -> bool
 {
-  int64_t digit_size = 0;
-  char c = peek_char_and_size(cur_ptr, digit_size);
+  auto [c, digit_size] = peek_char_and_size(cur_ptr);
   char prev = c;
 
   // Matches the regex /[0-9_a-zA-Z.]*/.
@@ -541,7 +535,7 @@ auto lex_numeric_constant(Lexer &lex, const char *cur_ptr, Token &result)
   {
     cur_ptr = consume_char(cur_ptr, digit_size, result);
     prev = c;
-    c = peek_char_and_size(cur_ptr, digit_size);
+    std::tie(c, digit_size) = peek_char_and_size(cur_ptr);
   }
 
   // If we stumbled upon something that doesn't seem to be part of a numeric
@@ -581,8 +575,7 @@ auto lex_numeric_constant(Lexer &lex, const char *cur_ptr, Token &result)
 // \return A pointer past the end of the comment, i.e. the newline.
 auto skip_line_comment(Lexer &lex, const char *cur_ptr) -> const char *
 {
-  int64_t c_size = 0;
-  char c = peek_char_and_size(cur_ptr, c_size);
+  auto [c, c_size] = peek_char_and_size(cur_ptr);
 
   // C11 6.4.9/2: Except within a character constant, a string literal, or a
   // comment, the characters // introduce a comment that includes all multibyte
@@ -606,7 +599,7 @@ auto skip_line_comment(Lexer &lex, const char *cur_ptr) -> const char *
     }
 
     cur_ptr += c_size;
-    c = peek_char_and_size(cur_ptr, c_size);
+    std::tie(c, c_size) = peek_char_and_size(cur_ptr);
   }
 
   return cur_ptr;
@@ -622,8 +615,7 @@ auto skip_line_comment(Lexer &lex, const char *cur_ptr) -> const char *
 // \return A pointer past the end of the comment.
 auto skip_block_comment(Lexer &lex, const char *cur_ptr) -> const char *
 {
-  int64_t c_size = 0;
-  char c = peek_char_and_size(cur_ptr, c_size);
+  auto [c, c_size] = peek_char_and_size(cur_ptr);
   char prev = c;
 
   // Could be recursive, but that might not be a good idea.  This also could be
@@ -652,7 +644,7 @@ auto skip_block_comment(Lexer &lex, const char *cur_ptr) -> const char *
 
     cur_ptr += c_size;
     prev = c;
-    c = peek_char_and_size(cur_ptr, c_size);
+    std::tie(c, c_size) = peek_char_and_size(cur_ptr);
   }
 
   return cur_ptr;
@@ -816,8 +808,7 @@ auto lex_token(Lexer &lex, const char *cur_ptr, Token &result) -> bool
   cur_ptr = std::find_if(cur_ptr, lex.buffer_end, std::not_fn(is_whitespace));
   lex.buffer_ptr = cur_ptr;
 
-  int64_t ch_size = 0;
-  char ch = peek_char_and_size(cur_ptr, ch_size);
+  auto [ch, ch_size] = peek_char_and_size(cur_ptr);
   cur_ptr = consume_char(cur_ptr, ch_size, result);
 
   auto kind = TokenKind::unknown;
@@ -858,13 +849,14 @@ auto lex_token(Lexer &lex, const char *cur_ptr, Token &result) -> bool
       break;
 
     case '.':
-      ch = peek_char_and_size(cur_ptr, ch_size);
+      std::tie(ch, ch_size) = peek_char_and_size(cur_ptr);
       if (is_digit(ch))
         return lex_numeric_constant(lex, consume_char(cur_ptr, ch_size, result),
                                     result);
       else if (ch == '.')
       {
-        if (int64_t after_size; peek_char_and_size(cur_ptr + ch_size, after_size) == '.')
+        if (const auto [after, after_size] = peek_char_and_size(cur_ptr + ch_size);
+            after == '.')
         {
           kind = TokenKind::ellipsis;
           cur_ptr = consume_char(consume_char(cur_ptr, ch_size, result),
@@ -876,7 +868,7 @@ auto lex_token(Lexer &lex, const char *cur_ptr, Token &result) -> bool
       break;
 
     case '-':
-      ch = peek_char_and_size(cur_ptr, ch_size);
+      std::tie(ch, ch_size) = peek_char_and_size(cur_ptr);
       if (ch == '>')
       {
         kind = TokenKind::arrow;
@@ -897,7 +889,7 @@ auto lex_token(Lexer &lex, const char *cur_ptr, Token &result) -> bool
       break;
 
     case '+':
-      ch = peek_char_and_size(cur_ptr, ch_size);
+      std::tie(ch, ch_size) = peek_char_and_size(cur_ptr);
       if (ch == '+')
       {
         kind = TokenKind::plusplus;
@@ -913,7 +905,7 @@ auto lex_token(Lexer &lex, const char *cur_ptr, Token &result) -> bool
       break;
 
     case '&':
-      ch = peek_char_and_size(cur_ptr, ch_size);
+      std::tie(ch, ch_size) = peek_char_and_size(cur_ptr);
       if (ch == '&')
       {
         kind = TokenKind::ampamp;
@@ -929,7 +921,7 @@ auto lex_token(Lexer &lex, const char *cur_ptr, Token &result) -> bool
       break;
 
     case '*':
-      ch = peek_char_and_size(cur_ptr, ch_size);
+      std::tie(ch, ch_size) = peek_char_and_size(cur_ptr);
       if (ch == '=')
       {
         kind = TokenKind::starequal;
@@ -944,7 +936,7 @@ auto lex_token(Lexer &lex, const char *cur_ptr, Token &result) -> bool
       break;
 
     case '/':
-      ch = peek_char_and_size(cur_ptr, ch_size);
+      std::tie(ch, ch_size) = peek_char_and_size(cur_ptr);
       if (ch == '/')
       {
         // NOTE: Don't handle line comments that are actually an operator and a
@@ -968,7 +960,7 @@ auto lex_token(Lexer &lex, const char *cur_ptr, Token &result) -> bool
       break;
 
     case '%':
-      ch = peek_char_and_size(cur_ptr, ch_size);
+      std::tie(ch, ch_size) = peek_char_and_size(cur_ptr);
       if (ch == '=')
       {
         kind = TokenKind::percentequal;
@@ -982,9 +974,9 @@ auto lex_token(Lexer &lex, const char *cur_ptr, Token &result) -> bool
       else if (ch == ':') // %: digraph.
       {
         cur_ptr = consume_char(cur_ptr, ch_size, result);
-        if (int64_t after_size;
-            peek_char_and_size(cur_ptr, ch_size) == '%' &&
-            peek_char_and_size(cur_ptr + ch_size, after_size) == ':')
+        std::tie(ch, ch_size) = peek_char_and_size(cur_ptr);
+        const auto [after, after_size] = peek_char_and_size(cur_ptr + ch_size);
+        if (ch == '%' && after == ':')
         {
           // %:%: digraph
           kind = TokenKind::hashhash;
@@ -999,11 +991,10 @@ auto lex_token(Lexer &lex, const char *cur_ptr, Token &result) -> bool
       break;
 
     case '<':
-      ch = peek_char_and_size(cur_ptr, ch_size);
+      std::tie(ch, ch_size) = peek_char_and_size(cur_ptr);
       if (ch == '<')
       {
-        int64_t after_size;
-        if (char after = peek_char_and_size(cur_ptr + ch_size, after_size);
+        if (const auto [after, after_size] = peek_char_and_size(cur_ptr + ch_size);
             after == '=')
         {
           kind = TokenKind::lesslessequal;
@@ -1036,11 +1027,10 @@ auto lex_token(Lexer &lex, const char *cur_ptr, Token &result) -> bool
       break;
 
     case '>':
-      ch = peek_char_and_size(cur_ptr, ch_size);
+      std::tie(ch, ch_size) = peek_char_and_size(cur_ptr);
       if (ch == '>')
       {
-        int64_t after_size;
-        if (char after = peek_char_and_size(cur_ptr + ch_size, after_size);
+        if (const auto [after, after_size] = peek_char_and_size(cur_ptr + ch_size);
             after == '=')
         {
           kind = TokenKind::greatergreaterequal;
@@ -1063,7 +1053,7 @@ auto lex_token(Lexer &lex, const char *cur_ptr, Token &result) -> bool
       break;
 
     case '=':
-      ch = peek_char_and_size(cur_ptr, ch_size);
+      std::tie(ch, ch_size) = peek_char_and_size(cur_ptr);
       if (ch == '=')
       {
         kind = TokenKind::equalequal;
@@ -1074,7 +1064,7 @@ auto lex_token(Lexer &lex, const char *cur_ptr, Token &result) -> bool
       break;
 
     case '!':
-      ch = peek_char_and_size(cur_ptr, ch_size);
+      std::tie(ch, ch_size) = peek_char_and_size(cur_ptr);
       if (ch == '=')
       {
         kind = TokenKind::exclamaequal;
@@ -1085,7 +1075,7 @@ auto lex_token(Lexer &lex, const char *cur_ptr, Token &result) -> bool
       break;
 
     case '^':
-      ch = peek_char_and_size(cur_ptr, ch_size);
+      std::tie(ch, ch_size) = peek_char_and_size(cur_ptr);
       if (ch == '=')
       {
         kind = TokenKind::caretequal;
@@ -1096,7 +1086,7 @@ auto lex_token(Lexer &lex, const char *cur_ptr, Token &result) -> bool
       break;
 
     case '|':
-      ch = peek_char_and_size(cur_ptr, ch_size);
+      std::tie(ch, ch_size) = peek_char_and_size(cur_ptr);
       if (ch == '|')
       {
         kind = TokenKind::pipepipe;
@@ -1116,7 +1106,7 @@ auto lex_token(Lexer &lex, const char *cur_ptr, Token &result) -> bool
       break;
 
     case ':':
-      ch = peek_char_and_size(cur_ptr, ch_size);
+      std::tie(ch, ch_size) = peek_char_and_size(cur_ptr);
       if (ch == '>') // :> digraph.
       {
         kind = TokenKind::r_bracket;
@@ -1135,7 +1125,7 @@ auto lex_token(Lexer &lex, const char *cur_ptr, Token &result) -> bool
       break;
 
     case '#':
-      ch = peek_char_and_size(cur_ptr, ch_size);
+      std::tie(ch, ch_size) = peek_char_and_size(cur_ptr);
       if (ch == '#')
       {
         kind = TokenKind::hashhash;
@@ -1150,7 +1140,7 @@ auto lex_token(Lexer &lex, const char *cur_ptr, Token &result) -> bool
       return lex_numeric_constant(lex, cur_ptr, result);
 
     case 'L':
-      ch = peek_char_and_size(cur_ptr, ch_size);
+      std::tie(ch, ch_size) = peek_char_and_size(cur_ptr);
       if (ch == '\'')
         return lex_character_constant(lex,
                                       consume_char(cur_ptr, ch_size, result),
@@ -1161,18 +1151,21 @@ auto lex_token(Lexer &lex, const char *cur_ptr, Token &result) -> bool
       return lex_identifier(lex, cur_ptr, result);
 
     case 'u':
-      ch = peek_char_and_size(cur_ptr, ch_size);
+      std::tie(ch, ch_size) = peek_char_and_size(cur_ptr);
       if (ch == '\'')
         return lex_character_constant(lex,
                                       consume_char(cur_ptr, ch_size, result),
                                       result, TokenKind::utf16_char_constant);
-      if (int64_t after_size;
-          ch == '8' && peek_char_and_size(cur_ptr + ch_size, after_size) == '"')
+      if (ch == '8')
       {
-        cur_ptr = consume_char(cur_ptr, ch_size, result);
-        return lex_string_literal(lex,
-                                  consume_char(cur_ptr, after_size, result),
-                                  result, TokenKind::utf8_string_literal);
+        if (const auto [after, after_size] = peek_char_and_size(cur_ptr + ch_size);
+            after == '"')
+        {
+          cur_ptr = consume_char(cur_ptr, ch_size, result);
+          return lex_string_literal(lex,
+                                    consume_char(cur_ptr, after_size, result),
+                                    result, TokenKind::utf8_string_literal);
+        }
       }
       if (ch == '"')
         return lex_string_literal(lex, consume_char(cur_ptr, ch_size, result),
@@ -1180,7 +1173,7 @@ auto lex_token(Lexer &lex, const char *cur_ptr, Token &result) -> bool
       return lex_identifier(lex, cur_ptr, result);
 
     case 'U':
-      ch = peek_char_and_size(cur_ptr, ch_size);
+    std::tie(ch, ch_size) = peek_char_and_size(cur_ptr);
       if (ch == '\'')
         return lex_character_constant(lex,
                                       consume_char(cur_ptr, ch_size, result),
