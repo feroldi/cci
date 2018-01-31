@@ -44,7 +44,9 @@ struct is_diagnostics_error_code<diag::Lex> : std::true_type
 //   string-literal
 //   punctuator
 
-static constexpr TokenKind KEYWORD_KINDS[]{
+namespace {
+
+constexpr TokenKind KEYWORD_KINDS[]{
   TokenKind::kw_auto,           TokenKind::kw_break,
   TokenKind::kw_case,           TokenKind::kw_char,
   TokenKind::kw_const,          TokenKind::kw_continue,
@@ -82,11 +84,6 @@ constexpr auto is_hexdigit(char C) -> bool
          (C >= 'A' && C <= 'F');
 }
 
-constexpr auto is_octdigit(char C) -> bool
-{
-  return (C >= '0' && C <= '7');
-}
-
 constexpr auto is_newline(char C) -> bool { return C == '\n' || C == '\r'; }
 
 constexpr auto is_whitespace(char C) -> bool
@@ -109,23 +106,17 @@ constexpr auto hexdigit_value(char C) -> uint32_t
   return -1U;
 }
 
-constexpr auto is_escape_sequence(char C) -> bool
-{
-  return C == '\'' || C == '"' || C == '?' || C == '\\' || C == 'a' ||
-         C == 'b' || C == 'f' || C == 'n' || C == 'r' || C == 't' || C == 'v' ||
-         is_octdigit(C) || C == 'x';
-}
-
-namespace {
-
 template <typename ErrorCode, typename... Args>
-void report(Lexer &lex, const char *ctx, ErrorCode err_code, Args&&... args)
+void report(LexerContext &lex, const char *ctx, ErrorCode err_code,
+            Args &&... args)
 {
-  return lex.diag.report(lex.location_for_ptr(ctx), err_code,
-                         std::forward<Args>(args)...);
+  auto &diag = lex.source_mgr.get_diagnostics();
+  return diag.report(lex.location_for_ptr(ctx), err_code,
+                     std::forward<Args>(args)...);
 }
 
-// The following helper functions are based off on Clang's lexer implementation.
+// The following few helper functions are inspired by Clang's lexer
+// implementation.
 //
 // The lexer works with a few useful functions. Because the C grammar is a
 // little complex, it is not possible to implement a lexer that iterates over
@@ -210,8 +201,9 @@ constexpr auto decode_trigraph_letter(char letter)
 //
 // \return The character pointed by `ptr`, or a character after escaped
 // new-line, or a decoded trigraph.
-auto peek_char_and_size_nontrivial(const char *ptr, int64_t &size,
-                                   Token *tok = nullptr) -> char
+auto peek_char_and_size_nontrivial(const char *ptr, int64_t size,
+                                   Token *tok = nullptr)
+  -> std::pair<char, int64_t>
 {
   if (*ptr == '\\')
   {
@@ -220,7 +212,7 @@ auto peek_char_and_size_nontrivial(const char *ptr, int64_t &size,
 
 backslash:
     // There's no need to escape anything other than whitespaces.
-    if (!is_whitespace(*ptr)) return '\\';
+    if (!is_whitespace(*ptr)) return {'\\', size};
 
     if (int64_t esc_nl_size = size_for_escaped_newline(ptr))
     {
@@ -231,7 +223,7 @@ backslash:
     }
 
     // Not a newline, just a regular whitespace.
-    return '\\';
+    return {'\\', size};
   }
 
   // Trigraphs.
@@ -243,13 +235,13 @@ backslash:
       ptr += 3;
       if (tok) tok->set_flags(Token::IsDirty);
       if (c == '\\') goto backslash;
-      return c;
+      return {c, size};
     }
   }
 
   // Peek a simple character.
   ++size;
-  return *ptr;
+  return {*ptr, size};
 }
 
 // Peeks a character from `ptr` and advances it.
@@ -264,8 +256,7 @@ backslash:
 auto peek_char_advance(const char *&ptr, Token &tok) -> char
 {
   if (is_trivial_character(*ptr)) return *ptr++;
-  int64_t size = 0;
-  char c = peek_char_and_size_nontrivial(ptr, size, &tok);
+  const auto [c, size] = peek_char_and_size_nontrivial(ptr, 0, &tok);
   ptr += size;
   return c;
 }
@@ -284,9 +275,7 @@ auto peek_char_and_size(const char *ptr) -> std::pair<char, int64_t>
 {
   if (is_trivial_character(*ptr))
     return {*ptr, 1};
-  int64_t size = 0;
-  const char c = peek_char_and_size_nontrivial(ptr, size, nullptr);
-  return {c, size};
+  return peek_char_and_size_nontrivial(ptr, 0, nullptr);
 }
 
 // Consumes the buffer pointer.
@@ -306,12 +295,12 @@ auto consume_char(const char *ptr, int64_t size, Token &tok)
 {
   // Consumes a simple character.
   if (size == 1)
-    return ptr + size;
+    return std::next(ptr);
 
   // Otherwise, reparse it to get the right size.
-  size = 0;
-  peek_char_and_size_nontrivial(ptr, size, &tok);
-  return ptr + size;
+  [[maybe_unused]]
+  const auto [c, new_size] = peek_char_and_size_nontrivial(ptr, 0, &tok);
+  return ptr + new_size;
 }
 
 // universal-character-name: [C11 6.4.3/1]
@@ -335,8 +324,8 @@ auto consume_char(const char *ptr, int64_t size, Token &tok)
 // \param tok The token being formed, if any.
 //
 // \return The code point represented by the UCN.
-auto try_read_ucn(Lexer &lex, const char *&start_ptr, const char *slash_ptr,
-                  Token *tok = nullptr) -> uint32_t
+auto try_read_ucn(LexerContext &lex, const char *&start_ptr,
+                  const char *slash_ptr, Token *tok = nullptr) -> uint32_t
 {
   const auto [kind, kind_size] = peek_char_and_size(start_ptr);
   const int num_hexdigits = kind == 'u' ? 4 : kind == 'U' ? 8 : 0;
@@ -410,8 +399,8 @@ auto try_read_ucn(Lexer &lex, const char *&start_ptr, const char *slash_ptr,
 // \param result Token being formed.
 //
 // \return true if UCN is well-formed for an identifier.
-auto try_advance_identifier_ucn(Lexer &lex, const char *&cur_ptr, int64_t size,
-                                Token &result) -> bool
+auto try_advance_identifier_ucn(LexerContext &lex, const char *&cur_ptr,
+                                int64_t size, Token &result) -> bool
 {
   auto ucn_ptr = cur_ptr + size;
   if (uint32_t code_point = try_read_ucn(lex, ucn_ptr, cur_ptr, nullptr);
@@ -454,7 +443,8 @@ auto try_advance_identifier_ucn(Lexer &lex, const char *&cur_ptr, int64_t size,
 // \param result Token being formed.
 //
 // \return true if identifier was successfully formed.
-auto lex_identifier(Lexer &lex, const char *cur_ptr, Token &result) -> bool
+auto lex_identifier(LexerContext &lex, const char *cur_ptr, Token &result)
+  -> bool
 {
   char c = *cur_ptr++;
 
@@ -494,17 +484,16 @@ auto lex_identifier(Lexer &lex, const char *cur_ptr, Token &result) -> bool
 
   lex.form_token(result, cur_ptr, TokenKind::identifier);
 
-  // FIXME: Comparing the raw identifier is wrong. This check
-  // should be delayed to be later done by a sane identifier checker.
-  if (!result.has_UCN() && !result.is_dirty())
+  // Changes the token's kind to a keyword if this happens to be one.
+  if (!result.has_UCN())
   {
-    // Changes the token's kind to a keyword if this happens to be one.
-    const auto tok_spell = lex.source_mgr.text_slice(result.range);
-    for (const TokenKind kw : KEYWORD_KINDS)
+    // FIXME: This is rather slow.
+    auto spelling = result.spelling(lex.source_mgr);
+    for (auto kind : KEYWORD_KINDS)
     {
-      if (tok_spell == to_string(kw))
+      if (spelling == to_string(kind))
       {
-        result.kind = kw;
+        result.kind = kind;
         break;
       }
     }
@@ -524,7 +513,7 @@ auto lex_identifier(Lexer &lex, const char *cur_ptr, Token &result) -> bool
 // \param result Token being formed.
 //
 // \return true if numeric constant was successfully formed.
-auto lex_numeric_constant(Lexer &lex, const char *cur_ptr, Token &result)
+auto lex_numeric_constant(LexerContext &lex, const char *cur_ptr, Token &result)
   -> bool
 {
   auto [c, digit_size] = peek_char_and_size(cur_ptr);
@@ -573,7 +562,7 @@ auto lex_numeric_constant(Lexer &lex, const char *cur_ptr, Token &result)
 //                character.
 //
 // \return A pointer past the end of the comment, i.e. the newline.
-auto skip_line_comment(Lexer &lex, const char *cur_ptr) -> const char *
+auto skip_line_comment(LexerContext &lex, const char *cur_ptr) -> const char *
 {
   auto [c, c_size] = peek_char_and_size(cur_ptr);
 
@@ -613,7 +602,7 @@ auto skip_line_comment(Lexer &lex, const char *cur_ptr) -> const char *
 //                string.
 //
 // \return A pointer past the end of the comment.
-auto skip_block_comment(Lexer &lex, const char *cur_ptr) -> const char *
+auto skip_block_comment(LexerContext &lex, const char *cur_ptr) -> const char *
 {
   auto [c, c_size] = peek_char_and_size(cur_ptr);
   char prev = c;
@@ -693,8 +682,8 @@ auto skip_block_comment(Lexer &lex, const char *cur_ptr) -> const char *
 //                 character constant's prefix (or the lack thereof).
 //
 // \return true if character constant is successfully lexed.
-auto lex_character_constant(Lexer &lex, const char *cur_ptr, Token &result,
-                            const TokenKind char_kind) -> bool
+auto lex_character_constant(LexerContext &lex, const char *cur_ptr,
+                            Token &result, const TokenKind char_kind) -> bool
 {
   cci_expects(char_kind == TokenKind::char_constant ||
               char_kind == TokenKind::utf8_char_constant ||
@@ -761,7 +750,7 @@ auto lex_character_constant(Lexer &lex, const char *cur_ptr, Token &result,
 //                 string literals's prefix (or the lack thereof).
 //
 // \return true if string literal is successfully lexed.
-auto lex_string_literal(Lexer &lex, const char *cur_ptr, Token &result,
+auto lex_string_literal(LexerContext &lex, const char *cur_ptr, Token &result,
                         const TokenKind str_kind) -> bool
 {
   cci_expects(str_kind == TokenKind::string_literal ||
@@ -802,7 +791,7 @@ auto lex_string_literal(Lexer &lex, const char *cur_ptr, Token &result,
 // \param result Output parameter to which a lexed token is set on success.
 //
 // \return true if a token was lexed, and false if end of input is reached.
-auto lex_token(Lexer &lex, const char *cur_ptr, Token &result) -> bool
+auto lex_token(LexerContext &lex, const char *cur_ptr, Token &result) -> bool
 {
   // Skips any whitespace before the token.
   cur_ptr = std::find_if(cur_ptr, lex.buffer_end, std::not_fn(is_whitespace));
@@ -941,7 +930,7 @@ auto lex_token(Lexer &lex, const char *cur_ptr, Token &result) -> bool
       {
         // NOTE: Don't handle line comments that are actually an operator and a
         // block comment in C89. E.g. `a //**/ b`, which should be `a / b` in
-        // C89, but is currently parsed as `a`, because C11 has line comments.
+        // C89, but is currently parsed as `a`, because of C11's line comments.
         lex.buffer_ptr = skip_line_comment(lex, cur_ptr + ch_size);
         return lex_token(lex, lex.buffer_ptr, result);
       }
@@ -1214,48 +1203,33 @@ auto lex_token(Lexer &lex, const char *cur_ptr, Token &result) -> bool
 
 } // namespace
 
-// Lexes a token from the current pointer into the source buffer `buffer_ptr`.
-// Most of the lexing occurs here.
-//
-// \param result The token being formed. When it's done lexing, `result` is set
-//               to the produced token on success.
-//
-// \return true if a token was lexed, or false if it has hit the end of the
-//              input.
-auto Lexer::lex(Token &result) -> bool
+// Parses the spelling of a token, expanding any trigraphs and escaped
+// new-lines, thus returning the uncanonical representation of this token's
+// characters.
+auto Token::spelling(const SourceManager &source_mgr) const -> std::string
 {
-  return lex_token(*this, buffer_ptr, result);
-}
-
-auto TokenStream::tokenize(const SourceManager &source_mgr) -> TokenStream
-{
-  return TokenStream(Lexer(source_mgr));
-}
-
-auto TokenStream::peek() -> Token
-{
-  if (!cur_tok)
+  const std::string_view raw_text = source_mgr.text_slice(source_range());
+  if (!is_dirty())
+    return std::string(raw_text);
+  std::string spelling;
+  spelling.reserve(raw_text.size());
+  auto it = raw_text.begin();
+  while (it != raw_text.end())
   {
-    if (Token tok; lexer.lex(tok))
-      cur_tok = tok;
-    else
-      cur_tok = Token(TokenKind::eof, SourceLocation());
+    const auto [c, size] = peek_char_and_size_nontrivial(it, 0, nullptr);
+    spelling.push_back(c);
+    it += size;
   }
-
-  return *cur_tok;
+  cci_ensures(spelling.size() < raw_text.size());
+  return spelling;
 }
 
-auto TokenStream::consume() -> Token
+// Lexes a token in the position `buffer_ptr`. Most of the lexing occurs here.
+auto LexerContext::next_token() -> std::optional<Token>
 {
-  cci_expects(!empty());
-  Token tok = peek();
-  cur_tok.reset();
-  return tok;
-}
-
-auto TokenStream::empty() -> bool
-{
-  return peek().is(TokenKind::eof);
+  if (Token result; lex_token(*this, buffer_ptr, result))
+    return result;
+  return std::nullopt;
 }
 
 auto to_string(TokenKind k) -> std::string_view

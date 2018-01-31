@@ -20,48 +20,59 @@ works
 "invalid\??/
 "
 )";
+  cci::DiagnosticsOptions opts;
+  cci::CompilerDiagnostics diag(opts);
+  auto source = cci::SourceManager::from_buffer(diag, code);
+  auto ctx = cci::LexerContext(source);
+
   const std::pair<std::string_view, cci::TokenKind> corrects[]{
     {"this_\?\?/\nalso_\\\nworks", cci::TokenKind::identifier},
     {R"("invalid\??/)", cci::TokenKind::unknown},
     {"\"", cci::TokenKind::unknown},
   };
-  cci::DiagnosticsOptions opts;
-  cci::CompilerDiagnostics diag(opts);
-  auto source = cci::SourceManager::from_buffer(diag, code);
-  auto tstream = cci::TokenStream::tokenize(source);
 
   for (const auto [spell, kind] : corrects)
   {
-    EXPECT_EQ(kind, tstream.peek().kind);
-    EXPECT_EQ(spell, tstream.consume().spelling(source));
+    auto tok = ctx.next_token();
+    ASSERT_TRUE(tok.has_value());
+    EXPECT_EQ(kind, tok->kind);
+    EXPECT_EQ(spell, tok->raw_spelling(source));
   }
 
-  EXPECT_TRUE(tstream.empty());
+  EXPECT_FALSE(ctx.next_token().has_value());
 }
 
 TEST(LexerTest, identifiers)
 {
   const char *code = R"(
 int
+un\
+signed
 _abc123 escaped\
 newline
 )";
   cci::DiagnosticsOptions opts;
   cci::CompilerDiagnostics diag(opts);
   auto source = cci::SourceManager::from_buffer(diag, code);
-  auto tstream = cci::TokenStream::tokenize(source);
+  auto ctx = cci::LexerContext(source);
 
-  EXPECT_TRUE(tstream.peek().is(cci::TokenKind::kw_int));
-  EXPECT_EQ("int", source.text_slice(tstream.consume().source_range()));
+  const std::pair<std::string_view, cci::TokenKind> corrects[]{
+    {"int", cci::TokenKind::kw_int},
+    {"un\\\nsigned", cci::TokenKind::kw_unsigned},
+    {"_abc123", cci::TokenKind::identifier},
+    {"escaped\\\nnewline", cci::TokenKind::identifier},
+  };
 
-  EXPECT_TRUE(tstream.peek().is(cci::TokenKind::identifier));
-  EXPECT_EQ("_abc123", source.text_slice(tstream.consume().source_range()));
-
-  EXPECT_TRUE(tstream.peek().is(cci::TokenKind::identifier));
-  EXPECT_EQ("escaped\\\nnewline", source.text_slice(tstream.consume().source_range()));
+  for (const auto [spell, kind] : corrects)
+  {
+    auto tok = ctx.next_token();
+    ASSERT_TRUE(tok.has_value());
+    EXPECT_EQ(kind, tok->kind);
+    EXPECT_EQ(spell, tok->raw_spelling(source));
+  }
 
   EXPECT_FALSE(diag.has_errors() || diag.has_warnings());
-  EXPECT_TRUE(tstream.empty());
+  EXPECT_FALSE(ctx.next_token().has_value());
 }
 
 TEST(LexerTest, universalCharacterNames)
@@ -72,24 +83,25 @@ TEST(LexerTest, universalCharacterNames)
   cci::DiagnosticsOptions opts;
   cci::CompilerDiagnostics diag(opts);
   auto source = cci::SourceManager::from_buffer(diag, code);
-  auto tstream = cci::TokenStream::tokenize(source);
+  auto ctx = cci::LexerContext(source);
 
-  EXPECT_TRUE(tstream.peek().is(cci::TokenKind::identifier));
-  EXPECT_EQ(R"(\u1234)", source.text_slice(tstream.consume().source_range()));
+  const std::pair<std::string_view, cci::TokenKind> corrects[]{
+    {R"(\u1234)", cci::TokenKind::identifier},
+    {R"(\UAABBCCDD)", cci::TokenKind::identifier},
+    {"\\", cci::TokenKind::unknown},
+    {"UABCD", cci::TokenKind::identifier},
+  };
 
-  EXPECT_TRUE(tstream.peek().is(cci::TokenKind::identifier));
-  EXPECT_EQ(R"(\UAABBCCDD)", source.text_slice(tstream.consume().source_range()));
+  for (const auto [spell, kind] : corrects)
+  {
+    auto tok = ctx.next_token();
+    ASSERT_TRUE(tok.has_value());
+    EXPECT_EQ(kind, tok->kind);
+    EXPECT_EQ(spell, tok->raw_spelling(source));
+  }
 
-  EXPECT_FALSE(diag.has_errors() || diag.has_warnings());
-
-  EXPECT_TRUE(tstream.peek().is(cci::TokenKind::unknown));
-  EXPECT_EQ("\\", source.text_slice(tstream.consume().source_range()));
-
-  EXPECT_TRUE(tstream.peek().is(cci::TokenKind::identifier));
-  EXPECT_EQ("UABCD", source.text_slice(tstream.consume().source_range()));
-
-  EXPECT_TRUE(tstream.empty());
   EXPECT_TRUE(diag.has_errors() || diag.has_warnings());
+  EXPECT_FALSE(ctx.next_token().has_value());
 }
 
 TEST(LexerTest, numericConstants)
@@ -97,26 +109,29 @@ TEST(LexerTest, numericConstants)
   const char *code = R"(
 42ULL 3.14f 161.80e-3 1.9E377P+1 .999
 )";
-  const std::string_view corrects[] {
-    "42ULL",
-    "3.14f",
-    "161.80e-3",
-    "1.9E377P+1",
-    ".999",
-  };
   cci::DiagnosticsOptions opts;
   cci::CompilerDiagnostics diag(opts);
   auto source = cci::SourceManager::from_buffer(diag, code);
-  auto tstream = cci::TokenStream::tokenize(source);
+  auto ctx = cci::LexerContext(source);
 
-  for (const auto correct : corrects)
+  const std::pair<std::string_view, cci::TokenKind> corrects[]{
+    {"42ULL", cci::TokenKind::numeric_constant},
+    {"3.14f", cci::TokenKind::numeric_constant},
+    {"161.80e-3", cci::TokenKind::numeric_constant},
+    {"1.9E377P+1", cci::TokenKind::numeric_constant},
+    {".999", cci::TokenKind::numeric_constant},
+  };
+
+  for (const auto [spell, kind] : corrects)
   {
-    EXPECT_TRUE(tstream.peek().is(cci::TokenKind::numeric_constant));
-    EXPECT_EQ(correct, tstream.consume().spelling(source));
+    auto tok = ctx.next_token();
+    ASSERT_TRUE(tok.has_value());
+    EXPECT_EQ(kind, tok->kind);
+    EXPECT_EQ(spell, tok->raw_spelling(source));
   }
 
-  EXPECT_TRUE(tstream.empty());
   EXPECT_FALSE(diag.has_errors() || diag.has_warnings());
+  EXPECT_FALSE(ctx.next_token().has_value());
 }
 
 TEST(LexerTest, comments)
@@ -158,16 +173,18 @@ m = n//**/o
   cci::DiagnosticsOptions opts;
   cci::CompilerDiagnostics diag(opts);
   auto source = cci::SourceManager::from_buffer(diag, code);
-  auto tstream = cci::TokenStream::tokenize(source);
+  auto ctx = cci::LexerContext(source);
 
   for (const auto [spell, kind] : corrects)
   {
-    EXPECT_EQ(kind, tstream.peek().kind);
-    EXPECT_EQ(spell, tstream.consume().spelling(source));
+    auto tok = ctx.next_token();
+    ASSERT_TRUE(tok.has_value());
+    EXPECT_EQ(kind, tok->kind);
+    EXPECT_EQ(spell, tok->raw_spelling(source));
   }
 
-  EXPECT_TRUE(tstream.empty());
   EXPECT_FALSE(diag.has_errors() || diag.has_warnings());
+  EXPECT_FALSE(ctx.next_token().has_value());
 }
 
 TEST(LexerTest, charConstants)
@@ -191,15 +208,18 @@ line' U'\u1234x\777\xffffffff'
   cci::DiagnosticsOptions opts;
   cci::CompilerDiagnostics diag(opts);
   auto source = cci::SourceManager::from_buffer(diag, code);
-  auto tstream = cci::TokenStream::tokenize(source);
+  auto ctx = cci::LexerContext(source);
 
   for (const auto [spell, kind] : corrects)
   {
-    EXPECT_EQ(kind, tstream.peek().kind);
-    EXPECT_EQ(spell, tstream.consume().spelling(source));
+    auto tok = ctx.next_token();
+    ASSERT_TRUE(tok.has_value());
+    EXPECT_EQ(kind, tok->kind);
+    EXPECT_EQ(spell, tok->raw_spelling(source));
   }
 
-  EXPECT_TRUE(tstream.empty());
+  EXPECT_TRUE(diag.has_errors() || diag.has_warnings());
+  EXPECT_FALSE(ctx.next_token().has_value());
 }
 
 TEST(LexerTest, stringLiterals)
@@ -211,6 +231,11 @@ u8""
 "\\
 "\\"
 )";
+  cci::DiagnosticsOptions opts;
+  cci::CompilerDiagnostics diag(opts);
+  auto source = cci::SourceManager::from_buffer(diag, code);
+  auto ctx = cci::LexerContext(source);
+
   const std::pair<std::string_view, cci::TokenKind> corrects[]{
     {R"("xxx")", cci::TokenKind::string_literal},
     {R"(L"\"abc\"")", cci::TokenKind::wide_string_literal},
@@ -220,18 +245,17 @@ u8""
     {R"("\\)", cci::TokenKind::unknown},
     {R"("\\")", cci::TokenKind::string_literal},
   };
-  cci::DiagnosticsOptions opts;
-  cci::CompilerDiagnostics diag(opts);
-  auto source = cci::SourceManager::from_buffer(diag, code);
-  auto tstream = cci::TokenStream::tokenize(source);
 
   for (const auto [spell, kind] : corrects)
   {
-    EXPECT_EQ(kind, tstream.peek().kind);
-    EXPECT_EQ(spell, tstream.consume().spelling(source));
+    auto tok = ctx.next_token();
+    ASSERT_TRUE(tok.has_value());
+    EXPECT_EQ(kind, tok->kind);
+    EXPECT_EQ(spell, tok->raw_spelling(source));
   }
 
-  EXPECT_TRUE(tstream.empty());
+  EXPECT_TRUE(diag.has_errors() || diag.has_warnings());
+  EXPECT_FALSE(ctx.next_token().has_value());
 }
 
 } // namespace

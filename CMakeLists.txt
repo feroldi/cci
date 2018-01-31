@@ -1,4 +1,3 @@
-# See /cmake/modules for more details/documentation on how CCI is built.
 cmake_minimum_required(VERSION 3.9)
 project(cci VERSION 0.1.0)
 

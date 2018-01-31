@@ -8,26 +8,19 @@ namespace cci {
 // a SourceManager.
 struct SourceLocation
 {
-  size_t offset; //< Offset into a SourceManager's buffer.
+  std::size_t offset; //< Offset into a SourceManager's buffer.
 
   SourceLocation() = default;
 
   // Constructs a SourceLocation with `offset`.
   // Useful when constructing in-place (e.g. vector::emplace_back).
-  explicit SourceLocation(size_t offset) noexcept : offset(offset) {}
-
-  // Returns a SourceLocation based on the distance between base and ptr.
-  // Assumes that base <= ptr.
-  static auto from_ptrs(const char *base, const char *ptr) -> SourceLocation
-  {
-    return SourceLocation(static_cast<size_t>(ptr - base));
-  }
+  explicit SourceLocation(std::size_t offset) noexcept : offset(offset) {}
 
   // Constructs a new SourceLocation with an offset based off on `base`.
-  auto with_offset(int64_t base) const -> SourceLocation
+  auto with_offset(std::int64_t base) const -> SourceLocation
   {
     return SourceLocation(
-      static_cast<size_t>(static_cast<int64_t>(offset) + base));
+      static_cast<std::size_t>(base + static_cast<std::int64_t>(offset)));
   }
 };
 
@@ -65,13 +58,11 @@ struct SourceRange
   SourceLocation end;
 
   SourceRange() = default;
-
   SourceRange(SourceLocation start, SourceLocation end) noexcept
     : start(start), end(end)
   {}
 
-  SourceRange(SourceLocation loc) noexcept
-    : start(loc), end(loc.with_offset(1ull))
+  SourceRange(SourceLocation loc) noexcept : start(loc), end(loc.with_offset(1))
   {}
 };
 
