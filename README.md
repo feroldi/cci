@@ -12,21 +12,22 @@ Use `cmake` to build and run the project:
 
 ```
 mkdir build && cd build
-cmake ..
+cmake -DCMAKE_BUILD_TYPE=Release ..
 cmake --build . --target cci
 ```
 
-It's recommended to export `CC` and `CXX` to a preferable compiler
-before you continue with the build process. This project is tested
-with Clang, and GCC occasionally. For example:
+It's recommended to export `CC` and `CXX` to a preferable compiler before
+you continue with the build process. This project is tested with Clang,
+and GCC occasionally. If you're going with Clang, you can make use of
+the CMake's toolchain file that comes with this project. For example:
 
 ```
 cmake -DCMAKE_TOOLCHAIN_FILE=../cmake/toolchains/clang.cmake ..
 cmake --build . --target cci
 ```
 
-**Note**: If fmtlib or GTest are not compiled with libc++, then the
-above commands might vomit lots of linker errors.
+**Note**: When compiling with Clang, if fmtlib or GTest are not compiled
+with libc++, the above commands might vomit lots of linker errors.
 
 ## Usage
 
