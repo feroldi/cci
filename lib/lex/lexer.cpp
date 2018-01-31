@@ -140,8 +140,7 @@ void report(LexerContext &lex, const char *ctx, ErrorCode err_code,
 //
 // \return The distance between `ptr` and the first character after the escaped
 //         newline.
-auto size_for_escaped_newline(const char *ptr)
-  -> int64_t
+auto size_for_escaped_newline(const char *ptr) -> int64_t
 {
   int64_t nl_size = 0;
 
@@ -196,11 +195,11 @@ constexpr auto decode_trigraph_letter(char letter)
 // escaped newlines and trigraphs*.
 //
 // \param ptr Buffer pointer from which to peek a character.
-// \param size Variable to set the distance to the next simple character.
+// \param size Size accumulator. For normal use, set it to 0.
 // \param tok Token being formed, if any.
 //
 // \return The character pointed by `ptr`, or a character after escaped
-// new-line, or a decoded trigraph.
+// new-line, or a decoded trigraph, all along with the character's size.
 auto peek_char_and_size_nontrivial(const char *ptr, int64_t size,
                                    Token *tok = nullptr)
   -> std::pair<char, int64_t>
@@ -298,9 +297,8 @@ auto consume_char(const char *ptr, int64_t size, Token &tok)
     return std::next(ptr);
 
   // Otherwise, reparse it to get the right size.
-  [[maybe_unused]]
-  const auto [c, new_size] = peek_char_and_size_nontrivial(ptr, 0, &tok);
-  return ptr + new_size;
+  size = peek_char_and_size_nontrivial(ptr, 0, &tok).second;
+  return ptr + size;
 }
 
 // universal-character-name: [C11 6.4.3/1]
