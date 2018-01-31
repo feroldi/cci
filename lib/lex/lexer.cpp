@@ -503,7 +503,7 @@ auto lex_identifier(LexerContext &lex, const char *cur_ptr, Token &result)
 // floating-constant. Assumes that the first digit is already consumed.
 //
 // This just matches a regex that validates such constants. Syntax checking is
-// delayed to semantic analyses.
+// delayed to semantic analysis.
 //
 // \param lex The lexer.
 // \param cur_ptr Pointer past the first digit of the numeric constant.
@@ -525,27 +525,19 @@ auto lex_numeric_constant(LexerContext &lex, const char *cur_ptr, Token &result)
   }
 
   // If we stumbled upon something that doesn't seem to be part of a numeric
-  // constant, then check whether it's an exponent of a floating constant. If
-  // so, continue lexing, otherwise finish the token.
+  // constant, check whether it's a (possibly binary) exponent of a floating
+  // constant. If so, continue lexing, otherwise stop munching.
 
   // exponent-part: [C11 6.4.4.2]
   //   'e' sign[opt] digit-sequence
   //   'E' sign[opt] digit-sequence
-  if ((c == '+' || c == '-') || (prev == 'e' || prev == 'E'))
-    return lex_numeric_constant(
-      lex, consume_char(cur_ptr, digit_size, result), result);
-
   // binary-exponent-part:
   //    'p' sign[opt] digit-sequence
   //    'P' sign[opt] digit-sequence
-  if ((c == '+' || c == '-') || (prev == 'p' || prev == 'P'))
-    return lex_numeric_constant(
-      lex, consume_char(cur_ptr, digit_size, result), result);
-
-  // Found a possibly UCN, lex it and continue.
-  // TODO: Support unicode.
-  if (c == '\\' && try_advance_identifier_ucn(lex, cur_ptr, digit_size, result))
-    return lex_numeric_constant(lex, cur_ptr, result);
+  if ((c == '+' || c == '-') ||
+      (prev == 'e' || prev == 'E' || prev == 'p' || prev == 'P'))
+    return lex_numeric_constant(lex, consume_char(cur_ptr, digit_size, result),
+                                result);
 
   lex.form_token(result, cur_ptr, TokenKind::numeric_constant);
   result.set_flags(Token::IsLiteral);
@@ -701,7 +693,7 @@ auto lex_character_constant(LexerContext &lex, const char *cur_ptr,
   while (c != '\'')
   {
     // Skips this character for now. Decoding and checking of escape sequences
-    // occur later on in semantic analyses.
+    // occur later on in semantic analysis.
     // TODO: Support unicode.
     if (c == '\\')
       c = *cur_ptr++;
@@ -763,7 +755,7 @@ auto lex_string_literal(LexerContext &lex, const char *cur_ptr, Token &result,
   while (c != '"')
   {
     // Skips this character for now. Decoding and checking of escape sequences
-    // occur later on in semantic analyses.
+    // occur later on in semantic analysis.
     // TODO: Support unicode.
     if (c == '\\')
       c = *cur_ptr++;
