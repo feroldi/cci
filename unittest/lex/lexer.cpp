@@ -17,6 +17,7 @@ and here!
 this_??/
 also_\
 works
+$$$
 "invalid\??/
 "
 )";
@@ -27,6 +28,7 @@ works
 
   const std::pair<std::string_view, cci::TokenKind> corrects[]{
     {"this_\?\?/\nalso_\\\nworks", cci::TokenKind::identifier},
+    {"$$$", cci::TokenKind::identifier},
     {R"("invalid\??/)", cci::TokenKind::unknown},
     {"\"", cci::TokenKind::unknown},
   };

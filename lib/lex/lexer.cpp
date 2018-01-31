@@ -213,11 +213,11 @@ backslash:
     // There's no need to escape anything other than whitespaces.
     if (!is_whitespace(*ptr)) return {'\\', size};
 
-    if (int64_t esc_nl_size = size_for_escaped_newline(ptr))
+    if (int64_t nlsize = size_for_escaped_newline(ptr))
     {
       if (tok) tok->set_flags(Token::IsDirty);
-      ptr += esc_nl_size;
-      size += esc_nl_size;
+      ptr += nlsize;
+      size += nlsize;
       return peek_char_and_size_nontrivial(ptr, size, tok);
     }
 
@@ -230,8 +230,8 @@ backslash:
   {
     if (const char c = decode_trigraph_letter(ptr[2]))
     {
-      size += 3;
       ptr += 3;
+      size += 3;
       if (tok) tok->set_flags(Token::IsDirty);
       if (c == '\\') goto backslash;
       return {c, size};
@@ -239,8 +239,7 @@ backslash:
   }
 
   // Peek a simple character.
-  ++size;
-  return {*ptr, size};
+  return {*ptr, size + 1};
 }
 
 // Peeks a character from `ptr` and advances it.
@@ -295,7 +294,6 @@ auto consume_char(const char *ptr, int64_t size, Token &tok)
   // Consumes a simple character.
   if (size == 1)
     return std::next(ptr);
-
   // Otherwise, reparse it to get the right size.
   size = peek_char_and_size_nontrivial(ptr, 0, &tok).second;
   return ptr + size;
@@ -448,7 +446,7 @@ auto lex_identifier(LexerContext &lex, const char *cur_ptr, Token &result)
 
   // Most of the heavy work can be avoided if the identifier is
   // formed by ASCII characters only.
-  while (is_nondigit(c) || is_digit(c))
+  while (is_nondigit(c) || is_digit(c) || c == '$')
     c = *cur_ptr++;
 
   // Backs up to correspond to `c`.
@@ -460,6 +458,7 @@ auto lex_identifier(LexerContext &lex, const char *cur_ptr, Token &result)
     auto [c, size] = peek_char_and_size(cur_ptr);
     while (true)
     {
+      // TODO: Support unicode.
       if (c == '\\' && try_advance_identifier_ucn(lex, cur_ptr, size, result))
       {
         std::tie(c, size) = peek_char_and_size(cur_ptr);
@@ -472,7 +471,7 @@ auto lex_identifier(LexerContext &lex, const char *cur_ptr, Token &result)
       std::tie(c, size) = peek_char_and_size(cur_ptr);
 
       // Handles escaped newlines and trigraphs.
-      while (is_nondigit(c) || is_digit(c))
+      while (is_nondigit(c) || is_digit(c) || c == '$')
       {
         cur_ptr = consume_char(cur_ptr, size, result);
         std::tie(c, size) = peek_char_and_size(cur_ptr);
@@ -517,7 +516,7 @@ auto lex_numeric_constant(LexerContext &lex, const char *cur_ptr, Token &result)
   auto [c, digit_size] = peek_char_and_size(cur_ptr);
   char prev = c;
 
-  // Matches the regex /[0-9_a-zA-Z.]*/.
+  // Matches the regex /[0-9a-zA-Z_.]*/.
   while (is_digit(c) || is_nondigit(c) || c == '.')
   {
     cur_ptr = consume_char(cur_ptr, digit_size, result);
@@ -544,6 +543,7 @@ auto lex_numeric_constant(LexerContext &lex, const char *cur_ptr, Token &result)
       lex, consume_char(cur_ptr, digit_size, result), result);
 
   // Found a possibly UCN, lex it and continue.
+  // TODO: Support unicode.
   if (c == '\\' && try_advance_identifier_ucn(lex, cur_ptr, digit_size, result))
     return lex_numeric_constant(lex, cur_ptr, result);
 
@@ -702,6 +702,7 @@ auto lex_character_constant(LexerContext &lex, const char *cur_ptr,
   {
     // Skips this character for now. Decoding and checking of escape sequences
     // occur later on in semantic analyses.
+    // TODO: Support unicode.
     if (c == '\\')
       c = *cur_ptr++;
 
@@ -763,6 +764,7 @@ auto lex_string_literal(LexerContext &lex, const char *cur_ptr, Token &result,
   {
     // Skips this character for now. Decoding and checking of escape sequences
     // occur later on in semantic analyses.
+    // TODO: Support unicode.
     if (c == '\\')
       c = *cur_ptr++;
 
@@ -1177,7 +1179,7 @@ auto lex_token(LexerContext &lex, const char *cur_ptr, Token &result) -> bool
     case 'C': case 'D': case 'E': case 'F': case 'G': case 'H': case 'I':
     case 'J': case 'K': /*   'L'*/case 'M': case 'N': case 'O': case 'P':
     case 'Q': case 'R': case 'S': case 'T': /*   'U'*/case 'V': case 'W':
-    case 'X': case 'Y': case 'Z': case '_':
+    case 'X': case 'Y': case 'Z': case '_': case '$':
       return lex_identifier(lex, cur_ptr, result);
 
     case '\'':
@@ -1189,6 +1191,7 @@ auto lex_token(LexerContext &lex, const char *cur_ptr, Token &result) -> bool
                                 TokenKind::string_literal);
 
     default:
+      // TODO: Support unicode.
       break;
   }
 
