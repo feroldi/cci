@@ -1,7 +1,9 @@
 #include "cci/lex/lexer.hpp"
+#include "cci/lex/unicode_char_set.hpp"
 #include "cci/basic/diagnostics.hpp"
 #include "cci/basic/source_manager.hpp"
 #include "cci/util/contracts.hpp"
+#include "cci/util/unicode.hpp"
 #include <algorithm>
 #include <cassert>
 #include <memory>
@@ -89,6 +91,11 @@ constexpr auto is_newline(char C) -> bool { return C == '\n' || C == '\r'; }
 constexpr auto is_whitespace(char C) -> bool
 {
   return C == ' ' || C == '\t' || C == '\v' || C == '\f' || is_newline(C);
+}
+
+constexpr auto is_ascii(char C) -> bool
+{
+  return static_cast<unsigned char>(C) < 128;
 }
 
 constexpr auto hexdigit_value(char C) -> uint32_t
@@ -410,6 +417,30 @@ auto try_advance_identifier_ucn(Lexer &lex, const char *&cur_ptr, int64_t size,
   return true;
 }
 
+// Lexes a UTF-8 character that is part of an identifier.
+//
+// \param lex The lexer.
+// \param cur_ptr Buffer pointer at the start of the UTF-8 sequence.
+//
+// \return true if a UTF-8 sequence is parsed, false otherwise.
+auto try_advance_identifier_utf8(Lexer &lex, const char *&cur_ptr) -> bool
+{
+  cci_expects(!is_ascii(cur_ptr[0]));
+  auto uni_ptr = reinterpret_cast<const std::byte *>(cur_ptr);
+  auto uni_end = reinterpret_cast<const std::byte *>(lex.buffer_end);
+  if (uint32_t code_point = 0;
+      utf8::decode_sequence(uni_ptr, uni_end, code_point) ==
+      utf8::DecodeResult::Ok)
+  {
+    if (is_allowed_id_char(code_point))
+    {
+      cur_ptr = reinterpret_cast<const char *>(uni_ptr);
+      return true;
+    }
+  }
+  return false;
+}
+
 // identifier: [C11 6.4.2]
 //   identifier-nondigit
 //   identifier  identifier-nondigit
@@ -455,8 +486,12 @@ auto lex_identifier(Lexer &lex, const char *cur_ptr, Token &result) -> bool
     auto [c, size] = peek_char_and_size(cur_ptr);
     while (true)
     {
-      // TODO: Support unicode.
       if (c == '\\' && try_advance_identifier_ucn(lex, cur_ptr, size, result))
+      {
+        std::tie(c, size) = peek_char_and_size(cur_ptr);
+        continue;
+      }
+      else if (!is_ascii(c) && try_advance_identifier_utf8(lex, cur_ptr))
       {
         std::tie(c, size) = peek_char_and_size(cur_ptr);
         continue;
@@ -691,7 +726,6 @@ auto lex_character_constant(Lexer &lex, const char *cur_ptr, Token &result,
   {
     // Skips this character for now. Decoding and checking of escape sequences
     // occur later on in semantic analysis.
-    // TODO: Support unicode.
     if (c == '\\')
       c = *cur_ptr++;
 
@@ -753,7 +787,6 @@ auto lex_string_literal(Lexer &lex, const char *cur_ptr, Token &result,
   {
     // Skips this character for now. Decoding and checking of escape sequences
     // occur later on in semantic analysis.
-    // TODO: Support unicode.
     if (c == '\\')
       c = *cur_ptr++;
 
@@ -770,6 +803,15 @@ auto lex_string_literal(Lexer &lex, const char *cur_ptr, Token &result,
 
   lex.form_token(result, cur_ptr, str_kind);
   result.set_flags(Token::IsLiteral);
+  return true;
+}
+
+auto lex_unicode(Lexer &lex, const char *cur_ptr, uint32_t code_point,
+                 Token &result) -> bool
+{
+  if (is_allowed_id_char(code_point) && is_allowed_initially_id_char(code_point))
+    return lex_identifier(lex, cur_ptr, result);
+  lex.form_token(result, cur_ptr, TokenKind::unknown);
   return true;
 }
 
@@ -797,13 +839,16 @@ auto lex_token(Lexer &lex, const char *cur_ptr, Token &result) -> bool
       return false; // End of input.
 
     case '\\':
-      // FIXME: This might be wrong. A UCN may represent a whitespace, or some
-      // other code point that isn't allowed to appear as the first character
-      // in an identifier.
       if (uint32_t code_point = try_read_ucn(lex, cur_ptr, lex.buffer_ptr, nullptr);
           code_point != 0)
-        // cur_ptr now points past the UCN.
-        return lex_identifier(lex, cur_ptr, result);
+      {
+        if (utf8::is_whitespace(code_point))
+        {
+          lex.buffer_ptr = cur_ptr;
+          return lex_token(lex, cur_ptr, result);
+        }
+        return lex_unicode(lex, cur_ptr, code_point, result);
+      }
       else
         break;
 
@@ -1180,8 +1225,26 @@ auto lex_token(Lexer &lex, const char *cur_ptr, Token &result) -> bool
                                 TokenKind::string_literal);
 
     default:
-      // TODO: Support unicode.
-      break;
+    {
+      if (is_ascii(ch))
+        break;
+
+      --cur_ptr;
+      auto uni_ptr = reinterpret_cast<const std::byte *>(cur_ptr);
+      auto uni_end = reinterpret_cast<const std::byte *>(lex.buffer_end);
+      if (uint32_t code_point = 0;
+          utf8::decode_sequence(uni_ptr, uni_end, code_point) ==
+          utf8::DecodeResult::Ok)
+      {
+        cur_ptr = reinterpret_cast<const char *>(uni_ptr);
+        if (utf8::is_whitespace(code_point))
+        {
+          lex.buffer_ptr = cur_ptr;
+          return lex_token(lex, cur_ptr, result);
+        }
+        return lex_unicode(lex, cur_ptr, code_point, result);
+      }
+    }
   }
 
   if (kind == TokenKind::unknown)

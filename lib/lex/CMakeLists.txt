@@ -1,4 +1,4 @@
-add_library(cci_lex lexer.cpp)
+add_library(cci_lex lexer.cpp unicode_char_set.cpp)
 target_include_directories(cci_lex
   PUBLIC $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/include>
   PUBLIC $<INSTALL_INTERFACE:include>)

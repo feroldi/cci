@@ -20,6 +20,8 @@ works
 $$$
 "invalid\??/
 "
+\U0001F648 // SEE-NO-EVIL MONKEY (U+1F648)
+🙈  // Ditto.
 )";
   cci::DiagnosticsOptions opts;
   cci::CompilerDiagnostics diag(opts);
@@ -31,6 +33,8 @@ $$$
     {"$$$", cci::TokenKind::identifier},
     {R"("invalid\??/)", cci::TokenKind::unknown},
     {"\"", cci::TokenKind::unknown},
+    {"\\U0001F648", cci::TokenKind::identifier},
+    {"🙈", cci::TokenKind::identifier},
   };
 
   for (const auto [spell, kind] : corrects)
@@ -89,7 +93,7 @@ TEST(LexerTest, universalCharacterNames)
 
   const std::pair<std::string_view, cci::TokenKind> corrects[]{
     {R"(\u1234)", cci::TokenKind::identifier},
-    {R"(\UAABBCCDD)", cci::TokenKind::identifier},
+    {R"(\UAABBCCDD)", cci::TokenKind::unknown},
     {"\\", cci::TokenKind::unknown},
     {"UABCD", cci::TokenKind::identifier},
   };
