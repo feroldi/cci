@@ -24,7 +24,7 @@ $$$
   cci::DiagnosticsOptions opts;
   cci::CompilerDiagnostics diag(opts);
   auto source = cci::SourceManager::from_buffer(diag, code);
-  auto ctx = cci::LexerContext(source);
+  auto ctx = cci::Lexer(source);
 
   const std::pair<std::string_view, cci::TokenKind> corrects[]{
     {"this_\?\?/\nalso_\\\nworks", cci::TokenKind::identifier},
@@ -56,7 +56,7 @@ newline
   cci::DiagnosticsOptions opts;
   cci::CompilerDiagnostics diag(opts);
   auto source = cci::SourceManager::from_buffer(diag, code);
-  auto ctx = cci::LexerContext(source);
+  auto ctx = cci::Lexer(source);
 
   const std::pair<std::string_view, cci::TokenKind> corrects[]{
     {"int", cci::TokenKind::kw_int},
@@ -85,7 +85,7 @@ TEST(LexerTest, universalCharacterNames)
   cci::DiagnosticsOptions opts;
   cci::CompilerDiagnostics diag(opts);
   auto source = cci::SourceManager::from_buffer(diag, code);
-  auto ctx = cci::LexerContext(source);
+  auto ctx = cci::Lexer(source);
 
   const std::pair<std::string_view, cci::TokenKind> corrects[]{
     {R"(\u1234)", cci::TokenKind::identifier},
@@ -114,7 +114,7 @@ TEST(LexerTest, numericConstants)
   cci::DiagnosticsOptions opts;
   cci::CompilerDiagnostics diag(opts);
   auto source = cci::SourceManager::from_buffer(diag, code);
-  auto ctx = cci::LexerContext(source);
+  auto ctx = cci::Lexer(source);
 
   const std::pair<std::string_view, cci::TokenKind> corrects[]{
     {"42ULL", cci::TokenKind::numeric_constant},
@@ -175,7 +175,7 @@ m = n//**/o
   cci::DiagnosticsOptions opts;
   cci::CompilerDiagnostics diag(opts);
   auto source = cci::SourceManager::from_buffer(diag, code);
-  auto ctx = cci::LexerContext(source);
+  auto ctx = cci::Lexer(source);
 
   for (const auto [spell, kind] : corrects)
   {
@@ -210,7 +210,7 @@ line' U'\u1234x\777\xffffffff'
   cci::DiagnosticsOptions opts;
   cci::CompilerDiagnostics diag(opts);
   auto source = cci::SourceManager::from_buffer(diag, code);
-  auto ctx = cci::LexerContext(source);
+  auto ctx = cci::Lexer(source);
 
   for (const auto [spell, kind] : corrects)
   {
@@ -236,7 +236,7 @@ u8""
   cci::DiagnosticsOptions opts;
   cci::CompilerDiagnostics diag(opts);
   auto source = cci::SourceManager::from_buffer(diag, code);
-  auto ctx = cci::LexerContext(source);
+  auto ctx = cci::Lexer(source);
 
   const std::pair<std::string_view, cci::TokenKind> corrects[]{
     {R"("xxx")", cci::TokenKind::string_literal},

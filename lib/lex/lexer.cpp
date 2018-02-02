@@ -107,8 +107,7 @@ constexpr auto hexdigit_value(char C) -> uint32_t
 }
 
 template <typename ErrorCode, typename... Args>
-void report(LexerContext &lex, const char *ctx, ErrorCode err_code,
-            Args &&... args)
+void report(Lexer &lex, const char *ctx, ErrorCode err_code, Args &&... args)
 {
   auto &diag = lex.source_mgr.get_diagnostics();
   return diag.report(lex.location_for_ptr(ctx), err_code,
@@ -288,8 +287,7 @@ auto peek_char_and_size(const char *ptr) -> std::pair<char, int64_t>
 // \param tok Token being formed.
 //
 // \return A buffer pointer past the peeked (non-)trivial character.
-auto consume_char(const char *ptr, int64_t size, Token &tok)
-  -> const char *
+auto consume_char(const char *ptr, int64_t size, Token &tok) -> const char *
 {
   // Consumes a simple character.
   if (size == 1)
@@ -320,8 +318,8 @@ auto consume_char(const char *ptr, int64_t size, Token &tok)
 // \param tok The token being formed, if any.
 //
 // \return The code point represented by the UCN.
-auto try_read_ucn(LexerContext &lex, const char *&start_ptr,
-                  const char *slash_ptr, Token *tok = nullptr) -> uint32_t
+auto try_read_ucn(Lexer &lex, const char *&start_ptr, const char *slash_ptr,
+                  Token *tok = nullptr) -> uint32_t
 {
   const auto [kind, kind_size] = peek_char_and_size(start_ptr);
   const int num_hexdigits = kind == 'u' ? 4 : kind == 'U' ? 8 : 0;
@@ -395,8 +393,8 @@ auto try_read_ucn(LexerContext &lex, const char *&start_ptr,
 // \param result Token being formed.
 //
 // \return true if UCN is well-formed for an identifier.
-auto try_advance_identifier_ucn(LexerContext &lex, const char *&cur_ptr,
-                                int64_t size, Token &result) -> bool
+auto try_advance_identifier_ucn(Lexer &lex, const char *&cur_ptr, int64_t size,
+                                Token &result) -> bool
 {
   auto ucn_ptr = cur_ptr + size;
   if (uint32_t code_point = try_read_ucn(lex, ucn_ptr, cur_ptr, nullptr);
@@ -439,8 +437,7 @@ auto try_advance_identifier_ucn(LexerContext &lex, const char *&cur_ptr,
 // \param result Token being formed.
 //
 // \return true if identifier was successfully formed.
-auto lex_identifier(LexerContext &lex, const char *cur_ptr, Token &result)
-  -> bool
+auto lex_identifier(Lexer &lex, const char *cur_ptr, Token &result) -> bool
 {
   char c = *cur_ptr++;
 
@@ -510,7 +507,7 @@ auto lex_identifier(LexerContext &lex, const char *cur_ptr, Token &result)
 // \param result Token being formed.
 //
 // \return true if numeric constant was successfully formed.
-auto lex_numeric_constant(LexerContext &lex, const char *cur_ptr, Token &result)
+auto lex_numeric_constant(Lexer &lex, const char *cur_ptr, Token &result)
   -> bool
 {
   auto [c, digit_size] = peek_char_and_size(cur_ptr);
@@ -552,7 +549,7 @@ auto lex_numeric_constant(LexerContext &lex, const char *cur_ptr, Token &result)
 //                character.
 //
 // \return A pointer past the end of the comment, i.e. the newline.
-auto skip_line_comment(LexerContext &lex, const char *cur_ptr) -> const char *
+auto skip_line_comment(Lexer &lex, const char *cur_ptr) -> const char *
 {
   auto [c, c_size] = peek_char_and_size(cur_ptr);
 
@@ -592,7 +589,7 @@ auto skip_line_comment(LexerContext &lex, const char *cur_ptr) -> const char *
 //                string.
 //
 // \return A pointer past the end of the comment.
-auto skip_block_comment(LexerContext &lex, const char *cur_ptr) -> const char *
+auto skip_block_comment(Lexer &lex, const char *cur_ptr) -> const char *
 {
   auto [c, c_size] = peek_char_and_size(cur_ptr);
   char prev = c;
@@ -672,8 +669,8 @@ auto skip_block_comment(LexerContext &lex, const char *cur_ptr) -> const char *
 //                 character constant's prefix (or the lack thereof).
 //
 // \return true if character constant is successfully lexed.
-auto lex_character_constant(LexerContext &lex, const char *cur_ptr,
-                            Token &result, const TokenKind char_kind) -> bool
+auto lex_character_constant(Lexer &lex, const char *cur_ptr, Token &result,
+                            const TokenKind char_kind) -> bool
 {
   cci_expects(char_kind == TokenKind::char_constant ||
               char_kind == TokenKind::utf8_char_constant ||
@@ -741,7 +738,7 @@ auto lex_character_constant(LexerContext &lex, const char *cur_ptr,
 //                 string literals's prefix (or the lack thereof).
 //
 // \return true if string literal is successfully lexed.
-auto lex_string_literal(LexerContext &lex, const char *cur_ptr, Token &result,
+auto lex_string_literal(Lexer &lex, const char *cur_ptr, Token &result,
                         const TokenKind str_kind) -> bool
 {
   cci_expects(str_kind == TokenKind::string_literal ||
@@ -783,7 +780,7 @@ auto lex_string_literal(LexerContext &lex, const char *cur_ptr, Token &result,
 // \param result Output parameter to which a lexed token is set on success.
 //
 // \return true if a token was lexed, and false if end of input is reached.
-auto lex_token(LexerContext &lex, const char *cur_ptr, Token &result) -> bool
+auto lex_token(Lexer &lex, const char *cur_ptr, Token &result) -> bool
 {
   // Skips any whitespace before the token.
   cur_ptr = std::find_if(cur_ptr, lex.buffer_end, std::not_fn(is_whitespace));
@@ -1218,7 +1215,7 @@ auto Token::spelling(const SourceManager &source_mgr) const -> std::string
 }
 
 // Lexes a token in the position `buffer_ptr`. Most of the lexing occurs here.
-auto LexerContext::next_token() -> std::optional<Token>
+auto Lexer::next_token() -> std::optional<Token>
 {
   if (Token result; lex_token(*this, buffer_ptr, result))
     return result;

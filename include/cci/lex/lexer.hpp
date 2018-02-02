@@ -198,21 +198,21 @@ struct Token
   bool is_literal() const { return flags & TokenFlags::IsLiteral; }
 };
 
-// LexerContext - The C11 lexer.
+// Lexer - The C11 lexer.
 //
 // The lexer works by imperatively tokenizing the input stream (the contents of
 // a SourceManager in this case), instead of parsing every token and producing
 // a vector all at once. This is preferable, as a Token isn't space efficient,
 // and the parser works with one token at a time, which makes this approach a
 // lot more appealing.
-struct LexerContext
+struct Lexer
 {
   const SourceManager &source_mgr; //< Input stream.
   const char *buffer_begin; //< Iterator into the start of the buffer.
   const char *buffer_end; //< Iterator into the end of the buffer.
   const char *buffer_ptr; //< Current position into the buffer to be analyzed.
 
-  LexerContext(const SourceManager &src_mgr) noexcept
+  Lexer(const SourceManager &src_mgr) noexcept
     : source_mgr(src_mgr)
     , buffer_begin(src_mgr.full_text().begin())
     , buffer_end(src_mgr.full_text().end())
