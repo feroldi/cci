@@ -151,7 +151,7 @@ void CompilerDiagnostics::report_message(Severity severity, Context context,
   if (level != Level::Ignore)
   {
     const auto out = format_error(*this, level, std::move(context), message);
-    std::fprintf(this->out_stream, "%s\n", out.c_str());
+    std::fprintf(this->out_stream, "\n%s\n", out.c_str());
 
     if (level == Level::Warning)
       ++warn_count;

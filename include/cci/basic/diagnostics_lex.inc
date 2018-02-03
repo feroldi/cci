@@ -5,4 +5,4 @@ DIAG(err_unterminated_comment, ::cci::Severity::Error, "unterminated {0} comment
 DIAG(err_unterminated_char_or_string, ::cci::Severity::Error, "missing terminating {0} for this {1}")
 DIAG(warn_unknown_escape_sequence, ::cci::Severity::Warning, "unknown escape sequence '\\{0}'")
 DIAG(err_empty_character, ::cci::Severity::Error, "character constant is empty")
-DIAG(err_greek_question_mark, ::cci::Severity::Error, "unicode character '\u037E' (GREEK QUESTION MARK) looks like normal ';' (SEMICOLON), but is not the same")
+DIAG(warn_greek_question_mark, ::cci::Severity::Warning, "unicode character U+037E (GREEK QUESTION MARK) looks like normal ';' (SEMICOLON), but is not; treating as an identifier character")

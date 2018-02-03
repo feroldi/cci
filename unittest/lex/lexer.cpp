@@ -22,6 +22,7 @@ $$$
 "
 \U0001F648 // SEE-NO-EVIL MONKEY (U+1F648)
 🙈  // Ditto.
+misleading; // Do I look familiar to you? GREEK QUESTION MARK (U+037E)
 )";
   cci::DiagnosticsOptions opts;
   cci::CompilerDiagnostics diag(opts);
@@ -35,6 +36,7 @@ $$$
     {"\"", cci::TokenKind::unknown},
     {"\\U0001F648", cci::TokenKind::identifier},
     {"🙈", cci::TokenKind::identifier},
+    {"misleading;", cci::TokenKind::identifier},
   };
 
   for (const auto [spell, kind] : corrects)

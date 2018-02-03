@@ -434,6 +434,8 @@ auto try_advance_identifier_utf8(Lexer &lex, const char *&cur_ptr) -> bool
   {
     if (is_allowed_id_char(code_point))
     {
+      if (code_point == 0x037E) // GREEK QUESTION MARK (U+037E)
+        report(lex, cur_ptr, diag::warn_greek_question_mark);
       cur_ptr = reinterpret_cast<const char *>(uni_ptr);
       return true;
     }
@@ -481,7 +483,7 @@ auto lex_identifier(Lexer &lex, const char *cur_ptr, Token &result) -> bool
   --cur_ptr;
 
   // There's dirt, lexes the rest of the identifier.
-  if (!is_trivial_character(c))
+  if (!(is_ascii(c) && is_trivial_character(c)))
   {
     auto [c, size] = peek_char_and_size(cur_ptr);
     while (true)
@@ -806,11 +808,26 @@ auto lex_string_literal(Lexer &lex, const char *cur_ptr, Token &result,
   return true;
 }
 
+// Lexes an identifier that starts with a UCN or a UTF-8 character.
+//
+// \param lex The lexer.
+// \param cur_ptr Buffer pointer past the lexed code point.
+// \param code_point Identifier's UTF-8 code point head.
+// \param result Token being formed.
+//
+// \return true if identifier is lexed.
 auto lex_unicode(Lexer &lex, const char *cur_ptr, uint32_t code_point,
                  Token &result) -> bool
 {
-  if (is_allowed_id_char(code_point) && is_allowed_initially_id_char(code_point))
+  if (is_allowed_id_char(code_point) &&
+      is_allowed_initially_id_char(code_point))
+  {
+    // FIXME: This check is duplicated in try_advance_identifier_utf8. Find
+    // a way to remove this check from here.
+    if (code_point == 0x037E) // GREEK QUESTION MARK (U+037E)
+      report(lex, lex.buffer_ptr, diag::warn_greek_question_mark);
     return lex_identifier(lex, cur_ptr, result);
+  }
   lex.form_token(result, cur_ptr, TokenKind::unknown);
   return true;
 }
@@ -1196,7 +1213,7 @@ auto lex_token(Lexer &lex, const char *cur_ptr, Token &result) -> bool
       return lex_identifier(lex, cur_ptr, result);
 
     case 'U':
-    std::tie(ch, ch_size) = peek_char_and_size(cur_ptr);
+      std::tie(ch, ch_size) = peek_char_and_size(cur_ptr);
       if (ch == '\'')
         return lex_character_constant(lex,
                                       consume_char(cur_ptr, ch_size, result),
