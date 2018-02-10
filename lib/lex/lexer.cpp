@@ -78,14 +78,6 @@ constexpr auto is_nondigit(char C) -> bool
   return (C >= 'a' && C <= 'z') || (C >= 'A' && C <= 'Z') || C == '_';
 }
 
-constexpr auto is_digit(char C) -> bool { return C >= '0' && C <= '9'; }
-
-constexpr auto is_hexdigit(char C) -> bool
-{
-  return (C >= '0' && C <= '9') || (C >= 'a' && C <= 'f') ||
-         (C >= 'A' && C <= 'F');
-}
-
 constexpr auto is_newline(char C) -> bool { return C == '\n' || C == '\r'; }
 
 constexpr auto is_whitespace(char C) -> bool
@@ -96,21 +88,6 @@ constexpr auto is_whitespace(char C) -> bool
 constexpr auto is_ascii(char C) -> bool
 {
   return static_cast<unsigned char>(C) < 128;
-}
-
-constexpr auto hexdigit_value(char C) -> uint32_t
-{
-  if (is_hexdigit(C))
-  {
-    if (C >= '0' && C <= '9')
-      return static_cast<uint32_t>(C - '0');
-    if (C >= 'a' && C <= 'f')
-      return static_cast<uint32_t>(C - 'a' + 10);
-    if (C >= 'A' && C <= 'F')
-      return static_cast<uint32_t>(C - 'A' + 10);
-    cci_unreachable();
-  }
-  return -1U;
 }
 
 template <typename ErrorCode, typename... Args>
@@ -131,12 +108,21 @@ void report(Lexer &lex, const char *ctx, ErrorCode err_code, Args &&... args)
 // difficult. With that said, these few functions implement a "peek and consume"
 // interface that handles all of those special syntax. The ideia is that in
 // order to consume a character, you specify the size of it, i.e. the number of
-// characters that theoretically compose only one character. For example, a
-// trigraph like '??|' would have size 3, where the first '?' would signal that
-// it is not a trivial character, and needs special care. After peeking it, you
-// get the first character ('?'), and the size to be skipped over (3). When
-// consuming this peeked character, the buffer pointer will end up past the end
-// of the trigraph, i.e. `ptr + 3`, where `ptr` is the current buffer pointer.
+// characters that theoretically compose only one character.
+//
+// For example, a trigraph like '??!' would have size 3, where the first '?'
+// would signal that it is not a trivial character, and needs special care.
+// After peeking it, you get the decoded character ('|'), and the size to be
+// skipped over (3). When consuming this peeked character, the buffer pointer
+// will end up past the end of the trigraph, i.e. `ptr + 3`, where `ptr` is the
+// current buffer pointer.
+//
+// In case the trigraph '??/' is found, depending on what's next to it, peeking
+// it wouldn't return '\', but rather the character after the escaped new-line
+// (if there is any), so the size of these special characters would be 3 (the
+// trigraph itself) + the size of the escaped new-line (which may be 2 or 3,
+// depending on whether there is a carriage return). This goes on and on until
+// a trivial character is found, which finally terminates the peeking process.
 
 // Calculates the size of an escaped newline. Assumes that the slash character
 // is already consumed. Whitespaces between the slash and the newline are
@@ -550,8 +536,9 @@ auto lex_numeric_constant(Lexer &lex, const char *cur_ptr, Token &result)
   auto [c, digit_size] = peek_char_and_size(cur_ptr);
   char prev = c;
 
-  // Matches the regex /[0-9a-zA-Z_.]*/.
-  while (is_digit(c) || is_nondigit(c) || c == '.')
+  // Matches the regex /[0-9a-zA-Z.]*/.
+  while (is_digit(c) || (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') ||
+         c == '.')
   {
     cur_ptr = consume_char(cur_ptr, digit_size, result);
     prev = c;
