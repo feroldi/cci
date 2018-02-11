@@ -2,8 +2,10 @@
 
 #include "cci/basic/source_manager.hpp"
 #include "cci/basic/diagnostics.hpp"
+#include "cci/util/contracts.hpp"
+#include <string>
 #include <string_view>
-#include <memory>
+#include <type_traits>
 
 namespace cci {
 
@@ -250,5 +252,24 @@ struct Lexer
     return SourceLocation(static_cast<size_t>(ptr - buffer_begin));
   }
 };
+
+constexpr auto is_digit(char C) -> bool { return C >= '0' && C <= '9'; }
+constexpr auto is_octdigit(char C) -> bool { return C >= '0' && C <= '7'; }
+constexpr auto is_hexdigit(char C) -> bool
+{
+  return (C >= '0' && C <= '9') || (C >= 'a' && C <= 'f') ||
+         (C >= 'A' && C <= 'F');
+}
+
+constexpr auto hexdigit_value(char C) -> uint32_t
+{
+  if (C >= '0' && C <= '9')
+    return static_cast<uint32_t>(C - '0');
+  if (C >= 'a' && C <= 'f')
+    return static_cast<uint32_t>(C - 'a' + 10);
+  if (C >= 'A' && C <= 'F')
+    return static_cast<uint32_t>(C - 'A' + 10);
+  return -1U;
+}
 
 } // namespace cci

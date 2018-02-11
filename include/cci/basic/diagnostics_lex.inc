@@ -1,4 +1,3 @@
-DIAG(err_invalid_suffix, ::cci::Severity::Error, "invalid {0} suffix")
 DIAG(warn_ucn_incomplete, ::cci::Severity::Warning, "incomplete universal character name; treating '\\' as an unknown token")
 DIAG(err_ucn_invalid, ::cci::Severity::Error, "invalid universal character name; treating '\\' as an unknown token")
 DIAG(err_unterminated_comment, ::cci::Severity::Error, "unterminated {0} comment")
@@ -6,3 +5,5 @@ DIAG(err_unterminated_char_or_string, ::cci::Severity::Error, "missing terminati
 DIAG(warn_unknown_escape_sequence, ::cci::Severity::Warning, "unknown escape sequence '\\{0}'")
 DIAG(err_empty_character, ::cci::Severity::Error, "character constant is empty")
 DIAG(warn_greek_question_mark, ::cci::Severity::Warning, "unicode character U+037E (GREEK QUESTION MARK) looks like normal ';' (SEMICOLON), but is not; treating as an identifier character")
+DIAG(err_invalid_digit, ::cci::Severity::Error, "invalid digit for numeric constant")
+DIAG(err_invalid_suffix, ::cci::Severity::Error, "invalid suffix for numeric constant")
