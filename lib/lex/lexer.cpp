@@ -1,7 +1,8 @@
 #include "cci/lex/lexer.hpp"
-#include "cci/lex/unicode_char_set.hpp"
+#include "./lex_diagnostics.hpp"
 #include "cci/basic/diagnostics.hpp"
 #include "cci/basic/source_manager.hpp"
+#include "cci/lex/unicode_char_set.hpp"
 #include "cci/util/contracts.hpp"
 #include "cci/util/unicode.hpp"
 #include <algorithm>
@@ -10,34 +11,6 @@
 #include <utility>
 
 namespace cci {
-namespace diag {
-enum Lex
-{
-#define DIAG(CODE, LEVEL, FORMAT) CODE,
-#include "cci/basic/diagnostics_lex.inc"
-#undef DIAG
-};
-} // namespace diag
-
-template <>
-struct diagnostics_error_code<diag::Lex>
-{
-  constexpr static auto info(diag::Lex code) -> ErrorCodeInfo
-  {
-#define DIAG(CODE, LEVEL, FORMAT)                                              \
-  case diag::CODE: return {LEVEL, FORMAT};
-    switch (code)
-    {
-#include "cci/basic/diagnostics_lex.inc"
-    }
-#undef DIAG
-  }
-};
-
-template <>
-struct is_diagnostics_error_code<diag::Lex> : std::true_type
-{
-};
 
 // token:
 //   keyword
@@ -135,20 +108,14 @@ void report(Lexer &lex, const char *ctx, ErrorCode err_code, Args &&... args)
 auto size_for_escaped_newline(const char *ptr) -> int64_t
 {
   int64_t nl_size = 0;
-
   if (is_newline(ptr[nl_size]))
   {
     ++nl_size;
-
     // Consumes a pair of \r\n or \n\r if there is any.
     if (is_newline(ptr[nl_size]) && ptr[nl_size - 1] != ptr[nl_size])
       ++nl_size;
-
-    return nl_size;
   }
-
-  // Not a newline.
-  return 0;
+  return nl_size;
 }
 
 // Checks whether a character needs any special care.
@@ -202,8 +169,8 @@ auto peek_char_and_size_nontrivial(const char *ptr, int64_t size,
     ++size;
 
 backslash:
-    // There's no need to escape anything other than whitespaces.
-    if (!is_whitespace(*ptr)) return {'\\', size};
+    // There's no need to escape anything other than new-lines.
+    if (!is_newline(*ptr)) return {'\\', size};
 
     if (int64_t nlsize = size_for_escaped_newline(ptr))
     {
@@ -1279,6 +1246,20 @@ auto Token::spelling(const SourceManager &source_mgr) const -> std::string
   }
   cci_ensures(spelling.size() < raw_text.size());
   return spelling;
+}
+
+auto Lexer::character_location(SourceLocation tok_loc,
+                               std::string_view spelling,
+                               const char *char_pos) const -> SourceLocation
+{
+  const char *cur_ptr = source_mgr.decode_to_raw_ptr(tok_loc);
+  for (auto it = spelling.begin(); it != char_pos; ++it)
+  {
+    const auto [c, size] = peek_char_and_size_nontrivial(cur_ptr, 0, nullptr);
+    cci_expects(c == *it);
+    cur_ptr += size;
+  }
+  return location_for_ptr(cur_ptr);
 }
 
 // Lexes a token in the position `buffer_ptr`. Most of the lexing occurs here.

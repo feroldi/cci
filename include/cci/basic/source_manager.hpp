@@ -66,6 +66,12 @@ public:
 
   // Returns the source's file path.
   auto file_path() const -> const fs::path &;
+
+  // Translates a SourceLocation into its corresponding buffer pointer.
+  auto decode_to_raw_ptr(SourceLocation loc) const -> const char *
+  {
+    return std::next(buffer.data(), loc.offset);
+  }
 };
 
 // FullSourceLoc - This represents a `SourceLocation` with its respective

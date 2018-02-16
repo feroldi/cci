@@ -251,6 +251,15 @@ struct Lexer
   {
     return SourceLocation(static_cast<size_t>(ptr - buffer_begin));
   }
+
+  // Tranlates a position in the spelling of a token into the buffer pointer
+  // that corresponds to the actual position.
+  //
+  // This is useful when the resulting spelling of a token doesn't equal the
+  // canonical representation in source code, and one needs to know the actual
+  // SourceLocation of some given character in the spelling.
+  auto character_location(SourceLocation tok_loc, std::string_view spelling,
+                          const char *char_pos) const -> SourceLocation;
 };
 
 constexpr auto is_digit(char C) -> bool { return C >= '0' && C <= '9'; }
