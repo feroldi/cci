@@ -796,7 +796,7 @@ auto lex_unicode(Lexer &lex, const char *cur_ptr, uint32_t code_point,
 auto lex_token(Lexer &lex, const char *cur_ptr, Token &result) -> bool
 {
   // Skips any whitespace before the token.
-  cur_ptr = std::find_if(cur_ptr, lex.buffer_end, std::not_fn(is_whitespace));
+  cur_ptr = std::find_if_not(cur_ptr, lex.buffer_end, is_whitespace);
   lex.buffer_ptr = cur_ptr;
 
   auto [ch, ch_size] = peek_char_and_size(cur_ptr);

@@ -1,6 +1,7 @@
 #include "cci/lex/unicode_char_set.hpp"
-#include <cstdint>
 #include <algorithm>
+#include <cstdint>
+#include <iterator>
 
 // UnicodeCharRange - Represents an inclusive range of Unicode characters. This
 // is used to simplify the validation of code points in identifiers.

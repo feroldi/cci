@@ -3,7 +3,11 @@
 #include "cci/basic/diagnostics.hpp"
 #include "cci/basic/source_manager.hpp"
 #include "cci/lex/lexer.hpp"
+#include <algorithm>
 #include <utility>
+#include <climits>
+
+using namespace cci;
 
 static auto numeric_constant_name_for_radix(uint32_t radix,
                                             bool is_floating_point)
@@ -19,8 +23,6 @@ static auto numeric_constant_name_for_radix(uint32_t radix,
                                     : radix == 16 ? "hexadecimal integer"
                                                   : cci_unreachable();
 }
-
-namespace cci {
 
 NumericConstantParser::NumericConstantParser(Lexer &lexer,
                                              std::string_view tok_spelling,
@@ -146,15 +148,18 @@ NumericConstantParser::NumericConstantParser(Lexer &lexer,
     {
       case 'u':
       case 'U':
-        if (is_fp || is_unsigned) break;
+        if (is_fp || is_unsigned)
+          break;
         is_unsigned = true;
         continue;
       case 'l':
       case 'L':
-        if (is_long || is_long_long) break;
+        if (is_long || is_long_long)
+          break;
         if (s[1] == s[0])
         {
-          if (is_fp) break;
+          if (is_fp)
+            break;
           ++s;
           is_long_long = true;
         }
@@ -163,11 +168,11 @@ NumericConstantParser::NumericConstantParser(Lexer &lexer,
         continue;
       case 'f':
       case 'F':
-        if (!is_fp || is_float) break;
+        if (!is_fp || is_float)
+          break;
         is_float = true;
         continue;
-      default:
-        break;
+      default: break;
     }
 
     // Getting here means the suffix is invalid. Breaks the loop so the error
@@ -207,4 +212,116 @@ auto NumericConstantParser::eval_to_integer() -> std::pair<uint64_t, bool>
   return {value, overflowed};
 }
 
-} // namespace cci
+static auto decode_ucn(const char *s) -> std::pair<uint64_t, const char *>
+{
+  cci_expects(*s == 'u' || *s == 'U');
+  int num_hexdigits = *s == 'u' ? 4 : 8;
+  ++s;
+  uint64_t code_point = 0;
+
+  for (int i = 0; i < num_hexdigits; ++i)
+  {
+    // TODO: Report diag::err_ucn_invalid.
+    if (uint32_t value = hexdigit_value(s[i]); value != -1U)
+    {
+      code_point += value;
+      code_point <<= 4;
+    }
+    else
+      break;
+  }
+
+  return std::pair(code_point, s + num_hexdigits);
+}
+
+// Returns the value representation of an escape sequence, and the final
+// position of the cursor.
+static auto decode_escape_sequence(const char *sequence)
+  -> std::pair<uint64_t, const char *>
+{
+  auto s = sequence;
+  uint64_t value = 0;
+  // http://en.cppreference.com/w/c/language/escape
+  switch (s[0])
+  {
+    case '\'':
+    case '"':
+    case '?':
+    case '\\':
+      value = s[0];
+      break;
+    case 'a': // audible bell
+      value = 0x07;
+      break;
+    case 'b': // backspace
+      value = 0x08;
+      break;
+    case 'f': // form feed
+      value = 0x0c;
+      break;
+    case 'n': // line feed
+      value = 0x0a;
+      break;
+    case 'r': // carriage return
+      value = 0x0d;
+      break;
+    case 't': // horizontal tab
+      value = 0x09;
+      break;
+    case 'v': // vertical tab
+      value = 0x0b;
+      break;
+    case '0': case '1': case '2': case '3': case '4':
+    case '5': case '6': case '7': // arbitrary octal value
+      for (int i = 0; is_octdigit(s[i]) && i < 3; ++i, ++s)
+      {
+        value += hexdigit_value(*s);
+        value <<= 3;
+      }
+      break;
+    case 'x': // arbitrary hexadecimal value
+      ++s;
+      // FIXME: This doesn't check for empty or single digit hexs.
+      for (; is_hexdigit(*s); ++s)
+      {
+        value += hexdigit_value(*s);
+        value <<= 4;
+      }
+      break;
+    case 'u':
+    case 'U':
+      std::tie(value, s) = decode_ucn(s);
+      break;
+  }
+
+  return std::pair(value, s);
+}
+
+CharConstantParser::CharConstantParser(Lexer &lexer,
+                                       std::string_view tok_spelling,
+                                       SourceLocation tok_loc,
+                                       TokenKind char_kind)
+{
+  (void)lexer;
+  (void)tok_loc;
+  cci_expects(is_char_constant(char_kind));
+  cci_expects(tok_spelling.end()[0] == '\0');
+  const char *const tok_begin = tok_spelling.begin();
+  const char *s = tok_begin;
+
+  // Skips either L, u or U.
+  if (char_kind != TokenKind::char_constant)
+    ++s;
+
+  ++s; // Skips ' character.
+
+  if (*s == '\\')
+    std::tie(this->value, s) = decode_escape_sequence(s + 1);
+  else
+  {
+    this->value = static_cast<uint64_t>(*s);
+    ++s;
+  }
+
+  cci_expects(*s == '\'');
+}

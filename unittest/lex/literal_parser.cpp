@@ -47,7 +47,7 @@ TEST(LiteralParser, numericConstants)
     EXPECT_TRUE(result.is_unsigned);
     EXPECT_TRUE(result.is_long);
     EXPECT_FALSE(result.is_long_long);
-    
+
     const auto [value, overflowed] = result.eval_to_integer();
 
     ASSERT_FALSE(overflowed);
@@ -67,7 +67,7 @@ TEST(LiteralParser, numericConstants)
     EXPECT_FALSE(result.is_unsigned);
     EXPECT_FALSE(result.is_long);
     EXPECT_FALSE(result.is_long_long);
-    
+
     const auto [value, overflowed] = result.eval_to_integer();
 
     ASSERT_FALSE(overflowed);
@@ -87,7 +87,7 @@ TEST(LiteralParser, numericConstants)
     EXPECT_TRUE(result.is_unsigned);
     EXPECT_FALSE(result.is_long);
     EXPECT_TRUE(result.is_long_long);
-    
+
     const auto [value, overflowed] = result.eval_to_integer();
 
     ASSERT_FALSE(overflowed);
@@ -238,6 +238,27 @@ TEST(LiteralParser, numericConstants)
     EXPECT_FALSE(result.has_error);
     const auto [value, overflowed] = result.eval_to_integer();
     ASSERT_TRUE(overflowed);
+  }
+}
+
+TEST(LiteralParser, charConstants)
+{
+  const char *code = R"(
+'A'
+)";
+  cci::DiagnosticsOptions opts;
+  cci::CompilerDiagnostics diag(opts);
+  auto source = cci::SourceManager::from_buffer(diag, code);
+  auto lexer = cci::Lexer(source);
+  std::optional<cci::Token> tok;
+
+  {
+    tok = lexer.next_token();
+    ASSERT_TRUE(tok.has_value());
+
+    cci::CharConstantParser result(lexer, tok->spelling(source),
+                                   tok->location(), tok->kind);
+    EXPECT_EQ(65, result.value);
   }
 }
 

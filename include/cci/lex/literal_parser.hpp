@@ -5,6 +5,7 @@
 
 namespace cci {
 
+// TODO: This really should be migrated to the main lexer.
 struct NumericConstantParser
 {
   const char *digit_begin; //< First meaningful digit.
@@ -29,6 +30,14 @@ struct NumericConstantParser
 
   bool is_floating_literal() const { return has_period || has_exponent; }
   bool is_integer_literal() const { return !is_floating_literal(); }
+};
+
+struct CharConstantParser
+{
+  uint64_t value = 0;
+
+  CharConstantParser(Lexer &, std::string_view tok_spelling,
+                     SourceLocation tok_loc, TokenKind char_kind);
 };
 
 } // namespace cci

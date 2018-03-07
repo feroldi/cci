@@ -143,6 +143,38 @@ enum class TokenKind
 // name is "++" etc.
 auto to_string(TokenKind) -> std::string_view;
 
+// Checks whether the parameter is a variant of a string literal.
+constexpr auto is_string_literal(TokenKind k) -> bool
+{
+  switch (k)
+  {
+    case TokenKind::string_literal:
+    case TokenKind::utf8_string_literal:
+    case TokenKind::utf16_string_literal:
+    case TokenKind::utf32_string_literal:
+    case TokenKind::wide_string_literal:
+      return true;
+    default:
+      return false;
+  }
+}
+
+// Checks whether the parameter is a variant of a char constant.
+constexpr auto is_char_constant(TokenKind k) -> bool
+{
+  switch (k)
+  {
+    case TokenKind::char_constant:
+    case TokenKind::utf8_char_constant:
+    case TokenKind::utf16_char_constant:
+    case TokenKind::utf32_char_constant:
+    case TokenKind::wide_char_constant:
+      return true;
+    default:
+      return false;
+  }
+}
+
 // Token - A representation of a token as described in the C11 standard.
 struct Token
 {
@@ -214,7 +246,7 @@ struct Lexer
   const char *buffer_end; //< Iterator into the end of the buffer.
   const char *buffer_ptr; //< Current position into the buffer to be analyzed.
 
-  Lexer(const SourceManager &src_mgr) noexcept
+  Lexer(const SourceManager &src_mgr)
     : source_mgr(src_mgr)
     , buffer_begin(src_mgr.full_text().begin())
     , buffer_end(src_mgr.full_text().end())

@@ -27,6 +27,8 @@ constexpr auto to_string(CompilerDiagnostics::Level level) -> std::string_view
     case CompilerDiagnostics::Level::Fatal:
       return "fatal error";
   }
+
+  cci_unreachable();
 }
 
 static auto format_error(const CompilerDiagnostics &diag,
@@ -141,6 +143,8 @@ auto CompilerDiagnostics::get_output_level(Severity severity) const
       else
         return Level::Error;
   }
+
+  cci_unreachable();
 }
 
 void CompilerDiagnostics::report_message(Severity severity, Context context,
