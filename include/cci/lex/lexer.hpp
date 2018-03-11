@@ -241,6 +241,8 @@ struct Token
 // lot more appealing.
 struct Lexer
 {
+  // TODO: Make these private, and create a LexerContext for internal
+  // usage of these members.
   const SourceManager &source_mgr; //< Input stream.
   const char *buffer_begin; //< Iterator into the start of the buffer.
   const char *buffer_end; //< Iterator into the end of the buffer.
@@ -290,7 +292,7 @@ struct Lexer
   // This is useful when the resulting spelling of a token doesn't equal the
   // canonical representation in source code, and one needs to know the actual
   // SourceLocation of some given character in the spelling.
-  auto character_location(SourceLocation tok_loc, std::string_view spelling,
+  auto character_location(SourceLocation tok_loc, const char *spelling_begin,
                           const char *char_pos) const -> SourceLocation;
 };
 

@@ -35,6 +35,8 @@ struct NumericConstantParser
 struct CharConstantParser
 {
   uint64_t value = 0;
+  TokenKind kind;
+  bool has_error = false;
 
   CharConstantParser(Lexer &, std::string_view tok_spelling,
                      SourceLocation tok_loc, TokenKind char_kind);

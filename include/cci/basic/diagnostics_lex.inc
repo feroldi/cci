@@ -9,3 +9,5 @@ DIAG(err_invalid_digit, ::cci::Severity::Error, "invalid digit '{}' for {} const
 DIAG(err_invalid_suffix, ::cci::Severity::Error, "invalid suffix '{}' for {} constant")
 DIAG(err_empty_exponent, ::cci::Severity::Error, "exponent needs a sequence of digits")
 DIAG(err_missing_exponent, ::cci::Severity::Error, "hexadecimal floating constant is missing the binary exponent")
+DIAG(err_hex_escape_is_empty, ::cci::Severity::Error, "hexadecimal escape sequence has no digits")
+DIAG(err_unknown_escape_sequence, ::cci::Severity::Error, "unknown escape sequence")

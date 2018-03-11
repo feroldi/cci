@@ -4,8 +4,8 @@
 #include "cci/basic/source_manager.hpp"
 #include "cci/lex/lexer.hpp"
 #include <algorithm>
-#include <utility>
 #include <climits>
+#include <utility>
 
 using namespace cci;
 
@@ -24,6 +24,15 @@ static auto numeric_constant_name_for_radix(uint32_t radix,
                                                   : cci_unreachable();
 }
 
+template <typename... Args>
+void report(Lexer &lex, const char *char_ptr, SourceLocation tok_loc,
+            const char *tok_begin, diag::Lex err_code, Args &&... args)
+{
+  auto &diag = lex.source_mgr.get_diagnostics();
+  diag.report(lex.character_location(tok_loc, tok_begin, char_ptr),
+              err_code, std::forward<Args>(args)...);
+}
+
 NumericConstantParser::NumericConstantParser(Lexer &lexer,
                                              std::string_view tok_spelling,
                                              SourceLocation tok_loc)
@@ -34,21 +43,14 @@ NumericConstantParser::NumericConstantParser(Lexer &lexer,
   const char *s = tok_begin;
   digit_begin = tok_begin;
 
-  auto report = [&, this](const char *char_ptr, diag::Lex err_code,
-                          auto &&... args) {
-    auto &diag = lexer.source_mgr.get_diagnostics();
-    has_error = true;
-    diag.report(lexer.character_location(tok_loc, tok_spelling, char_ptr),
-                err_code, decltype(args)(args)...);
-  };
-
   auto parse_possible_period_or_exponent = [&, this] {
     cci_expects(radix == 10 || radix == 8);
 
     if (is_hexdigit(s[0]) && *s != 'e' && *s != 'E')
     {
-      report(s, diag::err_invalid_digit, *s,
+      report(lexer, s, tok_loc, tok_begin, diag::err_invalid_digit, *s,
              numeric_constant_name_for_radix(radix, false));
+      has_error = true;
       return;
     }
 
@@ -71,7 +73,8 @@ NumericConstantParser::NumericConstantParser(Lexer &lexer,
       s = std::find_if_not(s, tok_end, is_digit);
       if (digs_start == s)
       {
-        report(exponent, diag::err_empty_exponent);
+        report(lexer, exponent, tok_loc, tok_begin, diag::err_empty_exponent);
+        has_error = true;
         return;
       }
     }
@@ -109,10 +112,16 @@ NumericConstantParser::NumericConstantParser(Lexer &lexer,
         const auto digs_start = s;
         s = std::find_if_not(s, tok_end, is_digit);
         if (digs_start == s)
-          report(exponent, diag::err_empty_exponent);
+        {
+          report(lexer, exponent, tok_loc, tok_begin, diag::err_empty_exponent);
+          has_error = true;
+        }
       }
       else if (has_period)
-        report(tok_begin, diag::err_missing_exponent);
+      {
+        report(lexer, tok_begin, tok_loc, tok_begin, diag::err_missing_exponent);
+        has_error = true;
+      }
     }
     else
     {
@@ -182,9 +191,10 @@ NumericConstantParser::NumericConstantParser(Lexer &lexer,
 
   if (s != tok_end)
   {
-    report(s, diag::err_invalid_suffix,
+    report(lexer, s, tok_loc, tok_begin, diag::err_invalid_suffix,
            std::string_view(digit_end, tok_end - digit_end),
            numeric_constant_name_for_radix(radix, is_fp));
+    has_error = true;
   }
 }
 
@@ -212,116 +222,157 @@ auto NumericConstantParser::eval_to_integer() -> std::pair<uint64_t, bool>
   return {value, overflowed};
 }
 
-static auto decode_ucn(const char *s) -> std::pair<uint64_t, const char *>
+static auto evaluate_ucn(Lexer &lex, SourceLocation tok_loc,
+                         const char *tok_begin, const char *&tok_ptr,
+                         const char *tok_end, bool &has_error) -> uint32_t
 {
-  cci_expects(*s == 'u' || *s == 'U');
-  int num_hexdigits = *s == 'u' ? 4 : 8;
-  ++s;
+  cci_expects(tok_ptr[0] == '\\' && (tok_ptr[1] == 'u' || tok_ptr[1] == 'U'));
+  int num_hexdigits = tok_ptr[1] == 'u' ? 4 : 8;
+  const auto escape_begin = tok_ptr;
+  tok_ptr += 2; // Skips \u or \U.
   uint64_t code_point = 0;
 
-  for (int i = 0; i < num_hexdigits; ++i)
+  int num_countdown = num_hexdigits;
+  for (; tok_ptr != tok_end && num_countdown != 0; --num_countdown)
   {
     // TODO: Report diag::err_ucn_invalid.
-    if (uint32_t value = hexdigit_value(s[i]); value != -1U)
-    {
-      code_point += value;
-      code_point <<= 4;
-    }
-    else
+    uint32_t val = hexdigit_value(*tok_ptr);
+    if (val == -1U)
       break;
+    code_point <<= 4;
+    code_point += val;
+    ++tok_ptr;
   }
 
-  return std::pair(code_point, s + num_hexdigits);
+  // If we haven't consumed either 4 or 8 digits, then we assume that this UCN
+  // is missing digits, therefore is invalid.
+  if (num_countdown)
+  {
+    report(lex, escape_begin, tok_loc, tok_begin, diag::err_ucn_invalid);
+    has_error = true;
+  }
+
+  return code_point;
 }
 
-// Returns the value representation of an escape sequence, and the final
-// position of the cursor.
-static auto decode_escape_sequence(const char *sequence)
-  -> std::pair<uint64_t, const char *>
+// Returns the value representation of an escape sequence.
+static auto evaluate_escape_sequence(Lexer &lex, SourceLocation tok_loc,
+                                     const char *tok_begin,
+                                     const char *&tok_ptr, const char *tok_end,
+                                     bool &has_error) -> uint32_t
 {
-  auto s = sequence;
-  uint64_t value = 0;
+  auto escape_begin = tok_ptr;
+
+  // Skips '\' slash.
+  ++tok_ptr;
+
+  uint32_t result = *tok_ptr++;
+
   // http://en.cppreference.com/w/c/language/escape
-  switch (s[0])
+  switch (result)
   {
     case '\'':
     case '"':
     case '?':
     case '\\':
-      value = s[0];
       break;
     case 'a': // audible bell
-      value = 0x07;
+      result = 0x07;
       break;
     case 'b': // backspace
-      value = 0x08;
+      result = 0x08;
       break;
     case 'f': // form feed
-      value = 0x0c;
+      result = 0x0c;
       break;
     case 'n': // line feed
-      value = 0x0a;
+      result = 0x0a;
       break;
     case 'r': // carriage return
-      value = 0x0d;
+      result = 0x0d;
       break;
     case 't': // horizontal tab
-      value = 0x09;
+      result = 0x09;
       break;
     case 'v': // vertical tab
-      value = 0x0b;
+      result = 0x0b;
       break;
-    case '0': case '1': case '2': case '3': case '4':
-    case '5': case '6': case '7': // arbitrary octal value
-      for (int i = 0; is_octdigit(s[i]) && i < 3; ++i, ++s)
+    case '0': case '1': case '2': case '3':
+    case '4': case '5': case '6': case '7':
+    {
+      --tok_ptr; // Backs up one digit.
+      result = 0;
+      int num_digits = 0;
+      do
       {
-        value += hexdigit_value(*s);
-        value <<= 3;
+        result <<= 3;
+        result += *tok_ptr++ - '0';
+        ++num_digits;
+      } while (tok_ptr != tok_end && num_digits < 3 && is_octdigit(*tok_ptr));
+      break;
+    }
+    case 'x':
+    {
+      result = 0;
+      if (tok_ptr == tok_end || !is_hexdigit(*tok_ptr))
+      {
+        report(lex, escape_begin, tok_loc, tok_begin,
+               diag::err_hex_escape_is_empty);
+        has_error = true;
+        break;
+      }
+
+      for (; tok_ptr != tok_end; ++tok_ptr)
+      {
+        auto val = hexdigit_value(*tok_ptr);
+        if (val == -1U)
+          break;
+        result <<= 4;
+        result += val;
       }
       break;
-    case 'x': // arbitrary hexadecimal value
-      ++s;
-      // FIXME: This doesn't check for empty or single digit hexs.
-      for (; is_hexdigit(*s); ++s)
-      {
-        value += hexdigit_value(*s);
-        value <<= 4;
-      }
-      break;
-    case 'u':
-    case 'U':
-      std::tie(value, s) = decode_ucn(s);
-      break;
+    }
+    default:
+      report(lex, escape_begin, tok_loc, tok_begin,
+             diag::err_unknown_escape_sequence);
+      has_error = true;
   }
 
-  return std::pair(value, s);
+  return result;
 }
 
 CharConstantParser::CharConstantParser(Lexer &lexer,
                                        std::string_view tok_spelling,
                                        SourceLocation tok_loc,
                                        TokenKind char_kind)
+  : kind(char_kind)
 {
-  (void)lexer;
-  (void)tok_loc;
   cci_expects(is_char_constant(char_kind));
   cci_expects(tok_spelling.end()[0] == '\0');
   const char *const tok_begin = tok_spelling.begin();
-  const char *s = tok_begin;
+  const char *const tok_end = tok_spelling.end();
+  const char *tok_ptr = tok_begin;
 
   // Skips either L, u or U.
   if (char_kind != TokenKind::char_constant)
-    ++s;
+    ++tok_ptr;
 
-  ++s; // Skips ' character.
+  ++tok_ptr; // Skips '\'' character.
 
-  if (*s == '\\')
-    std::tie(this->value, s) = decode_escape_sequence(s + 1);
+  if (*tok_ptr != '\\')
+  {
+    value = *tok_ptr++;
+  }
+  else if (tok_ptr[1] == 'u' || tok_ptr[1] == 'U')
+  {
+    value =
+      evaluate_ucn(lexer, tok_loc, tok_begin, tok_ptr, tok_end, has_error);
+  }
   else
   {
-    this->value = static_cast<uint64_t>(*s);
-    ++s;
+    value = evaluate_escape_sequence(lexer, tok_loc, tok_begin, tok_ptr,
+                                     tok_end, has_error);
   }
 
-  cci_expects(*s == '\'');
+  cci_expects(*tok_ptr == '\'');
 }

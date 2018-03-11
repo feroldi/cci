@@ -245,6 +245,10 @@ TEST(LiteralParser, charConstants)
 {
   const char *code = R"(
 'A'
+'\xff'
+'\x' // error: empty hex escape
+u'\u00A8'
+u'\u00A' // error: invalid UCN
 )";
   cci::DiagnosticsOptions opts;
   cci::CompilerDiagnostics diag(opts);
@@ -255,10 +259,41 @@ TEST(LiteralParser, charConstants)
   {
     tok = lexer.next_token();
     ASSERT_TRUE(tok.has_value());
-
     cci::CharConstantParser result(lexer, tok->spelling(source),
                                    tok->location(), tok->kind);
-    EXPECT_EQ(65, result.value);
+    EXPECT_EQ('A', result.value);
+  }
+
+  {
+    tok = lexer.next_token();
+    ASSERT_TRUE(tok.has_value());
+    cci::CharConstantParser result(lexer, tok->spelling(source),
+                                   tok->location(), tok->kind);
+    EXPECT_EQ(255, result.value);
+  }
+
+  {
+    tok = lexer.next_token();
+    ASSERT_TRUE(tok.has_value());
+    cci::CharConstantParser result(lexer, tok->spelling(source),
+                                   tok->location(), tok->kind);
+    EXPECT_TRUE(result.has_error);
+  }
+
+  {
+    tok = lexer.next_token();
+    ASSERT_TRUE(tok.has_value());
+    cci::CharConstantParser result(lexer, tok->spelling(source),
+                                   tok->location(), tok->kind);
+    EXPECT_EQ(u'\u00A8', result.value);
+  }
+
+  {
+    tok = lexer.next_token();
+    ASSERT_TRUE(tok.has_value());
+    cci::CharConstantParser result(lexer, tok->spelling(source),
+                                   tok->location(), tok->kind);
+    EXPECT_TRUE(result.has_error);
   }
 }
 

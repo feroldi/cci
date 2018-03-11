@@ -48,6 +48,6 @@ TEST(SourceManagerTest, calcLineOffsets)
   EXPECT_THROW(src_mgr.text_line(cci::SourceLocation(code.size())),
                broken_contract);
 #endif
-};
+}
 
 } // namespace

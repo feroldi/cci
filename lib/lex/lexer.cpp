@@ -1249,11 +1249,11 @@ auto Token::spelling(const SourceManager &source_mgr) const -> std::string
 }
 
 auto Lexer::character_location(SourceLocation tok_loc,
-                               std::string_view spelling,
+                               const char *spelling_begin,
                                const char *char_pos) const -> SourceLocation
 {
   const char *cur_ptr = source_mgr.decode_to_raw_ptr(tok_loc);
-  for (auto it = spelling.begin(); it != char_pos; ++it)
+  for (auto it = spelling_begin; it != char_pos; ++it)
   {
     const auto [c, size] = peek_char_and_size_nontrivial(cur_ptr, 0, nullptr);
     cci_expects(c == *it);
