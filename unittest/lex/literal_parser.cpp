@@ -297,4 +297,45 @@ u'\u00A' // error: invalid UCN
   }
 }
 
+TEST(LiteralParser, stringLiterals)
+{
+  const char *code = R"(
+"small string" " that has become long now";
+"good" L" wide strings" " are good";
+u8"but this one" " is" L" problematic" L"!";
+)";
+  cci::DiagnosticsOptions opts;
+  cci::CompilerDiagnostics diag(opts);
+  auto source = cci::SourceManager::from_buffer(diag, code);
+  auto lexer = cci::Lexer(source);
+  cci::TargetInfo target;
+  std::vector<cci::Token> string_toks;
+  string_toks.reserve(4);
+  std::optional<cci::Token> tok;
+
+  {
+    while ((tok = lexer.next_token()) && tok->is_not(cci::TokenKind::semi))
+      string_toks.push_back(*tok);
+    cci::StringLiteralParser str(lexer, string_toks, target);
+    EXPECT_STREQ("small string that has become long now", str.result_buf.data());
+  }
+
+  {
+    string_toks.clear();
+    while ((tok = lexer.next_token()) && tok->is_not(cci::TokenKind::semi))
+      string_toks.push_back(*tok);
+    cci::StringLiteralParser str(lexer, string_toks, target);
+    EXPECT_EQ(2, str.char_byte_width);
+    EXPECT_EQ(cci::TokenKind::wide_string_literal, str.kind);
+  }
+
+  {
+    string_toks.clear();
+    while ((tok = lexer.next_token()) && tok->is_not(cci::TokenKind::semi))
+      string_toks.push_back(*tok);
+    cci::StringLiteralParser str(lexer, string_toks, target);
+    EXPECT_TRUE(str.has_error);
+  }
+}
+
 } // namespace

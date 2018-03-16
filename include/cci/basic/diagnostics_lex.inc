@@ -11,3 +11,4 @@ DIAG(err_empty_exponent, ::cci::Severity::Error, "exponent needs a sequence of d
 DIAG(err_missing_exponent, ::cci::Severity::Error, "hexadecimal floating constant is missing the binary exponent")
 DIAG(err_hex_escape_is_empty, ::cci::Severity::Error, "hexadecimal escape sequence has no digits")
 DIAG(err_unknown_escape_sequence, ::cci::Severity::Error, "unknown escape sequence")
+DIAG(err_nonstd_string_concatenation, ::cci::Severity::Error, "concatenation of different kinds of strings is not standard compliant")

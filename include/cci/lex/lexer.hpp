@@ -200,6 +200,9 @@ struct Token
   // Checks whether this token is of kind `k`.
   bool is(TokenKind k) const { return kind == k; }
 
+  // Checks whether this token is not of kind `k`.
+  bool is_not(TokenKind k) const { return kind != k; }
+
   // Checks wether this token is of any kind in `ks`.
   template <typename... Kinds>
   bool is_one_of(const Kinds... ks) const
@@ -219,6 +222,9 @@ struct Token
   {
     return src_mgr.text_slice(this->source_range());
   }
+
+  // Returns the size of the token spelling in source.
+  auto size() const -> size_t { return range.end.offset - range.start.offset; }
 
   // Returns the spelling text after escaped new-line folding and trigraph
   // expansion of this token.
@@ -259,6 +265,11 @@ struct Lexer
     cci_expects(buffer_end[0] == '\0');
   }
 
+  auto diagnostics() const -> CompilerDiagnostics &
+  {
+    return source_mgr.get_diagnostics();
+  }
+
   // Parses the next token in the input stream.
   //
   // This is where the whole process of tokenization happens. The lexer tries to
@@ -294,6 +305,11 @@ struct Lexer
   // SourceLocation of some given character in the spelling.
   auto character_location(SourceLocation tok_loc, const char *spelling_begin,
                           const char *char_pos) const -> SourceLocation;
+
+  // Computes the spelling of a token, and writes it to the caller's buffer
+  // `spelling_buf`. Returns the size in bytes of written data.
+  static auto get_spelling_to_buffer(const Token &, char *spelling_buf,
+                                     const SourceManager &) -> size_t;
 };
 
 constexpr auto is_digit(char C) -> bool { return C >= '0' && C <= '9'; }

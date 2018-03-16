@@ -2,10 +2,12 @@
 #include "./lex_diagnostics.hpp"
 #include "cci/basic/diagnostics.hpp"
 #include "cci/basic/source_manager.hpp"
+#include "cci/langopts.hpp"
 #include "cci/lex/lexer.hpp"
 #include <algorithm>
 #include <climits>
 #include <utility>
+#include <vector>
 
 using namespace cci;
 
@@ -25,12 +27,32 @@ static auto numeric_constant_name_for_radix(uint32_t radix,
 }
 
 template <typename... Args>
-void report(Lexer &lex, const char *char_ptr, SourceLocation tok_loc,
-            const char *tok_begin, diag::Lex err_code, Args &&... args)
+static void report(Lexer &lex, const char *char_ptr, SourceLocation tok_loc,
+                   const char *tok_begin, diag::Lex err_code, Args &&... args)
 {
-  auto &diag = lex.source_mgr.get_diagnostics();
-  diag.report(lex.character_location(tok_loc, tok_begin, char_ptr),
-              err_code, std::forward<Args>(args)...);
+  auto &diag = lex.diagnostics();
+  diag.report(lex.character_location(tok_loc, tok_begin, char_ptr), err_code,
+              std::forward<Args>(args)...);
+}
+
+static auto resolve_char_width(TokenKind kind, const TargetInfo &target)
+  -> size_t
+{
+  cci_expects(is_char_constant(kind) || is_string_literal(kind));
+  switch (kind)
+  {
+    case TokenKind::char_constant:
+    case TokenKind::string_literal:
+    case TokenKind::utf8_char_constant:
+    case TokenKind::utf8_string_literal: return target.char_width;
+    case TokenKind::wide_char_constant:
+    case TokenKind::wide_string_literal: return target.wchar_width;
+    case TokenKind::utf16_char_constant:
+    case TokenKind::utf16_string_literal: return target.char16_t_width;
+    case TokenKind::utf32_char_constant:
+    case TokenKind::utf32_string_literal: return target.char32_t_width;
+    default: cci_unreachable();
+  }
 }
 
 NumericConstantParser::NumericConstantParser(Lexer &lexer,
@@ -322,6 +344,7 @@ static auto evaluate_escape_sequence(Lexer &lex, SourceLocation tok_loc,
         break;
       }
 
+      // TODO: Check for overflow.
       for (; tok_ptr != tok_end; ++tok_ptr)
       {
         auto val = hexdigit_value(*tok_ptr);
@@ -354,6 +377,7 @@ CharConstantParser::CharConstantParser(Lexer &lexer,
   const char *tok_ptr = tok_begin;
 
   // Skips either L, u or U.
+  // TODO: Implement different char widths.
   if (char_kind != TokenKind::char_constant)
     ++tok_ptr;
 
@@ -375,4 +399,149 @@ CharConstantParser::CharConstantParser(Lexer &lexer,
   }
 
   cci_expects(*tok_ptr == '\'');
+}
+
+StringLiteralParser::StringLiteralParser(Lexer &lexer,
+                                         const std::vector<Token> &string_toks,
+                                         const TargetInfo &target)
+{
+  auto &diag = lexer.diagnostics();
+
+  // The following code calculates a size bound that is the sum of all strings'
+  // size for the result buffer, which is a bit over enough, given that
+  // trigraphs and escape sequences, after processed, shrink the string size.
+
+  cci_expects(!string_toks.empty());
+  cci_expects(string_toks[0].size() >= 2);
+  size_t size_bound = string_toks[0].size() - 2; // removes ""
+
+  // Holds the size of the biggest string literal. This is used to allocate memory
+  // for a temporary buffer to hold the processed strings.
+  size_t max_token_size = size_bound;
+
+  cci_expects(is_string_literal(string_toks[0].kind));
+  kind = string_toks[0].kind;
+
+  // Performs C11 5.1.1.2/6: Adjacent string literal tokens are concatenated.
+  // Unfortunately, `i` has type `size_t` because otherwise size comparison gets
+  // messy with casts.
+  for (size_t i = 1; i != string_toks.size(); ++i)
+  {
+    cci_expects(is_string_literal(string_toks[i].kind));
+    if (string_toks[i].is_not(kind) && string_toks[i].is_not(TokenKind::string_literal))
+    {
+      if (kind == TokenKind::string_literal)
+        kind = string_toks[i].kind;
+      else
+      {
+        // Concatenation of different kinds of strings could be supported, but
+        // that would not be standard compliant.
+        diag.report(string_toks[i].location(),
+                    diag::err_nonstd_string_concatenation);
+        has_error = true;
+      }
+    }
+
+    cci_expects(string_toks[i].size() >= 2);
+    size_bound += string_toks[i].size() - 2; // removes ""
+    max_token_size = std::max(max_token_size, string_toks[i].size() - 2);
+  }
+
+  // In case we get an empty string literal, there's nothing left to be done.
+  if (size_bound == 0)
+  {
+    // Includes the null terminator.
+    result_buf.push_back('\0');
+    return;
+  }
+
+  // Allows an space for the null terminator.
+  ++size_bound;
+
+  char_byte_width = resolve_char_width(kind, target);
+  // Assumes that the char width for this target is a multiple of 8.
+  cci_expects((target.char_width & 0b0111) == 0);
+  char_byte_width /= 8;
+
+  // More space is needed if we have wide/unicode strings literals.
+  size_bound *= char_byte_width;
+
+  // Token spellings are written to this buffer.
+  small_vector<char, 256> token_buf;
+
+  result_buf.resize(size_bound);
+  token_buf.resize(max_token_size);
+
+  char *result_ptr = result_buf.data();
+
+  for (const auto &string_tok : string_toks)
+  {
+    cci_expects(is_string_literal(string_tok.kind));
+
+    // Gets the token spelling, and writes it to `token_buf`. There's no need
+    // to clear the buffer, since we know the amount of bytes that is written
+    // to the buffer, which is enough to form a range of iterators.
+    const char *tokbuf_ptr = token_buf.data();
+    const size_t tok_length = Lexer::get_spelling_to_buffer(
+      string_tok, token_buf.data(), lexer.source_mgr);
+
+    const char *tokbuf_begin = tokbuf_ptr;
+    const char *tokbuf_end = tokbuf_begin + tok_length;
+
+    // Skips u, U, or L.
+    if (string_tok.is_not(TokenKind::string_literal))
+    {
+      ++tokbuf_ptr;
+      // Skips 8 from u8.
+      if (string_tok.is(TokenKind::utf8_string_literal))
+        ++tokbuf_ptr;
+    }
+
+    // Removes the first quote.
+    cci_expects(*tokbuf_ptr == '"');
+    ++tokbuf_ptr;
+
+    // Removes the trailing quote.
+    --tokbuf_end;
+    cci_expects(*tokbuf_end == '"');
+
+    while (tokbuf_ptr != tokbuf_end)
+    {
+      if (*tokbuf_ptr != '\\')
+      {
+        // This is possibly a sequence of ASCII or UTF-8 characters.
+        const char *tokbuf_start = tokbuf_ptr;
+        tokbuf_ptr = std::find_if(tokbuf_ptr, tokbuf_end, [](char c) { return c == '\\'; });
+
+        // FIXME: Parse UTF-8 too.
+        result_ptr = std::copy(tokbuf_start, tokbuf_ptr, result_ptr);
+      }
+      else if (tokbuf_ptr[1] == 'u' || tokbuf_ptr[1] == 'U')
+      {
+        uint32_t code_point =
+          evaluate_ucn(lexer, string_tok.location(), tokbuf_begin, tokbuf_ptr,
+                       tokbuf_end, has_error);
+
+        // FIXME: Convert to the appropriate encoding. This is very wrong as it
+        // is right now.
+        result_ptr = std::copy(reinterpret_cast<const char *>(code_point),
+                               reinterpret_cast<const char *>(code_point) +
+                                 sizeof(code_point),
+                               result_ptr);
+      }
+      else
+      {
+        // If it's not a UCN, then it's a normal escape sequence.
+        int32_t result_char =
+          evaluate_escape_sequence(lexer, string_tok.location(), tokbuf_begin,
+                                   tokbuf_ptr, tokbuf_end, has_error);
+
+        // TODO: Handle char width of 2 and 4 bytes.
+        if (char_byte_width == 1)
+          *result_ptr++ = result_char & 0xFF;
+        else
+          cci_unreachable();
+      }
+    }
+  }
 }

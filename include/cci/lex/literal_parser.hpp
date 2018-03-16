@@ -1,7 +1,10 @@
 #pragma once
 
 #include "cci/basic/source_manager.hpp"
+#include "cci/langopts.hpp"
 #include "cci/lex/lexer.hpp"
+#include "cci/util/small_vector.hpp"
+#include <vector>
 
 namespace cci {
 
@@ -40,6 +43,17 @@ struct CharConstantParser
 
   CharConstantParser(Lexer &, std::string_view tok_spelling,
                      SourceLocation tok_loc, TokenKind char_kind);
+};
+
+struct StringLiteralParser
+{
+  small_vector<char, 256> result_buf;
+  TokenKind kind;
+  size_t char_byte_width;
+  bool has_error = false;
+
+  StringLiteralParser(Lexer &, const std::vector<Token> &string_toks,
+                      const TargetInfo &);
 };
 
 } // namespace cci

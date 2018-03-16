@@ -1262,6 +1262,34 @@ auto Lexer::character_location(SourceLocation tok_loc,
   return location_for_ptr(cur_ptr);
 }
 
+auto Lexer::get_spelling_to_buffer(const Token &tok, char *spelling_buf,
+                                   const SourceManager &sm) -> size_t
+{
+  std::string_view spelling = sm.text_slice(tok.source_range());
+  const auto start = spelling.begin();
+  const auto end = spelling.end();
+
+  // No newline escapes, UCNs, nor trigraphs. We're good to go.
+  if (!tok.is_dirty())
+  {
+    const char *spelling_buf_start = spelling_buf;
+    return static_cast<size_t>(std::copy(start, end, spelling_buf) -
+                               spelling_buf_start);
+  }
+
+  auto it = start;
+  size_t length = 0;
+  while (it != end)
+  {
+    const auto [c, size] = peek_char_and_size_nontrivial(it, 0, nullptr);
+    *spelling_buf++ = c;
+    it += size;
+    ++length;
+  }
+
+  return length;
+}
+
 // Lexes a token in the position `buffer_ptr`. Most of the lexing occurs here.
 auto Lexer::next_token() -> std::optional<Token>
 {

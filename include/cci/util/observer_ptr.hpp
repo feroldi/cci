@@ -71,6 +71,9 @@ private:
 };
 
 template <typename T>
+observer_ptr(T*) -> observer_ptr<T>;
+
+template <typename T>
 inline auto make_observer(T* p) noexcept
 { return ::cci::observer_ptr<T>(p); }
 
