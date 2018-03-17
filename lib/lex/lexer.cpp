@@ -379,19 +379,17 @@ auto try_advance_identifier_ucn(Lexer &lex, const char *&cur_ptr, int64_t size,
 auto try_advance_identifier_utf8(Lexer &lex, const char *&cur_ptr) -> bool
 {
   cci_expects(!is_ascii(cur_ptr[0]));
-  auto uni_ptr = reinterpret_cast<const std::byte *>(cur_ptr);
-  auto uni_end = reinterpret_cast<const std::byte *>(lex.buffer_end);
-  if (uint32_t code_point = 0;
-      utf8::decode_sequence(uni_ptr, uni_end, code_point) ==
-      utf8::DecodeResult::Ok)
+  uni::UTF32 code_point = 0;
+  uni::ConversionResult res = uni::convert_utf8_sequence(
+    reinterpret_cast<const uni::UTF8 **>(&cur_ptr),
+    reinterpret_cast<const uni::UTF8 *>(lex.buffer_end), &code_point,
+    uni::strictConversion);
+  if (res == uni::conversionOK &&
+      is_allowed_id_char(static_cast<uint32_t>(code_point)))
   {
-    if (is_allowed_id_char(code_point))
-    {
-      if (code_point == 0x037E) // GREEK QUESTION MARK (U+037E)
-        report(lex, cur_ptr, diag::warn_greek_question_mark);
-      cur_ptr = reinterpret_cast<const char *>(uni_ptr);
-      return true;
-    }
+    if (code_point == 0x037Eul) // GREEK QUESTION MARK (U+037E)
+      report(lex, cur_ptr, diag::warn_greek_question_mark);
+    return true;
   }
   return false;
 }
@@ -812,14 +810,7 @@ auto lex_token(Lexer &lex, const char *cur_ptr, Token &result) -> bool
     case '\\':
       if (uint32_t code_point = try_read_ucn(lex, cur_ptr, lex.buffer_ptr, nullptr);
           code_point != 0)
-      {
-        if (utf8::is_whitespace(code_point))
-        {
-          lex.buffer_ptr = cur_ptr;
-          return lex_token(lex, cur_ptr, result);
-        }
         return lex_unicode(lex, cur_ptr, code_point, result);
-      }
       else
         break;
 
@@ -1199,27 +1190,27 @@ auto lex_token(Lexer &lex, const char *cur_ptr, Token &result) -> bool
     {
       if (is_ascii(ch))
         break;
-
       --cur_ptr;
-      auto uni_ptr = reinterpret_cast<const std::byte *>(cur_ptr);
-      auto uni_end = reinterpret_cast<const std::byte *>(lex.buffer_end);
-      if (uint32_t code_point = 0;
-          utf8::decode_sequence(uni_ptr, uni_end, code_point) ==
-          utf8::DecodeResult::Ok)
-      {
-        cur_ptr = reinterpret_cast<const char *>(uni_ptr);
-        if (utf8::is_whitespace(code_point))
-        {
-          lex.buffer_ptr = cur_ptr;
-          return lex_token(lex, cur_ptr, result);
-        }
-        return lex_unicode(lex, cur_ptr, code_point, result);
-      }
+      uni::UTF32 code_point = 0;
+      uni::ConversionResult res = uni::convert_utf8_sequence(
+        reinterpret_cast<const uni::UTF8 **>(&cur_ptr),
+        reinterpret_cast<const uni::UTF8 *>(lex.buffer_end), &code_point,
+        uni::strictConversion);
+      if (res == uni::conversionOK)
+        return lex_unicode(lex, cur_ptr, static_cast<uint32_t>(code_point),
+                           result);
     }
   }
 
   if (kind == TokenKind::unknown)
-    report(lex, lex.buffer_ptr, diag::err_unknown_character, ch);
+  {
+    // TODO: Print the ASCII character only if it's printable.
+    if (is_ascii(ch))
+      report(lex, lex.buffer_ptr, diag::err_unknown_character, ch);
+    else
+      report(lex, lex.buffer_ptr, diag::err_invalid_unicode_character,
+             static_cast<uint8_t>(ch));
+  }
 
   lex.form_token(result, cur_ptr, kind);
   return true;

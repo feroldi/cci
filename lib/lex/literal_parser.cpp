@@ -257,7 +257,6 @@ static auto evaluate_ucn(Lexer &lex, SourceLocation tok_loc,
   int num_countdown = num_hexdigits;
   for (; tok_ptr != tok_end && num_countdown != 0; --num_countdown)
   {
-    // TODO: Report diag::err_ucn_invalid.
     uint32_t val = hexdigit_value(*tok_ptr);
     if (val == -1U)
       break;
@@ -511,7 +510,8 @@ StringLiteralParser::StringLiteralParser(Lexer &lexer,
       {
         // This is possibly a sequence of ASCII or UTF-8 characters.
         const char *tokbuf_start = tokbuf_ptr;
-        tokbuf_ptr = std::find_if(tokbuf_ptr, tokbuf_end, [](char c) { return c == '\\'; });
+        tokbuf_ptr = std::find_if(tokbuf_ptr, tokbuf_end,
+                                  [](char c) { return c == '\\'; });
 
         // FIXME: Parse UTF-8 too.
         result_ptr = std::copy(tokbuf_start, tokbuf_ptr, result_ptr);
