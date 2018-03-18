@@ -2,6 +2,7 @@
 #include "./lex_diagnostics.hpp"
 #include "cci/basic/diagnostics.hpp"
 #include "cci/basic/source_manager.hpp"
+#include "cci/lex/char_info.hpp"
 #include "cci/lex/unicode_char_set.hpp"
 #include "cci/util/contracts.hpp"
 #include "cci/util/unicode.hpp"
@@ -1204,9 +1205,9 @@ auto lex_token(Lexer &lex, const char *cur_ptr, Token &result) -> bool
 
   if (kind == TokenKind::unknown)
   {
-    // TODO: Print the ASCII character only if it's printable.
     if (is_ascii(ch))
-      report(lex, lex.buffer_ptr, diag::err_unknown_character, ch);
+      report(lex, lex.buffer_ptr, diag::err_unknown_character,
+             is_printable(ch) ? ch : static_cast<uint32_t>(ch));
     else
       report(lex, lex.buffer_ptr, diag::err_invalid_unicode_character,
              static_cast<uint8_t>(ch));

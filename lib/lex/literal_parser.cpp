@@ -3,6 +3,7 @@
 #include "cci/basic/diagnostics.hpp"
 #include "cci/basic/source_manager.hpp"
 #include "cci/langopts.hpp"
+#include "cci/lex/char_info.hpp"
 #include "cci/lex/lexer.hpp"
 #include "cci/util/unicode.hpp"
 #include <algorithm>

@@ -312,15 +312,7 @@ struct Lexer
                                      const SourceManager &) -> size_t;
 };
 
-constexpr auto is_digit(char C) -> bool { return C >= '0' && C <= '9'; }
-constexpr auto is_octdigit(char C) -> bool { return C >= '0' && C <= '7'; }
-constexpr auto is_hexdigit(char C) -> bool
-{
-  return (C >= '0' && C <= '9') || (C >= 'a' && C <= 'f') ||
-         (C >= 'A' && C <= 'F');
-}
-
-constexpr auto hexdigit_value(char C) -> uint32_t
+constexpr inline auto hexdigit_value(char C) -> uint32_t
 {
   if (C >= '0' && C <= '9')
     return static_cast<uint32_t>(C - '0');
