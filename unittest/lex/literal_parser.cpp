@@ -325,8 +325,10 @@ u8"but this one" " is" L" problematic" L"!";
     while ((tok = lexer.next_token()) && tok->is_not(cci::TokenKind::semi))
       string_toks.push_back(*tok);
     cci::StringLiteralParser str(lexer, string_toks, target);
-    EXPECT_EQ(2, str.char_byte_width);
+    EXPECT_EQ(4, str.char_byte_width);
     EXPECT_EQ(cci::TokenKind::wide_string_literal, str.kind);
+    EXPECT_STREQ(L"good wide strings are good",
+                 reinterpret_cast<wchar_t *>(str.result_buf.data()));
   }
 
   {

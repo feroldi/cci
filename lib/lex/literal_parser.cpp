@@ -4,6 +4,7 @@
 #include "cci/basic/source_manager.hpp"
 #include "cci/langopts.hpp"
 #include "cci/lex/lexer.hpp"
+#include "cci/util/unicode.hpp"
 #include <algorithm>
 #include <climits>
 #include <utility>
@@ -411,6 +412,7 @@ StringLiteralParser::StringLiteralParser(Lexer &lexer,
   // trigraphs and escape sequences, after processed, shrink the string size.
 
   cci_expects(!string_toks.empty());
+  cci_expects(is_string_literal(string_toks[0].kind));
   cci_expects(string_toks[0].size() >= 2);
   size_t size_bound = string_toks[0].size() - 2; // removes ""
 
@@ -422,8 +424,6 @@ StringLiteralParser::StringLiteralParser(Lexer &lexer,
   kind = string_toks[0].kind;
 
   // Performs C11 5.1.1.2/6: Adjacent string literal tokens are concatenated.
-  // Unfortunately, `i` has type `size_t` because otherwise size comparison gets
-  // messy with casts.
   for (size_t i = 1; i != string_toks.size(); ++i)
   {
     cci_expects(is_string_literal(string_toks[i].kind));
@@ -466,7 +466,7 @@ StringLiteralParser::StringLiteralParser(Lexer &lexer,
   size_bound *= char_byte_width;
 
   // Token spellings are written to this buffer.
-  small_vector<char, 256> token_buf;
+  small_string<256> token_buf;
 
   result_buf.resize(size_bound);
   token_buf.resize(max_token_size);
@@ -509,12 +509,52 @@ StringLiteralParser::StringLiteralParser(Lexer &lexer,
       if (*tokbuf_ptr != '\\')
       {
         // This is possibly a sequence of ASCII or UTF-8 characters.
-        const char *tokbuf_start = tokbuf_ptr;
-        tokbuf_ptr = std::find_if(tokbuf_ptr, tokbuf_end,
-                                  [](char c) { return c == '\\'; });
+        const char *chunk_start = tokbuf_ptr;
+        const char *chunk_end = std::find_if(tokbuf_ptr, tokbuf_end,
+                                             [](char c) { return c == '\\'; });
 
-        // FIXME: Parse UTF-8 too.
-        result_ptr = std::copy(tokbuf_start, tokbuf_ptr, result_ptr);
+        uni::ConversionResult res = [&] {
+          if (char_byte_width == 4)
+          {
+            return uni::convert_utf8_to_utf32(
+              reinterpret_cast<const uni::UTF8 **>(&chunk_start),
+              reinterpret_cast<const uni::UTF8 *>(chunk_end),
+              reinterpret_cast<uni::UTF32 **>(&result_ptr),
+              reinterpret_cast<uni::UTF32 *>(result_buf.end()),
+              uni::strictConversion);
+          }
+          else if (char_byte_width == 2)
+          {
+            return uni::convert_utf8_to_utf16(
+              reinterpret_cast<const uni::UTF8 **>(&chunk_start),
+              reinterpret_cast<const uni::UTF8 *>(chunk_end),
+              reinterpret_cast<uni::UTF16 **>(&result_ptr),
+              reinterpret_cast<uni::UTF16 *>(result_buf.end()),
+              uni::strictConversion);
+          }
+
+          cci_expects(char_byte_width == 1);
+          result_ptr = std::copy(chunk_start, chunk_end, result_ptr);
+          chunk_start = chunk_end;
+          return uni::conversionOK;
+        }();
+
+        if (res == uni::conversionOK)
+        {
+          cci_ensures(chunk_start == chunk_end);
+          tokbuf_ptr = chunk_start;
+        }
+        else
+        {
+          // If we're parsing an ASCII string literal, then copy the string
+          // chunk regardless of bad encoding.
+          if (string_tok.is(TokenKind::string_literal))
+          {
+            result_ptr = std::copy(tokbuf_ptr, chunk_end, result_ptr);
+            tokbuf_ptr = chunk_start;
+          }
+          has_error = true;
+        }
       }
       else if (tokbuf_ptr[1] == 'u' || tokbuf_ptr[1] == 'U')
       {
@@ -524,23 +564,35 @@ StringLiteralParser::StringLiteralParser(Lexer &lexer,
 
         // FIXME: Convert to the appropriate encoding. This is very wrong as it
         // is right now.
-        result_ptr = std::copy(reinterpret_cast<const char *>(code_point),
-                               reinterpret_cast<const char *>(code_point) +
+        result_ptr = std::copy(reinterpret_cast<const char *>(&code_point),
+                               reinterpret_cast<const char *>(&code_point) +
                                  sizeof(code_point),
                                result_ptr);
       }
       else
       {
         // If it's not a UCN, then it's a normal escape sequence.
-        int32_t result_char =
+        uint32_t result_char =
           evaluate_escape_sequence(lexer, string_tok.location(), tokbuf_begin,
                                    tokbuf_ptr, tokbuf_end, has_error);
 
-        // TODO: Handle char width of 2 and 4 bytes.
-        if (char_byte_width == 1)
-          *result_ptr++ = result_char & 0xFF;
+        if (char_byte_width == 4)
+        {
+          const auto result_wide = static_cast<uni::UTF32>(result_char);
+          std::memcpy(result_ptr, &result_wide, sizeof(result_wide));
+          result_ptr += sizeof(result_wide);
+        }
+        else if (char_byte_width == 2)
+        {
+          const auto result_wide = static_cast<uni::UTF16>(result_char & 0xFFFF);
+          std::memcpy(result_ptr, &result_char, sizeof(result_wide));
+          result_ptr += sizeof(result_wide);
+        }
         else
-          cci_unreachable();
+        {
+          cci_expects(char_byte_width == 1);
+          *result_ptr++ = result_char & 0xFF;
+        }
       }
     }
   }

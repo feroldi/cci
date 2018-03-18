@@ -8,7 +8,6 @@
 
 namespace cci {
 
-// TODO: This really should be migrated to the main lexer.
 struct NumericConstantParser
 {
   const char *digit_begin; //< First meaningful digit.
@@ -47,7 +46,7 @@ struct CharConstantParser
 
 struct StringLiteralParser
 {
-  small_vector<char, 256> result_buf;
+  small_string<256> result_buf;
   TokenKind kind;
   size_t char_byte_width;
   bool has_error = false;

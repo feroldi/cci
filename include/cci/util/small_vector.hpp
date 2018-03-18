@@ -1021,7 +1021,10 @@ void SmallVectorBase::grow_pod(void *FirstEl, size_t MinSizeInBytes,
 }
 }
 
-template <typename T, unsigned N>
+template <typename T, std::size_t N>
 using small_vector = llvm_vecsmall::SmallVector<T, N>;
+
+template <std::size_t N>
+using small_string = llvm_vecsmall::SmallVector<char, N>;
 
 #endif
