@@ -559,7 +559,7 @@ auto skip_line_comment(Lexer &lex, const char *cur_ptr) -> const char *
     // happen, we still let this check here.
     if (c == '\0')
     {
-      report(lex, cur_ptr, diag::err_unterminated_comment, "line");
+      report(lex, cur_ptr, diag::err_unterminated_comment, selector{0});
       break;
     }
 
@@ -603,7 +603,7 @@ auto skip_block_comment(Lexer &lex, const char *cur_ptr) -> const char *
     // Missing the terminating */ block comment.
     if (c == '\0')
     {
-      report(lex, cur_ptr, diag::err_unterminated_comment, "block");
+      report(lex, cur_ptr, diag::err_unterminated_comment, selector{1});
       break;
     }
 

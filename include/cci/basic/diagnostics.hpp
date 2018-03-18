@@ -2,6 +2,7 @@
 
 #include "cci/basic/source_location.hpp"
 #include "cci/util/contracts.hpp"
+#include "cci/util/small_vector.hpp"
 #include "fmt/format.h"
 #include <cstdint>
 #include <cstdio>
@@ -195,4 +196,49 @@ private:
   auto get_output_level(Severity) const -> Level;
 };
 
+// selector - This is used to select between cases in a fmt::format string. For
+// example, `fmt::format("this is {good|bad}", select{0})` will output `"this is
+// good"`.
+struct selector
+{
+  int which;
+};
 } // namespace cci
+
+namespace fmt {
+template <>
+struct formatter<cci::selector>
+{
+  small_vector<std::string, 4> cases;
+
+  auto parse(parse_context &ctx) -> parse_context::iterator
+  {
+    auto it = begin(ctx); // "good|bad|ugly"
+    auto prev = it;
+    while (it != end(ctx))
+    {
+      if (*it == '}')
+        break;
+      if (*it == '|')
+      {
+        cases.emplace_back(prev, it);
+        prev = std::next(it);
+      }
+      ++it;
+    }
+    cases.emplace_back(prev, it);
+    return it;
+  }
+
+  template <typename FormatContext>
+  auto format(cci::selector s, FormatContext &ctx)
+  {
+    if (empty(cases))
+      throw format_error("selector format is empty");
+    if (s.which >= static_cast<int>(size(cases)))
+      throw format_error(::fmt::format("selector({}) doesn't exist, max is {}",
+                                       s.which, size(cases)));
+    return format_to(begin(ctx), "{}", cases[s.which]);
+  }
+};
+} // namespace fmt

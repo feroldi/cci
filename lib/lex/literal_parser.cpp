@@ -12,19 +12,10 @@
 
 using namespace cci;
 
-static auto numeric_constant_name_for_radix(uint32_t radix,
-                                            bool is_floating_point)
-  -> std::string_view
+static auto select_radix(uint32_t radix) -> selector
 {
-  if (is_floating_point)
-    return radix == 10
-             ? "floating point"
-             : radix == 16 ? "hexadecimal floating point" : cci_unreachable();
-  else
-    return radix == 10 ? "decimal integer"
-                       : radix == 8 ? "octal integer"
-                                    : radix == 16 ? "hexadecimal integer"
-                                                  : cci_unreachable();
+  return selector{
+    radix == 10 ? 0 : radix == 8 ? 1 : radix == 16 ? 2 : cci_unreachable()};
 }
 
 template <typename... Args>
@@ -72,7 +63,7 @@ NumericConstantParser::NumericConstantParser(Lexer &lexer,
     if (is_hexdigit(s[0]) && *s != 'e' && *s != 'E')
     {
       report(lexer, s, tok_loc, tok_begin, diag::err_invalid_digit, *s,
-             numeric_constant_name_for_radix(radix, false));
+             select_radix(radix), selector{1});
       has_error = true;
       return;
     }
@@ -216,7 +207,7 @@ NumericConstantParser::NumericConstantParser(Lexer &lexer,
   {
     report(lexer, s, tok_loc, tok_begin, diag::err_invalid_suffix,
            std::string_view(digit_end, tok_end - digit_end),
-           numeric_constant_name_for_radix(radix, is_fp));
+           select_radix(radix), selector{is_fp ? 0 : 1});
     has_error = true;
   }
 }
