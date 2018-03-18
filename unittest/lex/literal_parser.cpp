@@ -3,9 +3,12 @@
 #include "cci/basic/source_manager.hpp"
 #include "cci/lex/lexer.hpp"
 #include "cci/util/contracts.hpp"
+#include "cci/util/unicode.hpp"
 #include "gtest/gtest.h"
 #include <string>
 #include <string_view>
+
+using namespace cci;
 
 namespace {
 
@@ -28,19 +31,19 @@ TEST(LiteralParser, numericConstants)
 0x.f // error: missing exponent
 18446744073709551616ull // error: overflow
 )";
-  cci::DiagnosticsOptions opts;
-  cci::CompilerDiagnostics diag(opts);
-  auto source = cci::SourceManager::from_buffer(diag, code);
-  auto lexer = cci::Lexer(source);
-  std::optional<cci::Token> tok;
+  DiagnosticsOptions opts;
+  CompilerDiagnostics diag(opts);
+  auto source = SourceManager::from_buffer(diag, code);
+  auto lexer = Lexer(source);
+  std::optional<Token> tok;
 
   // 42ul
   {
     tok = lexer.next_token();
     ASSERT_TRUE(tok.has_value());
-    EXPECT_EQ(cci::TokenKind::numeric_constant, tok->kind);
+    EXPECT_EQ(TokenKind::numeric_constant, tok->kind);
 
-    cci::NumericConstantParser result(lexer, tok->spelling(source), tok->location());
+    NumericConstantParser result(lexer, tok->spelling(source), tok->location());
     EXPECT_FALSE(result.has_error);
     EXPECT_TRUE(result.is_integer_literal());
     EXPECT_EQ(10, result.radix);
@@ -48,7 +51,7 @@ TEST(LiteralParser, numericConstants)
     EXPECT_TRUE(result.is_long);
     EXPECT_FALSE(result.is_long_long);
 
-    const auto [value, overflowed] = result.eval_to_integer();
+    const auto[value, overflowed] = result.eval_to_integer();
 
     ASSERT_FALSE(overflowed);
     EXPECT_EQ(42ull, value);
@@ -58,9 +61,9 @@ TEST(LiteralParser, numericConstants)
   {
     tok = lexer.next_token();
     ASSERT_TRUE(tok.has_value());
-    EXPECT_EQ(cci::TokenKind::numeric_constant, tok->kind);
+    EXPECT_EQ(TokenKind::numeric_constant, tok->kind);
 
-    cci::NumericConstantParser result(lexer, tok->spelling(source), tok->location());
+    NumericConstantParser result(lexer, tok->spelling(source), tok->location());
     EXPECT_FALSE(result.has_error);
     EXPECT_TRUE(result.is_integer_literal());
     EXPECT_EQ(8, result.radix);
@@ -68,7 +71,7 @@ TEST(LiteralParser, numericConstants)
     EXPECT_FALSE(result.is_long);
     EXPECT_FALSE(result.is_long_long);
 
-    const auto [value, overflowed] = result.eval_to_integer();
+    const auto[value, overflowed] = result.eval_to_integer();
 
     ASSERT_FALSE(overflowed);
     EXPECT_EQ(34ull, value);
@@ -78,9 +81,9 @@ TEST(LiteralParser, numericConstants)
   {
     tok = lexer.next_token();
     ASSERT_TRUE(tok.has_value());
-    EXPECT_EQ(cci::TokenKind::numeric_constant, tok->kind);
+    EXPECT_EQ(TokenKind::numeric_constant, tok->kind);
 
-    cci::NumericConstantParser result(lexer, tok->spelling(source), tok->location());
+    NumericConstantParser result(lexer, tok->spelling(source), tok->location());
     EXPECT_FALSE(result.has_error);
     EXPECT_EQ(16, result.radix);
     EXPECT_TRUE(result.is_integer_literal());
@@ -88,7 +91,7 @@ TEST(LiteralParser, numericConstants)
     EXPECT_FALSE(result.is_long);
     EXPECT_TRUE(result.is_long_long);
 
-    const auto [value, overflowed] = result.eval_to_integer();
+    const auto[value, overflowed] = result.eval_to_integer();
 
     ASSERT_FALSE(overflowed);
     EXPECT_EQ(3735929054ull, value);
@@ -98,9 +101,9 @@ TEST(LiteralParser, numericConstants)
   {
     tok = lexer.next_token();
     ASSERT_TRUE(tok.has_value());
-    EXPECT_EQ(cci::TokenKind::numeric_constant, tok->kind);
+    EXPECT_EQ(TokenKind::numeric_constant, tok->kind);
 
-    cci::NumericConstantParser result(lexer, tok->spelling(source), tok->location());
+    NumericConstantParser result(lexer, tok->spelling(source), tok->location());
     EXPECT_TRUE(result.has_error);
   }
 
@@ -108,9 +111,9 @@ TEST(LiteralParser, numericConstants)
   {
     tok = lexer.next_token();
     ASSERT_TRUE(tok.has_value());
-    EXPECT_EQ(cci::TokenKind::numeric_constant, tok->kind);
+    EXPECT_EQ(TokenKind::numeric_constant, tok->kind);
 
-    cci::NumericConstantParser result(lexer, tok->spelling(source), tok->location());
+    NumericConstantParser result(lexer, tok->spelling(source), tok->location());
     EXPECT_TRUE(result.has_error);
   }
 
@@ -118,9 +121,9 @@ TEST(LiteralParser, numericConstants)
   {
     tok = lexer.next_token();
     ASSERT_TRUE(tok.has_value());
-    EXPECT_EQ(cci::TokenKind::numeric_constant, tok->kind);
+    EXPECT_EQ(TokenKind::numeric_constant, tok->kind);
 
-    cci::NumericConstantParser result(lexer, tok->spelling(source), tok->location());
+    NumericConstantParser result(lexer, tok->spelling(source), tok->location());
     EXPECT_TRUE(result.has_error);
   }
 
@@ -128,9 +131,9 @@ TEST(LiteralParser, numericConstants)
   {
     tok = lexer.next_token();
     ASSERT_TRUE(tok.has_value());
-    EXPECT_EQ(cci::TokenKind::numeric_constant, tok->kind);
+    EXPECT_EQ(TokenKind::numeric_constant, tok->kind);
 
-    cci::NumericConstantParser result(lexer, tok->spelling(source), tok->location());
+    NumericConstantParser result(lexer, tok->spelling(source), tok->location());
     EXPECT_FALSE(result.has_error);
     EXPECT_EQ(10, result.radix);
     EXPECT_TRUE(result.is_floating_literal());
@@ -142,9 +145,9 @@ TEST(LiteralParser, numericConstants)
   {
     tok = lexer.next_token();
     ASSERT_TRUE(tok.has_value());
-    EXPECT_EQ(cci::TokenKind::numeric_constant, tok->kind);
+    EXPECT_EQ(TokenKind::numeric_constant, tok->kind);
 
-    cci::NumericConstantParser result(lexer, tok->spelling(source), tok->location());
+    NumericConstantParser result(lexer, tok->spelling(source), tok->location());
     EXPECT_FALSE(result.has_error);
     EXPECT_EQ(10, result.radix);
     EXPECT_TRUE(result.is_floating_literal());
@@ -157,9 +160,9 @@ TEST(LiteralParser, numericConstants)
   {
     tok = lexer.next_token();
     ASSERT_TRUE(tok.has_value());
-    EXPECT_EQ(cci::TokenKind::numeric_constant, tok->kind);
+    EXPECT_EQ(TokenKind::numeric_constant, tok->kind);
 
-    cci::NumericConstantParser result(lexer, tok->spelling(source), tok->location());
+    NumericConstantParser result(lexer, tok->spelling(source), tok->location());
     EXPECT_TRUE(result.has_error);
   }
 
@@ -167,9 +170,9 @@ TEST(LiteralParser, numericConstants)
   {
     tok = lexer.next_token();
     ASSERT_TRUE(tok.has_value());
-    EXPECT_EQ(cci::TokenKind::numeric_constant, tok->kind);
+    EXPECT_EQ(TokenKind::numeric_constant, tok->kind);
 
-    cci::NumericConstantParser result(lexer, tok->spelling(source), tok->location());
+    NumericConstantParser result(lexer, tok->spelling(source), tok->location());
     EXPECT_FALSE(result.has_error);
     EXPECT_EQ(10, result.radix);
     EXPECT_TRUE(result.is_floating_literal());
@@ -180,9 +183,9 @@ TEST(LiteralParser, numericConstants)
   {
     tok = lexer.next_token();
     ASSERT_TRUE(tok.has_value());
-    EXPECT_EQ(cci::TokenKind::numeric_constant, tok->kind);
+    EXPECT_EQ(TokenKind::numeric_constant, tok->kind);
 
-    cci::NumericConstantParser result(lexer, tok->spelling(source), tok->location());
+    NumericConstantParser result(lexer, tok->spelling(source), tok->location());
     EXPECT_FALSE(result.has_error);
     EXPECT_EQ(10, result.radix);
     EXPECT_TRUE(result.is_floating_literal());
@@ -193,9 +196,9 @@ TEST(LiteralParser, numericConstants)
   {
     tok = lexer.next_token();
     ASSERT_TRUE(tok.has_value());
-    EXPECT_EQ(cci::TokenKind::numeric_constant, tok->kind);
+    EXPECT_EQ(TokenKind::numeric_constant, tok->kind);
 
-    cci::NumericConstantParser result(lexer, tok->spelling(source), tok->location());
+    NumericConstantParser result(lexer, tok->spelling(source), tok->location());
     EXPECT_FALSE(result.has_error);
     EXPECT_EQ(16, result.radix);
     EXPECT_TRUE(result.is_floating_literal());
@@ -207,9 +210,9 @@ TEST(LiteralParser, numericConstants)
   {
     tok = lexer.next_token();
     ASSERT_TRUE(tok.has_value());
-    EXPECT_EQ(cci::TokenKind::numeric_constant, tok->kind);
+    EXPECT_EQ(TokenKind::numeric_constant, tok->kind);
 
-    cci::NumericConstantParser result(lexer, tok->spelling(source), tok->location());
+    NumericConstantParser result(lexer, tok->spelling(source), tok->location());
     EXPECT_FALSE(result.has_error);
     EXPECT_EQ(16, result.radix);
     EXPECT_TRUE(result.is_floating_literal());
@@ -222,9 +225,9 @@ TEST(LiteralParser, numericConstants)
   {
     tok = lexer.next_token();
     ASSERT_TRUE(tok.has_value());
-    EXPECT_EQ(cci::TokenKind::numeric_constant, tok->kind);
+    EXPECT_EQ(TokenKind::numeric_constant, tok->kind);
 
-    cci::NumericConstantParser result(lexer, tok->spelling(source), tok->location());
+    NumericConstantParser result(lexer, tok->spelling(source), tok->location());
     EXPECT_TRUE(result.has_error);
   }
 
@@ -232,11 +235,11 @@ TEST(LiteralParser, numericConstants)
   {
     tok = lexer.next_token();
     ASSERT_TRUE(tok.has_value());
-    EXPECT_EQ(cci::TokenKind::numeric_constant, tok->kind);
+    EXPECT_EQ(TokenKind::numeric_constant, tok->kind);
 
-    cci::NumericConstantParser result(lexer, tok->spelling(source), tok->location());
+    NumericConstantParser result(lexer, tok->spelling(source), tok->location());
     EXPECT_FALSE(result.has_error);
-    const auto [value, overflowed] = result.eval_to_integer();
+    const auto[value, overflowed] = result.eval_to_integer();
     ASSERT_TRUE(overflowed);
   }
 }
@@ -250,49 +253,49 @@ TEST(LiteralParser, charConstants)
 u'\u00A8'
 u'\u00A' // error: invalid UCN
 )";
-  cci::DiagnosticsOptions opts;
-  cci::CompilerDiagnostics diag(opts);
-  auto source = cci::SourceManager::from_buffer(diag, code);
-  auto lexer = cci::Lexer(source);
-  std::optional<cci::Token> tok;
+  DiagnosticsOptions opts;
+  CompilerDiagnostics diag(opts);
+  auto source = SourceManager::from_buffer(diag, code);
+  auto lexer = Lexer(source);
+  std::optional<Token> tok;
 
   {
     tok = lexer.next_token();
     ASSERT_TRUE(tok.has_value());
-    cci::CharConstantParser result(lexer, tok->spelling(source),
-                                   tok->location(), tok->kind);
+    CharConstantParser result(lexer, tok->spelling(source), tok->location(),
+                              tok->kind);
     EXPECT_EQ('A', result.value);
   }
 
   {
     tok = lexer.next_token();
     ASSERT_TRUE(tok.has_value());
-    cci::CharConstantParser result(lexer, tok->spelling(source),
-                                   tok->location(), tok->kind);
+    CharConstantParser result(lexer, tok->spelling(source), tok->location(),
+                              tok->kind);
     EXPECT_EQ(255, result.value);
   }
 
   {
     tok = lexer.next_token();
     ASSERT_TRUE(tok.has_value());
-    cci::CharConstantParser result(lexer, tok->spelling(source),
-                                   tok->location(), tok->kind);
+    CharConstantParser result(lexer, tok->spelling(source), tok->location(),
+                              tok->kind);
     EXPECT_TRUE(result.has_error);
   }
 
   {
     tok = lexer.next_token();
     ASSERT_TRUE(tok.has_value());
-    cci::CharConstantParser result(lexer, tok->spelling(source),
-                                   tok->location(), tok->kind);
+    CharConstantParser result(lexer, tok->spelling(source), tok->location(),
+                              tok->kind);
     EXPECT_EQ(u'\u00A8', result.value);
   }
 
   {
     tok = lexer.next_token();
     ASSERT_TRUE(tok.has_value());
-    cci::CharConstantParser result(lexer, tok->spelling(source),
-                                   tok->location(), tok->kind);
+    CharConstantParser result(lexer, tok->spelling(source), tok->location(),
+                              tok->kind);
     EXPECT_TRUE(result.has_error);
   }
 }
@@ -303,40 +306,51 @@ TEST(LiteralParser, stringLiterals)
 "small string" " that has become long now";
 "good" L" wide strings" " are good";
 u8"but this one" " is" L" problematic" L"!";
+U""; // empty string
 )";
-  cci::DiagnosticsOptions opts;
-  cci::CompilerDiagnostics diag(opts);
-  auto source = cci::SourceManager::from_buffer(diag, code);
-  auto lexer = cci::Lexer(source);
-  cci::TargetInfo target;
-  std::vector<cci::Token> string_toks;
+  DiagnosticsOptions opts;
+  CompilerDiagnostics diag(opts);
+  auto source = SourceManager::from_buffer(diag, code);
+  auto lexer = Lexer(source);
+  TargetInfo target;
+  std::vector<Token> string_toks;
   string_toks.reserve(4);
-  std::optional<cci::Token> tok;
+  std::optional<Token> tok;
 
   {
-    while ((tok = lexer.next_token()) && tok->is_not(cci::TokenKind::semi))
+    while ((tok = lexer.next_token()) && tok->is_not(TokenKind::semi))
       string_toks.push_back(*tok);
-    cci::StringLiteralParser str(lexer, string_toks, target);
-    EXPECT_STREQ("small string that has become long now", str.result_buf.data());
+    StringLiteralParser str(lexer, string_toks, target);
+    EXPECT_STREQ("small string that has become long now",
+                 str.result_buf.data());
   }
 
   {
     string_toks.clear();
-    while ((tok = lexer.next_token()) && tok->is_not(cci::TokenKind::semi))
+    while ((tok = lexer.next_token()) && tok->is_not(TokenKind::semi))
       string_toks.push_back(*tok);
-    cci::StringLiteralParser str(lexer, string_toks, target);
+    StringLiteralParser str(lexer, string_toks, target);
     EXPECT_EQ(4, str.char_byte_width);
-    EXPECT_EQ(cci::TokenKind::wide_string_literal, str.kind);
+    EXPECT_EQ(TokenKind::wide_string_literal, str.kind);
     EXPECT_STREQ(L"good wide strings are good",
                  reinterpret_cast<wchar_t *>(str.result_buf.data()));
   }
 
   {
     string_toks.clear();
-    while ((tok = lexer.next_token()) && tok->is_not(cci::TokenKind::semi))
+    while ((tok = lexer.next_token()) && tok->is_not(TokenKind::semi))
       string_toks.push_back(*tok);
-    cci::StringLiteralParser str(lexer, string_toks, target);
+    StringLiteralParser str(lexer, string_toks, target);
     EXPECT_TRUE(str.has_error);
+  }
+
+  {
+    string_toks.clear();
+    while ((tok = lexer.next_token()) && tok->is_not(TokenKind::semi))
+      string_toks.push_back(*tok);
+    StringLiteralParser str(lexer, string_toks, target);
+    uni::UTF32 chr = reinterpret_cast<char32_t *>(str.result_buf.data())[0];
+    EXPECT_EQ(0ul, chr);
   }
 }
 

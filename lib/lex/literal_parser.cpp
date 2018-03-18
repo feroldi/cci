@@ -446,14 +446,6 @@ StringLiteralParser::StringLiteralParser(Lexer &lexer,
     max_token_size = std::max(max_token_size, string_toks[i].size() - 2);
   }
 
-  // In case we get an empty string literal, there's nothing left to be done.
-  if (size_bound == 0)
-  {
-    // Includes the null terminator.
-    result_buf.push_back('\0');
-    return;
-  }
-
   // Allows an space for the null terminator.
   ++size_bound;
 
@@ -470,6 +462,10 @@ StringLiteralParser::StringLiteralParser(Lexer &lexer,
 
   result_buf.resize(size_bound);
   token_buf.resize(max_token_size);
+
+  // In case we get an empty string literal, there's nothing left to be done.
+  if (size_bound == 0)
+    return;
 
   char *result_ptr = result_buf.data();
 
