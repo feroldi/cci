@@ -333,6 +333,7 @@ auto try_read_ucn(Lexer &lex, const char *&start_ptr, const char *slash_ptr,
       return 0;
     }
   }
+  // high and low surrogates
   else if (code_point >= 0xD800 && code_point <= 0xDFFF)
   {
     report(lex, slash_ptr, diag::err_ucn_invalid);
@@ -1236,6 +1237,7 @@ auto Token::spelling(const SourceManager &source_mgr) const -> std::string
     spelling.push_back(c);
     it += size;
   }
+  // Dirty tokens have to shrink in size.
   cci_ensures(spelling.size() < raw_text.size());
   return spelling;
 }
@@ -1258,31 +1260,31 @@ auto Lexer::get_spelling_to_buffer(const Token &tok, char *spelling_buf,
                                    const SourceManager &sm) -> size_t
 {
   std::string_view spelling = sm.text_slice(tok.source_range());
-  const auto start = spelling.begin();
-  const auto end = spelling.end();
+  const auto spell_start = spelling.begin();
+  const auto spell_end = spelling.end();
 
   // No newline escapes, UCNs, nor trigraphs. We're good to go.
   if (!tok.is_dirty())
   {
-    const char *spelling_buf_start = spelling_buf;
-    return static_cast<size_t>(std::copy(start, end, spelling_buf) -
-                               spelling_buf_start);
+    const char *const buf_start = spelling_buf;
+    const char *const buf_end = std::copy(spell_start, spell_end, spelling_buf);
+    return static_cast<size_t>(buf_end - buf_start);
   }
-
-  auto it = start;
+  auto it = spell_start;
   size_t length = 0;
-  while (it != end)
+  while (it != spell_end)
   {
     const auto [c, size] = peek_char_and_size_nontrivial(it, 0, nullptr);
     *spelling_buf++ = c;
     it += size;
     ++length;
   }
-
+  // Dirty tokens have to shrink in size.
+  cci_ensures(length < tok.size());
   return length;
 }
 
-// Lexes a token in the position `buffer_ptr`. Most of the lexing occurs here.
+// Lexes a token in the position `buffer_ptr`.
 auto Lexer::next_token() -> std::optional<Token>
 {
   if (Token result; lex_token(*this, buffer_ptr, result))

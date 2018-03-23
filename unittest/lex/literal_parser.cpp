@@ -12,7 +12,7 @@ using namespace cci;
 
 namespace {
 
-TEST(LiteralParser, numericConstants)
+TEST(LiteralParserTest, numericConstants)
 {
   const char *code = R"(
 42uL // ok, decimal
@@ -244,7 +244,7 @@ TEST(LiteralParser, numericConstants)
   }
 }
 
-TEST(LiteralParser, charConstants)
+TEST(LiteralParserTest, charConstants)
 {
   const char *code = R"(
 'A'
@@ -300,13 +300,15 @@ u'\u00A' // error: invalid UCN
   }
 }
 
-TEST(LiteralParser, stringLiterals)
+TEST(LiteralParserTest, stringLiterals)
 {
   const char *code = R"(
 "small string" " that has become long now";
 "good" L" wide strings" " are good";
 u8"but this one" " is" L" problematic" L"!";
 U""; // empty string
+u"\U00010437"; // UTF-16 string
+u8"𐐷"; // UTF-8 string
 )";
   DiagnosticsOptions opts;
   CompilerDiagnostics diag(opts);
@@ -351,6 +353,28 @@ U""; // empty string
     StringLiteralParser str(lexer, string_toks, target);
     uni::UTF32 chr = reinterpret_cast<char32_t *>(str.result_buf.data())[0];
     EXPECT_EQ(0ul, chr);
+  }
+
+  {
+    string_toks.clear();
+    while ((tok = lexer.next_token()) && tok->is_not(TokenKind::semi))
+      string_toks.push_back(*tok);
+    StringLiteralParser str(lexer, string_toks, target);
+    char16_t encoded[] = {0xD801, 0xDC37, 0x0000};
+    auto result = reinterpret_cast<char16_t *>(str.result_buf.data());
+    for (int i = 0; encoded[i]; ++i)
+      EXPECT_EQ(encoded[i], result[i]) << "encoded and result differ at " << i;
+  }
+
+  {
+    string_toks.clear();
+    while ((tok = lexer.next_token()) && tok->is_not(TokenKind::semi))
+      string_toks.push_back(*tok);
+    StringLiteralParser str(lexer, string_toks, target);
+    uni::UTF8 encoded[] = {0xF0, 0x90, 0x90, 0xB7, 0x00};
+    uni::UTF8 *result = reinterpret_cast<uni::UTF8 *>(str.result_buf.data());
+    for (int i = 0; encoded[i]; ++i)
+      EXPECT_EQ(encoded[i], result[i]) << "encoded and result differ at " << i;
   }
 }
 

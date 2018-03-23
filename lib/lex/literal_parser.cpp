@@ -134,7 +134,8 @@ NumericConstantParser::NumericConstantParser(Lexer &lexer,
       }
       else if (has_period)
       {
-        report(lexer, tok_begin, tok_loc, tok_begin, diag::err_missing_exponent);
+        report(lexer, tok_begin, tok_loc, tok_begin,
+               diag::err_missing_exponent);
         has_error = true;
       }
     }
@@ -237,15 +238,27 @@ auto NumericConstantParser::eval_to_integer() -> std::pair<uint64_t, bool>
   return {value, overflowed};
 }
 
-static auto evaluate_ucn(Lexer &lex, SourceLocation tok_loc,
-                         const char *tok_begin, const char *&tok_ptr,
-                         const char *tok_end, bool &has_error) -> uint32_t
+// Reads a UCN escape value and sets it to `*code_point`. Returns true
+// on success.
+//
+// This function reads similar to the one used in the main lexing phase. So
+// here's some homework:
+// TODO: Merge this function with lexer's, and put it in a dedicated API.
+static auto parse_ucn_escape(Lexer &lex, SourceLocation tok_loc,
+                             const char *tok_begin, const char *&tok_ptr,
+                             const char *tok_end, uint32_t *code_point) -> bool
 {
   cci_expects(tok_ptr[0] == '\\' && (tok_ptr[1] == 'u' || tok_ptr[1] == 'U'));
   int num_hexdigits = tok_ptr[1] == 'u' ? 4 : 8;
-  const auto escape_begin = tok_ptr;
+  const char *escape_begin = tok_ptr;
   tok_ptr += 2; // Skips \u or \U.
-  uint64_t code_point = 0;
+  *code_point = 0;
+
+  if (tok_ptr == tok_end || !is_hexdigit(*tok_ptr))
+  {
+    report(lex, escape_begin, tok_loc, tok_begin, diag::err_ucn_no_hexdigits);
+    return false;
+  }
 
   int num_countdown = num_hexdigits;
   for (; tok_ptr != tok_end && num_countdown != 0; --num_countdown)
@@ -253,8 +266,8 @@ static auto evaluate_ucn(Lexer &lex, SourceLocation tok_loc,
     uint32_t val = hexdigit_value(*tok_ptr);
     if (val == -1U)
       break;
-    code_point <<= 4;
-    code_point += val;
+    *code_point <<= 4;
+    *code_point += val;
     ++tok_ptr;
   }
 
@@ -263,17 +276,75 @@ static auto evaluate_ucn(Lexer &lex, SourceLocation tok_loc,
   if (num_countdown)
   {
     report(lex, escape_begin, tok_loc, tok_begin, diag::err_ucn_invalid);
-    has_error = true;
+    return false;
   }
 
-  return code_point;
+  else if ((*code_point >= 0xD800 &&
+            *code_point <= 0xDFFF) || // high and low surrogates
+           *code_point > 0x10FFFF) // maximum UTF-32 code point
+  {
+    report(lex, escape_begin, tok_loc, tok_begin, diag::err_ucn_invalid);
+    return false;
+  }
+
+  return true;
+}
+
+// Encodes the code point of a UCN into the character or string literal buffer
+// `*result_buf`.
+static void encode_ucn_to_buffer(uint32_t ucn_val, char **result_buf,
+                                 size_t char_byte_width)
+{
+  cci_expects(char_byte_width == 4 || char_byte_width == 2 ||
+              char_byte_width == 1);
+
+  const auto code_point = static_cast<uni::UTF32>(ucn_val);
+
+  if (char_byte_width == 4)
+  {
+    std::memcpy(*result_buf, &code_point, sizeof(code_point));
+    *result_buf += sizeof(code_point);
+    return;
+  }
+
+  const uni::UTF32 *ucn_start = &code_point;
+  const uni::UTF32 *ucn_end = ucn_start + 1;
+
+  if (char_byte_width == 2)
+  {
+    // Copies UTF-16 code point directly if it fits in 2 bytes.
+    if (code_point <= 0xFFFF)
+    {
+      std::memcpy(*result_buf, &code_point, sizeof(uni::UTF16));
+      *result_buf += sizeof(uni::UTF16);
+      return;
+    }
+
+    // Encodes high and low UTF-16 surrogates.
+    uni::UTF32 cp = code_point - 0x10000;
+    uni::UTF16 high = 0xD800 + (cp >> 10); // division
+    uni::UTF16 low = 0xDC00 + (cp & 0x3FF); // remainder
+    std::memcpy(*result_buf, &high, sizeof(high));
+    *result_buf += sizeof(high);
+    std::memcpy(*result_buf, &low, sizeof(low));
+    *result_buf += sizeof(low);
+  }
+  else
+  {
+    cci_expects(char_byte_width == 1);
+    [[maybe_unused]] uni::ConversionResult res = uni::convert_utf32_to_utf8(
+      &ucn_start, ucn_end, reinterpret_cast<uni::UTF8 **>(result_buf),
+      reinterpret_cast<uni::UTF8 *>(*result_buf + sizeof(code_point)),
+      uni::strictConversion);
+    cci_expects(res == uni::conversionOK);
+  }
 }
 
 // Returns the value representation of an escape sequence.
-static auto evaluate_escape_sequence(Lexer &lex, SourceLocation tok_loc,
-                                     const char *tok_begin,
-                                     const char *&tok_ptr, const char *tok_end,
-                                     bool &has_error) -> uint32_t
+static auto parse_escape_sequence(Lexer &lex, SourceLocation tok_loc,
+                                  const char *tok_begin, const char *&tok_ptr,
+                                  const char *tok_end, bool &has_error)
+  -> uint32_t
 {
   auto escape_begin = tok_ptr;
 
@@ -288,8 +359,7 @@ static auto evaluate_escape_sequence(Lexer &lex, SourceLocation tok_loc,
     case '\'':
     case '"':
     case '?':
-    case '\\':
-      break;
+    case '\\': break;
     case 'a': // audible bell
       result = 0x07;
       break;
@@ -356,6 +426,7 @@ static auto evaluate_escape_sequence(Lexer &lex, SourceLocation tok_loc,
   return result;
 }
 
+// TODO: Implement multibyte characters.
 CharConstantParser::CharConstantParser(Lexer &lexer,
                                        std::string_view tok_spelling,
                                        SourceLocation tok_loc,
@@ -381,13 +452,23 @@ CharConstantParser::CharConstantParser(Lexer &lexer,
   }
   else if (tok_ptr[1] == 'u' || tok_ptr[1] == 'U')
   {
-    value =
-      evaluate_ucn(lexer, tok_loc, tok_begin, tok_ptr, tok_end, has_error);
+    // FIXME: This should properly encode
+    if (uint32_t code_point = 0; parse_ucn_escape(
+          lexer, tok_loc, tok_begin, tok_ptr, tok_end, &code_point))
+    {
+      auto value_ptr = reinterpret_cast<char *>(&value);
+      // TODO: Implement different char widths.
+      // XXX: Temporarily converting to UTF-32, until multibyte characters are
+      // implemented.
+      encode_ucn_to_buffer(code_point, &value_ptr, 4);
+    }
+    else
+      has_error = true;
   }
   else
   {
-    value = evaluate_escape_sequence(lexer, tok_loc, tok_begin, tok_ptr,
-                                     tok_end, has_error);
+    value = parse_escape_sequence(lexer, tok_loc, tok_begin, tok_ptr, tok_end,
+                                  has_error);
   }
 
   cci_expects(*tok_ptr == '\'');
@@ -408,8 +489,8 @@ StringLiteralParser::StringLiteralParser(Lexer &lexer,
   cci_expects(string_toks[0].size() >= 2);
   size_t size_bound = string_toks[0].size() - 2; // removes ""
 
-  // Holds the size of the biggest string literal. This is used to allocate memory
-  // for a temporary buffer to hold the processed strings.
+  // Holds the size of the biggest string literal. This is used to allocate
+  // memory for a temporary buffer to hold the processed strings.
   size_t max_token_size = size_bound;
 
   cci_expects(is_string_literal(string_toks[0].kind));
@@ -419,7 +500,8 @@ StringLiteralParser::StringLiteralParser(Lexer &lexer,
   for (size_t i = 1; i != string_toks.size(); ++i)
   {
     cci_expects(is_string_literal(string_toks[i].kind));
-    if (string_toks[i].is_not(kind) && string_toks[i].is_not(TokenKind::string_literal))
+    if (string_toks[i].is_not(kind) &&
+        string_toks[i].is_not(TokenKind::string_literal))
     {
       if (kind == TokenKind::string_literal)
         kind = string_toks[i].kind;
@@ -546,23 +628,19 @@ StringLiteralParser::StringLiteralParser(Lexer &lexer,
       }
       else if (tokbuf_ptr[1] == 'u' || tokbuf_ptr[1] == 'U')
       {
-        uint32_t code_point =
-          evaluate_ucn(lexer, string_tok.location(), tokbuf_begin, tokbuf_ptr,
-                       tokbuf_end, has_error);
-
-        // FIXME: Convert to the appropriate encoding. This is very wrong as it
-        // is right now.
-        result_ptr = std::copy(reinterpret_cast<const char *>(&code_point),
-                               reinterpret_cast<const char *>(&code_point) +
-                                 sizeof(code_point),
-                               result_ptr);
+        uint32_t code_point = 0;
+        if (parse_ucn_escape(lexer, string_tok.location(), tokbuf_begin,
+                             tokbuf_ptr, tokbuf_end, &code_point))
+          encode_ucn_to_buffer(code_point, &result_ptr, char_byte_width);
+        else
+          has_error = true;
       }
       else
       {
         // If it's not a UCN, then it's a normal escape sequence.
         uint32_t result_char =
-          evaluate_escape_sequence(lexer, string_tok.location(), tokbuf_begin,
-                                   tokbuf_ptr, tokbuf_end, has_error);
+          parse_escape_sequence(lexer, string_tok.location(), tokbuf_begin,
+                                tokbuf_ptr, tokbuf_end, has_error);
 
         if (char_byte_width == 4)
         {
@@ -572,7 +650,8 @@ StringLiteralParser::StringLiteralParser(Lexer &lexer,
         }
         else if (char_byte_width == 2)
         {
-          const auto result_wide = static_cast<uni::UTF16>(result_char & 0xFFFF);
+          const auto result_wide =
+            static_cast<uni::UTF16>(result_char & 0xFFFF);
           std::memcpy(result_ptr, &result_char, sizeof(result_wide));
           result_ptr += sizeof(result_wide);
         }

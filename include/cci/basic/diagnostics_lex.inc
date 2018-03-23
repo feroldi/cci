@@ -1,5 +1,6 @@
 DIAG(warn_ucn_incomplete, ::cci::Severity::Warning, "incomplete universal character name; treating '\\' as an unknown token")
 DIAG(err_ucn_invalid, ::cci::Severity::Error, "invalid universal character name; treating '\\' as an unknown token")
+DIAG(err_ucn_no_hexdigits, ::cci::Severity::Error, "universal character name escape has no hexadecimal digits")
 DIAG(err_unterminated_comment, ::cci::Severity::Error, "unterminated {0:line|block} comment")
 DIAG(err_unterminated_char_or_string, ::cci::Severity::Error, "missing terminating {0} for this {1}")
 DIAG(warn_unknown_escape_sequence, ::cci::Severity::Warning, "unknown escape sequence '\\{0}'")
