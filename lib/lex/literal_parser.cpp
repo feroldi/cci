@@ -214,18 +214,20 @@ NumericConstantParser::NumericConstantParser(Lexer &lexer,
   }
 }
 
-auto NumericConstantParser::eval_to_integer() -> std::pair<uint64_t, bool>
+auto NumericConstantParser::to_integer(size_t width) -> std::pair<uint64_t, bool>
 {
   cci_expects(is_integer_literal());
-  cci_expects(radix != 0);
+  cci_expects(radix == 8 || radix == 10 || radix == 16);
 
   uint64_t value = 0;
   bool overflowed = false;
 
+  // FIXME: This handles the worst case scenario, where the number of digits
+  // is relevant to conclude whether it overflows. Integer literals with fewer
+  // digits won't ever overflow, which it's almost always the case, so we're
+  // paying too much for these overflow checks here.
   for (auto it = digit_begin; it != digit_end; ++it)
   {
-    // FIXME: This overflow check doesn't take smaller units into account, such
-    // as signed or unsigned 8, 16, and 32 bits.
     uint64_t old_val = value;
     value *= radix;
     overflowed |= (value / radix) != old_val;
@@ -235,7 +237,10 @@ auto NumericConstantParser::eval_to_integer() -> std::pair<uint64_t, bool>
     overflowed |= value < old_val;
   }
 
-  return {value, overflowed};
+  if (width != sizeof(value) * 8)
+    overflowed |= static_cast<bool>(value >> width);
+
+  return {value & (~0ull >> width), overflowed};
 }
 
 // Reads a UCN escape value and sets it to `*code_point`. Returns true

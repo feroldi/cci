@@ -30,12 +30,24 @@ TEST(LiteralParserTest, numericConstants)
 0xep1f // ok, hexadecimal floating constant
 0x.f // error: missing exponent
 18446744073709551616ull // error: overflow
+65536 // type is short, error: overflow
 )";
   DiagnosticsOptions opts;
   CompilerDiagnostics diag(opts);
   auto source = SourceManager::from_buffer(diag, code);
   auto lexer = Lexer(source);
   std::optional<Token> tok;
+  const TargetInfo target{
+    /*.char_width = */sizeof(char) * 8,
+    /*.wchar_width = */sizeof(wchar_t) * 8,
+    /*.char16_t_width = */sizeof(char16_t) * 8,
+    /*.char32_t_width = */sizeof(char32_t) * 8,
+
+    /*.short_width = */sizeof(short) * 8,
+    /*.int_width = */sizeof(int) * 8,
+    /*.long_width = */sizeof(long) * 8,
+    /*.long_long_width = */sizeof(long long) * 8,
+  };
 
   // 42ul
   {
@@ -43,7 +55,8 @@ TEST(LiteralParserTest, numericConstants)
     ASSERT_TRUE(tok.has_value());
     EXPECT_EQ(TokenKind::numeric_constant, tok->kind);
 
-    NumericConstantParser result(lexer, tok->spelling(source), tok->location());
+    std::string spelling = tok->spelling(source);
+    NumericConstantParser result(lexer, spelling, tok->location());
     EXPECT_FALSE(result.has_error);
     EXPECT_TRUE(result.is_integer_literal());
     EXPECT_EQ(10, result.radix);
@@ -51,7 +64,7 @@ TEST(LiteralParserTest, numericConstants)
     EXPECT_TRUE(result.is_long);
     EXPECT_FALSE(result.is_long_long);
 
-    const auto[value, overflowed] = result.eval_to_integer();
+    const auto [value, overflowed] = result.to_integer(target.long_long_width);
 
     ASSERT_FALSE(overflowed);
     EXPECT_EQ(42ull, value);
@@ -63,7 +76,8 @@ TEST(LiteralParserTest, numericConstants)
     ASSERT_TRUE(tok.has_value());
     EXPECT_EQ(TokenKind::numeric_constant, tok->kind);
 
-    NumericConstantParser result(lexer, tok->spelling(source), tok->location());
+    std::string spelling = tok->spelling(source);
+    NumericConstantParser result(lexer, spelling, tok->location());
     EXPECT_FALSE(result.has_error);
     EXPECT_TRUE(result.is_integer_literal());
     EXPECT_EQ(8, result.radix);
@@ -71,7 +85,7 @@ TEST(LiteralParserTest, numericConstants)
     EXPECT_FALSE(result.is_long);
     EXPECT_FALSE(result.is_long_long);
 
-    const auto[value, overflowed] = result.eval_to_integer();
+    const auto [value, overflowed] = result.to_integer(target.long_long_width);
 
     ASSERT_FALSE(overflowed);
     EXPECT_EQ(34ull, value);
@@ -83,7 +97,8 @@ TEST(LiteralParserTest, numericConstants)
     ASSERT_TRUE(tok.has_value());
     EXPECT_EQ(TokenKind::numeric_constant, tok->kind);
 
-    NumericConstantParser result(lexer, tok->spelling(source), tok->location());
+    std::string spelling = tok->spelling(source);
+    NumericConstantParser result(lexer, spelling, tok->location());
     EXPECT_FALSE(result.has_error);
     EXPECT_EQ(16, result.radix);
     EXPECT_TRUE(result.is_integer_literal());
@@ -91,7 +106,7 @@ TEST(LiteralParserTest, numericConstants)
     EXPECT_FALSE(result.is_long);
     EXPECT_TRUE(result.is_long_long);
 
-    const auto[value, overflowed] = result.eval_to_integer();
+    const auto [value, overflowed] = result.to_integer(target.long_long_width);
 
     ASSERT_FALSE(overflowed);
     EXPECT_EQ(3735929054ull, value);
@@ -103,7 +118,8 @@ TEST(LiteralParserTest, numericConstants)
     ASSERT_TRUE(tok.has_value());
     EXPECT_EQ(TokenKind::numeric_constant, tok->kind);
 
-    NumericConstantParser result(lexer, tok->spelling(source), tok->location());
+    std::string spelling = tok->spelling(source);
+    NumericConstantParser result(lexer, spelling, tok->location());
     EXPECT_TRUE(result.has_error);
   }
 
@@ -113,7 +129,8 @@ TEST(LiteralParserTest, numericConstants)
     ASSERT_TRUE(tok.has_value());
     EXPECT_EQ(TokenKind::numeric_constant, tok->kind);
 
-    NumericConstantParser result(lexer, tok->spelling(source), tok->location());
+    std::string spelling = tok->spelling(source);
+    NumericConstantParser result(lexer, spelling, tok->location());
     EXPECT_TRUE(result.has_error);
   }
 
@@ -123,7 +140,8 @@ TEST(LiteralParserTest, numericConstants)
     ASSERT_TRUE(tok.has_value());
     EXPECT_EQ(TokenKind::numeric_constant, tok->kind);
 
-    NumericConstantParser result(lexer, tok->spelling(source), tok->location());
+    std::string spelling = tok->spelling(source);
+    NumericConstantParser result(lexer, spelling, tok->location());
     EXPECT_TRUE(result.has_error);
   }
 
@@ -133,7 +151,8 @@ TEST(LiteralParserTest, numericConstants)
     ASSERT_TRUE(tok.has_value());
     EXPECT_EQ(TokenKind::numeric_constant, tok->kind);
 
-    NumericConstantParser result(lexer, tok->spelling(source), tok->location());
+    std::string spelling = tok->spelling(source);
+    NumericConstantParser result(lexer, spelling, tok->location());
     EXPECT_FALSE(result.has_error);
     EXPECT_EQ(10, result.radix);
     EXPECT_TRUE(result.is_floating_literal());
@@ -147,7 +166,8 @@ TEST(LiteralParserTest, numericConstants)
     ASSERT_TRUE(tok.has_value());
     EXPECT_EQ(TokenKind::numeric_constant, tok->kind);
 
-    NumericConstantParser result(lexer, tok->spelling(source), tok->location());
+    std::string spelling = tok->spelling(source);
+    NumericConstantParser result(lexer, spelling, tok->location());
     EXPECT_FALSE(result.has_error);
     EXPECT_EQ(10, result.radix);
     EXPECT_TRUE(result.is_floating_literal());
@@ -162,7 +182,8 @@ TEST(LiteralParserTest, numericConstants)
     ASSERT_TRUE(tok.has_value());
     EXPECT_EQ(TokenKind::numeric_constant, tok->kind);
 
-    NumericConstantParser result(lexer, tok->spelling(source), tok->location());
+    std::string spelling = tok->spelling(source);
+    NumericConstantParser result(lexer, spelling, tok->location());
     EXPECT_TRUE(result.has_error);
   }
 
@@ -172,7 +193,8 @@ TEST(LiteralParserTest, numericConstants)
     ASSERT_TRUE(tok.has_value());
     EXPECT_EQ(TokenKind::numeric_constant, tok->kind);
 
-    NumericConstantParser result(lexer, tok->spelling(source), tok->location());
+    std::string spelling = tok->spelling(source);
+    NumericConstantParser result(lexer, spelling, tok->location());
     EXPECT_FALSE(result.has_error);
     EXPECT_EQ(10, result.radix);
     EXPECT_TRUE(result.is_floating_literal());
@@ -185,7 +207,8 @@ TEST(LiteralParserTest, numericConstants)
     ASSERT_TRUE(tok.has_value());
     EXPECT_EQ(TokenKind::numeric_constant, tok->kind);
 
-    NumericConstantParser result(lexer, tok->spelling(source), tok->location());
+    std::string spelling = tok->spelling(source);
+    NumericConstantParser result(lexer, spelling, tok->location());
     EXPECT_FALSE(result.has_error);
     EXPECT_EQ(10, result.radix);
     EXPECT_TRUE(result.is_floating_literal());
@@ -198,7 +221,8 @@ TEST(LiteralParserTest, numericConstants)
     ASSERT_TRUE(tok.has_value());
     EXPECT_EQ(TokenKind::numeric_constant, tok->kind);
 
-    NumericConstantParser result(lexer, tok->spelling(source), tok->location());
+    std::string spelling = tok->spelling(source);
+    NumericConstantParser result(lexer, spelling, tok->location());
     EXPECT_FALSE(result.has_error);
     EXPECT_EQ(16, result.radix);
     EXPECT_TRUE(result.is_floating_literal());
@@ -212,7 +236,8 @@ TEST(LiteralParserTest, numericConstants)
     ASSERT_TRUE(tok.has_value());
     EXPECT_EQ(TokenKind::numeric_constant, tok->kind);
 
-    NumericConstantParser result(lexer, tok->spelling(source), tok->location());
+    std::string spelling = tok->spelling(source);
+    NumericConstantParser result(lexer, spelling, tok->location());
     EXPECT_FALSE(result.has_error);
     EXPECT_EQ(16, result.radix);
     EXPECT_TRUE(result.is_floating_literal());
@@ -227,7 +252,8 @@ TEST(LiteralParserTest, numericConstants)
     ASSERT_TRUE(tok.has_value());
     EXPECT_EQ(TokenKind::numeric_constant, tok->kind);
 
-    NumericConstantParser result(lexer, tok->spelling(source), tok->location());
+    std::string spelling = tok->spelling(source);
+    NumericConstantParser result(lexer, spelling, tok->location());
     EXPECT_TRUE(result.has_error);
   }
 
@@ -237,9 +263,23 @@ TEST(LiteralParserTest, numericConstants)
     ASSERT_TRUE(tok.has_value());
     EXPECT_EQ(TokenKind::numeric_constant, tok->kind);
 
-    NumericConstantParser result(lexer, tok->spelling(source), tok->location());
+    std::string spelling = tok->spelling(source);
+    NumericConstantParser result(lexer, spelling, tok->location());
     EXPECT_FALSE(result.has_error);
-    const auto[value, overflowed] = result.eval_to_integer();
+    const auto [value, overflowed] = result.to_integer(target.long_long_width);
+    ASSERT_TRUE(overflowed);
+  }
+
+  // 65536 // type is short, error: overflow
+  {
+    tok = lexer.next_token();
+    ASSERT_TRUE(tok.has_value());
+    EXPECT_EQ(TokenKind::numeric_constant, tok->kind);
+
+    std::string spelling = tok->spelling(source);
+    NumericConstantParser result(lexer, spelling, tok->location());
+    ASSERT_FALSE(result.has_error);
+    const auto [value, overflowed] = result.to_integer(target.short_width);
     ASSERT_TRUE(overflowed);
   }
 }
@@ -314,7 +354,12 @@ u8"𐐷"; // UTF-8 string
   CompilerDiagnostics diag(opts);
   auto source = SourceManager::from_buffer(diag, code);
   auto lexer = Lexer(source);
-  TargetInfo target;
+  TargetInfo target{
+    /*.char_width = */sizeof(char) * 8,
+    /*.wchar_width = */sizeof(wchar_t) * 8,
+    /*.char16_t_width = */sizeof(char16_t) * 8,
+    /*.char32_t_width = */sizeof(char32_t) * 8,
+  };
   std::vector<Token> string_toks;
   string_toks.reserve(4);
   std::optional<Token> tok;
