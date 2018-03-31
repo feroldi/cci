@@ -15,6 +15,8 @@ struct TargetInfo
   size_t long_width = 32;
   size_t long_long_width = 64;
 
+  bool is_char_signed = true;
+
   TargetInfo() = default;
 };
 

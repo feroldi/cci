@@ -431,52 +431,128 @@ static auto parse_escape_sequence(Lexer &lex, SourceLocation tok_loc,
   return result;
 }
 
-// TODO: Implement multibyte characters.
 CharConstantParser::CharConstantParser(Lexer &lexer,
                                        std::string_view tok_spelling,
                                        SourceLocation tok_loc,
-                                       TokenKind char_kind)
-  : kind(char_kind)
+                                       TokenKind char_kind,
+                                       const TargetInfo &target)
+  : value(0), kind(char_kind)
 {
   cci_expects(is_char_constant(char_kind));
   cci_expects(tok_spelling.end()[0] == '\0');
   const char *const tok_begin = tok_spelling.begin();
-  const char *const tok_end = tok_spelling.end();
+  const char *tok_end = tok_spelling.end();
   const char *tok_ptr = tok_begin;
+  auto &diag = lexer.diagnostics();
 
   // Skips either L, u or U.
-  // TODO: Implement different char widths.
   if (char_kind != TokenKind::char_constant)
+  {
+    cci_expects(*tok_ptr == 'L' || *tok_ptr == 'u' || *tok_ptr == 'U');
     ++tok_ptr;
-
-  ++tok_ptr; // Skips '\'' character.
-
-  if (*tok_ptr != '\\')
-  {
-    value = *tok_ptr++;
-  }
-  else if (tok_ptr[1] == 'u' || tok_ptr[1] == 'U')
-  {
-    // FIXME: This should properly encode
-    if (uint32_t code_point = 0; parse_ucn_escape(
-          lexer, tok_loc, tok_begin, tok_ptr, tok_end, &code_point))
-    {
-      auto value_ptr = reinterpret_cast<char *>(&value);
-      // TODO: Implement different char widths.
-      // XXX: Temporarily converting to UTF-32, until multibyte characters are
-      // implemented.
-      encode_ucn_to_buffer(code_point, &value_ptr, 4);
-    }
-    else
-      has_error = true;
-  }
-  else
-  {
-    value = parse_escape_sequence(lexer, tok_loc, tok_begin, tok_ptr, tok_end,
-                                  has_error);
   }
 
   cci_expects(*tok_ptr == '\'');
+  ++tok_ptr; // Skips starting quote.
+
+  --tok_end; // Trims ending quote.
+  cci_expects(*tok_end == '\'');
+
+  char_byte_width = resolve_char_width(kind, target);
+  // Assumes that the char width for this target is a multiple of 8.
+  cci_expects((target.char_width & 0b0111) == 0);
+  char_byte_width /= 8;
+
+  small_vector<uint32_t, 4> codepoint_buffer;
+  codepoint_buffer.resize(static_cast<size_t>(tok_end - tok_ptr));
+  uint32_t *buf_begin = &codepoint_buffer.front();
+  uint32_t *buf_end = buf_begin + codepoint_buffer.size();
+
+  while (tok_ptr != tok_end)
+  {
+    if (*tok_ptr != '\\')
+    {
+      const char *chunk_start = tok_ptr;
+      const char *chunk_end =
+        std::find_if(tok_ptr, tok_end, [](char c) { return c == '\\'; });
+
+      uni::ConversionResult res = uni::convert_utf8_to_utf32(
+        reinterpret_cast<const uni::UTF8 **>(&tok_ptr),
+        reinterpret_cast<const uni::UTF8 *>(chunk_end), &buf_begin, buf_end,
+        uni::strictConversion);
+
+      if (res == uni::conversionOK)
+      {
+        // TODO: Check for large values.
+      }
+      else
+      {
+        // Both Clang and GCC just copy the char literal's raw source in case of
+        // bad unicode encoding, so do the same to remain compatible with them.
+        std::memcpy(buf_begin, chunk_start,
+                    static_cast<size_t>(chunk_end - chunk_start));
+        tok_ptr = chunk_end;
+        ++buf_begin;
+      }
+    }
+    else if (tok_ptr[1] == 'u' || tok_ptr[1] == 'U')
+    {
+      if (!parse_ucn_escape(lexer, tok_loc, tok_begin, tok_ptr, tok_end,
+                            buf_begin))
+        has_error = true;
+      ++buf_begin;
+    }
+    else
+    {
+      *buf_begin++ = parse_escape_sequence(lexer, tok_loc, tok_begin, tok_ptr,
+                                           tok_end, has_error);
+    }
+  }
+
+  cci_expects(*tok_ptr == '\'');
+
+  codepoint_buffer.resize(
+    static_cast<size_t>(buf_begin - &codepoint_buffer.front()));
+
+  if (codepoint_buffer.empty())
+  {
+    diag.report(tok_loc, diag::err_empty_character);
+    has_error = true;
+    return;
+  }
+
+  const size_t num_of_chars = codepoint_buffer.size();
+  is_multibyte = num_of_chars > 1;
+  uint32_t result_value = 0;
+
+  if (kind == TokenKind::char_constant && is_multibyte)
+  {
+    cci_expects(char_byte_width == 1);
+    for (uint32_t cp : codepoint_buffer)
+    {
+      // TODO: Check for overflow.
+      result_value <<= 8;
+      result_value |= cp & 0xFF;
+    }
+  }
+  else
+  {
+    // In case of multiple multibyte characters for non ASCII character
+    // literals, use the last multibyte character to remain compatible with
+    // GCC's and Clang's behavior.
+    result_value = codepoint_buffer.back();
+  }
+
+  // [C11 6.4.4.4p13 EXAMPLE 2]
+  // In an implementation in which type char has the same range of values as
+  // signed char, the integer character constant '\xFF' has the value -1; if type
+  // char has the same range of values as unsigned char, the character constant
+  // '\xFF' has the value +255.
+  if (kind == TokenKind::char_constant && num_of_chars == 1 &&
+      target.is_char_signed)
+    result_value = static_cast<signed char>(result_value);
+
+  this->value = result_value;
 }
 
 StringLiteralParser::StringLiteralParser(Lexer &lexer,
@@ -550,8 +626,6 @@ StringLiteralParser::StringLiteralParser(Lexer &lexer,
 
   for (const auto &string_tok : string_toks)
   {
-    cci_expects(is_string_literal(string_tok.kind));
-
     // Gets the token spelling, and writes it to `token_buf`. There's no need
     // to clear the buffer, since we know the amount of bytes that is written
     // to the buffer, which is enough to form a range of iterators.
@@ -657,7 +731,7 @@ StringLiteralParser::StringLiteralParser(Lexer &lexer,
         {
           const auto result_wide =
             static_cast<uni::UTF16>(result_char & 0xFFFF);
-          std::memcpy(result_ptr, &result_char, sizeof(result_wide));
+          std::memcpy(result_ptr, &result_wide, sizeof(result_wide));
           result_ptr += sizeof(result_wide);
         }
         else

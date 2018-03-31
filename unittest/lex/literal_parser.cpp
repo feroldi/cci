@@ -288,22 +288,24 @@ TEST(LiteralParserTest, charConstants)
 {
   const char *code = R"(
 'A'
-'\xff'
 '\x' // error: empty hex escape
 u'\u00A8'
 u'\u00A' // error: invalid UCN
+'abcd' // multibyte character
+'\xFF' // -1 for signed, +255 for unsigned
 )";
   DiagnosticsOptions opts;
   CompilerDiagnostics diag(opts);
   auto source = SourceManager::from_buffer(diag, code);
   auto lexer = Lexer(source);
   std::optional<Token> tok;
+  const TargetInfo target{};
 
   {
     tok = lexer.next_token();
     ASSERT_TRUE(tok.has_value());
     CharConstantParser result(lexer, tok->spelling(source), tok->location(),
-                              tok->kind);
+                              tok->kind, target);
     EXPECT_EQ('A', result.value);
   }
 
@@ -311,15 +313,7 @@ u'\u00A' // error: invalid UCN
     tok = lexer.next_token();
     ASSERT_TRUE(tok.has_value());
     CharConstantParser result(lexer, tok->spelling(source), tok->location(),
-                              tok->kind);
-    EXPECT_EQ(255, result.value);
-  }
-
-  {
-    tok = lexer.next_token();
-    ASSERT_TRUE(tok.has_value());
-    CharConstantParser result(lexer, tok->spelling(source), tok->location(),
-                              tok->kind);
+                              tok->kind, target);
     EXPECT_TRUE(result.has_error);
   }
 
@@ -327,7 +321,7 @@ u'\u00A' // error: invalid UCN
     tok = lexer.next_token();
     ASSERT_TRUE(tok.has_value());
     CharConstantParser result(lexer, tok->spelling(source), tok->location(),
-                              tok->kind);
+                              tok->kind, target);
     EXPECT_EQ(u'\u00A8', result.value);
   }
 
@@ -335,8 +329,49 @@ u'\u00A' // error: invalid UCN
     tok = lexer.next_token();
     ASSERT_TRUE(tok.has_value());
     CharConstantParser result(lexer, tok->spelling(source), tok->location(),
-                              tok->kind);
+                              tok->kind, target);
     EXPECT_TRUE(result.has_error);
+  }
+
+  // 'abcd' // multibyte character
+  {
+    tok = lexer.next_token();
+    ASSERT_TRUE(tok.has_value());
+    CharConstantParser result(lexer, tok->spelling(source), tok->location(),
+                              tok->kind, target);
+    
+    const uint32_t value = [] {
+      uint32_t value = 0;
+      for (const char x : {'a', 'b', 'c', 'd'})
+      {
+        value <<= 8;
+        value |= static_cast<uint32_t>(x);
+      }
+      return value;
+    }();
+
+    EXPECT_TRUE(result.is_multibyte);
+    EXPECT_EQ(value, result.value);
+  }
+
+  // '\xFF' // -1 for signed, +255 for unsigned
+  tok = lexer.next_token();
+  const std::string tok_spelling = tok->spelling(source);
+  ASSERT_TRUE(tok.has_value());
+
+  {
+    TargetInfo target;
+    target.is_char_signed = true;
+    CharConstantParser result(lexer, tok_spelling, tok->location(), tok->kind,
+                              target);
+    EXPECT_EQ(-1u, result.value);
+  }
+  {
+    TargetInfo target;
+    target.is_char_signed = false;
+    CharConstantParser result(lexer, tok_spelling, tok->location(), tok->kind,
+                              target);
+    EXPECT_EQ(255u, result.value);
   }
 }
 

@@ -14,4 +14,4 @@ DIAG(err_hex_escape_is_empty, ::cci::Severity::Error, "hexadecimal escape sequen
 DIAG(err_unknown_escape_sequence, ::cci::Severity::Error, "unknown escape sequence")
 DIAG(err_nonstd_string_concatenation, ::cci::Severity::Error, "concatenation of different kinds of strings is not standard compliant")
 DIAG(err_unknown_character, ::cci::Severity::Error, "unknown character '{0}'")
-DIAG(err_invalid_unicode_character, ::cci::Severity::Error, "invalid unicode character <U+{0:0>4X}>")
+DIAG(err_invalid_unicode_character, ::cci::Severity::Error, "invalid unicode character <U+{0:0>8X}>")

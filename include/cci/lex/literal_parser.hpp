@@ -36,12 +36,15 @@ struct NumericConstantParser
 
 struct CharConstantParser
 {
-  uint64_t value = 0;
+  uint32_t value = 0;
   TokenKind kind;
+  size_t char_byte_width;
+  bool is_multibyte;
   bool has_error = false;
 
   CharConstantParser(Lexer &, std::string_view tok_spelling,
-                     SourceLocation tok_loc, TokenKind char_kind);
+                     SourceLocation tok_loc, TokenKind char_kind,
+                     const TargetInfo &);
 };
 
 struct StringLiteralParser
