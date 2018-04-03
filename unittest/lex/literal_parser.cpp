@@ -294,6 +294,8 @@ u'\u00A' // error: invalid UCN
 'abcd' // multibyte character
 '\xFF' // -1 for signed, +255 for unsigned
 '\u0080' // error: Unicode character is too large
+'\123' // 0123
+'\777' // error: overflow
 )";
   DiagnosticsOptions opts;
   CompilerDiagnostics diag(opts);
@@ -388,6 +390,26 @@ u'\u00A' // error: invalid UCN
                               target);
     EXPECT_TRUE(result.has_error);
     EXPECT_EQ(-128u, result.value);
+  }
+
+  // '\123' // 0123
+  {
+    tok = lexer.next_token();
+    const std::string tok_spelling = tok->spelling(source);
+    ASSERT_TRUE(tok.has_value());
+    CharConstantParser result(lexer, tok_spelling, tok->location(), tok->kind,
+                              target);
+    EXPECT_EQ(0123, result.value);
+  }
+
+  // '\777' // error: overflow
+  {
+    tok = lexer.next_token();
+    const std::string tok_spelling = tok->spelling(source);
+    ASSERT_TRUE(tok.has_value());
+    CharConstantParser result(lexer, tok_spelling, tok->location(), tok->kind,
+                              target);
+    EXPECT_TRUE(result.has_error);
   }
 }
 

@@ -348,8 +348,8 @@ static void encode_ucn_to_buffer(uint32_t ucn_val, char **result_buf,
 // Returns the value representation of an escape sequence.
 static auto parse_escape_sequence(Lexer &lex, SourceLocation tok_loc,
                                   const char *tok_begin, const char *&tok_ptr,
-                                  const char *tok_end, bool &has_error)
-  -> uint32_t
+                                  const char *tok_end, size_t char_width,
+                                  bool *has_error) -> uint32_t
 {
   auto escape_begin = tok_ptr;
 
@@ -361,10 +361,8 @@ static auto parse_escape_sequence(Lexer &lex, SourceLocation tok_loc,
   // http://en.cppreference.com/w/c/language/escape
   switch (result)
   {
-    case '\'':
-    case '"':
-    case '?':
-    case '\\': break;
+    case '\'': case '"': case '?': case '\\':
+      break;
     case 'a': // audible bell
       result = 0x07;
       break;
@@ -389,15 +387,24 @@ static auto parse_escape_sequence(Lexer &lex, SourceLocation tok_loc,
     case '0': case '1': case '2': case '3':
     case '4': case '5': case '6': case '7':
     {
-      --tok_ptr; // Backs up one digit.
-      result = 0;
-      int num_digits = 0;
-      do
+      result -= '0';
+      int num_digits = 1;
+      while (tok_ptr != tok_end && num_digits < 3 && is_octdigit(*tok_ptr))
       {
         result <<= 3;
         result += *tok_ptr++ - '0';
         ++num_digits;
-      } while (tok_ptr != tok_end && num_digits < 3 && is_octdigit(*tok_ptr));
+      }
+
+      // Checks whether this octal escape fits in a character literal whose width
+      // is less than 32 bits. L'\777' should fit, whereas '\777' should not.
+      if (char_width < 32 && (result & (~0U >> (32 - char_width))) != 0)
+      {
+        report(lex, escape_begin, tok_loc, tok_begin,
+               diag::err_escape_sequence_too_large, selector{0});
+        *has_error = true;
+      }
+
       break;
     }
     case 'x':
@@ -407,25 +414,41 @@ static auto parse_escape_sequence(Lexer &lex, SourceLocation tok_loc,
       {
         report(lex, escape_begin, tok_loc, tok_begin,
                diag::err_hex_escape_is_empty);
-        has_error = true;
+        *has_error = true;
         break;
       }
 
-      // TODO: Check for overflow.
+      bool overflowed = false;
+
       for (; tok_ptr != tok_end; ++tok_ptr)
       {
         auto val = hexdigit_value(*tok_ptr);
-        if (val == -1U)
-          break;
+        if (val == -1U) break;
+        // Shifting out some existing bits from the result means it is about to
+        // overflow.
+        if (result & 0xF0000000) overflowed = true;
         result <<= 4;
         result += val;
       }
+
+      // Checks whether this hex escape fits in a character literal whose width
+      // is less than 32 bits. L'\xFFFF' should fit, whereas '\xFFFF' should not.
+      if (char_width < 32 && (result & (~0U >> (32 - char_width))) != 0)
+        overflowed = true;
+
+      if (overflowed)
+      {
+        report(lex, escape_begin, tok_loc, tok_begin,
+               diag::err_escape_sequence_too_large, selector{1});
+        *has_error = true;
+      }
+
       break;
     }
     default:
       report(lex, escape_begin, tok_loc, tok_begin,
              diag::err_unknown_escape_sequence);
-      has_error = true;
+      *has_error = true;
   }
 
   return result;
@@ -531,8 +554,9 @@ CharConstantParser::CharConstantParser(Lexer &lexer,
     }
     else
     {
-      *buf_begin++ = parse_escape_sequence(lexer, tok_loc, tok_begin, tok_ptr,
-                                           tok_end, has_error);
+      *buf_begin++ =
+        parse_escape_sequence(lexer, tok_loc, tok_begin, tok_ptr, tok_end,
+                              char_byte_width * 8, &has_error);
     }
   }
 
@@ -555,11 +579,23 @@ CharConstantParser::CharConstantParser(Lexer &lexer,
   if (kind == TokenKind::char_constant && is_multibyte)
   {
     cci_expects(char_byte_width == 1);
+    bool overflowed = false;
     for (uint32_t cp : codepoint_buffer)
     {
-      // TODO: Check for overflow.
+      if (result_value & 0xFF000000)
+        overflowed = true;
       result_value <<= 8;
       result_value |= cp & 0xFF;
+    }
+
+    const size_t char_width = char_byte_width * 8;
+    if (char_width != 32 && (result_value & (~0U >> (32 - char_width))) != 0)
+      overflowed = true;
+
+    if (overflowed)
+    {
+      diag.report(tok_loc, diag::err_unicode_character_too_large);
+      has_error = true;
     }
   }
   else
@@ -744,9 +780,9 @@ StringLiteralParser::StringLiteralParser(Lexer &lexer,
       else
       {
         // If it's not a UCN, then it's a normal escape sequence.
-        uint32_t result_char =
-          parse_escape_sequence(lexer, string_tok.location(), tokbuf_begin,
-                                tokbuf_ptr, tokbuf_end, has_error);
+        uint32_t result_char = parse_escape_sequence(
+          lexer, string_tok.location(), tokbuf_begin, tokbuf_ptr, tokbuf_end,
+          char_byte_width * 8, &has_error);
 
         if (char_byte_width == 4)
         {
