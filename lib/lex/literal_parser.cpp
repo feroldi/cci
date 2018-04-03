@@ -398,11 +398,13 @@ static auto parse_escape_sequence(Lexer &lex, SourceLocation tok_loc,
 
       // Checks whether this octal escape fits in a character literal whose width
       // is less than 32 bits. L'\777' should fit, whereas '\777' should not.
-      if (char_width < 32 && (result & (~0U >> (32 - char_width))) != 0)
+      if (char_width < 32 && (result >> char_width) != 0)
       {
         report(lex, escape_begin, tok_loc, tok_begin,
                diag::err_escape_sequence_too_large, selector{0});
         *has_error = true;
+        // Truncate the result.
+        result &= ~0U >> (32 - char_width);
       }
 
       break;
@@ -433,8 +435,12 @@ static auto parse_escape_sequence(Lexer &lex, SourceLocation tok_loc,
 
       // Checks whether this hex escape fits in a character literal whose width
       // is less than 32 bits. L'\xFFFF' should fit, whereas '\xFFFF' should not.
-      if (char_width < 32 && (result & (~0U >> (32 - char_width))) != 0)
+      if (char_width < 32 && (result >> char_width) != 0)
+      {
         overflowed = true;
+        // Truncate the result.
+        result &= ~0U >> (32 - char_width);
+      }
 
       if (overflowed)
       {
@@ -588,13 +594,9 @@ CharConstantParser::CharConstantParser(Lexer &lexer,
       result_value |= cp & 0xFF;
     }
 
-    const size_t char_width = char_byte_width * 8;
-    if (char_width != 32 && (result_value & (~0U >> (32 - char_width))) != 0)
-      overflowed = true;
-
     if (overflowed)
     {
-      diag.report(tok_loc, diag::err_unicode_character_too_large);
+      diag.report(tok_loc, diag::err_char_constant_too_large);
       has_error = true;
     }
   }

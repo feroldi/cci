@@ -304,14 +304,17 @@ u'\u00A' // error: invalid UCN
   std::optional<Token> tok;
   const TargetInfo target{};
 
+  // 'A'
   {
     tok = lexer.next_token();
     ASSERT_TRUE(tok.has_value());
     CharConstantParser result(lexer, tok->spelling(source), tok->location(),
                               tok->kind, target);
+    EXPECT_FALSE(result.has_error);
     EXPECT_EQ('A', result.value);
   }
 
+  // '\x' // error: empty hex escape
   {
     tok = lexer.next_token();
     ASSERT_TRUE(tok.has_value());
@@ -320,14 +323,17 @@ u'\u00A' // error: invalid UCN
     EXPECT_TRUE(result.has_error);
   }
 
+  // u'\u00A8'
   {
     tok = lexer.next_token();
     ASSERT_TRUE(tok.has_value());
     CharConstantParser result(lexer, tok->spelling(source), tok->location(),
                               tok->kind, target);
+    EXPECT_FALSE(result.has_error);
     EXPECT_EQ(u'\u00A8', result.value);
   }
 
+  // u'\u00A' // error: invalid UCN
   {
     tok = lexer.next_token();
     ASSERT_TRUE(tok.has_value());
@@ -342,19 +348,10 @@ u'\u00A' // error: invalid UCN
     ASSERT_TRUE(tok.has_value());
     CharConstantParser result(lexer, tok->spelling(source), tok->location(),
                               tok->kind, target);
-    
-    const uint32_t value = [] {
-      uint32_t value = 0;
-      for (const char x : {'a', 'b', 'c', 'd'})
-      {
-        value <<= 8;
-        value |= static_cast<uint32_t>(x);
-      }
-      return value;
-    }();
 
+    EXPECT_FALSE(result.has_error);
     EXPECT_TRUE(result.is_multibyte);
-    EXPECT_EQ(value, result.value);
+    EXPECT_EQ(1633837924u, result.value);
   }
 
   // '\xFF' // -1 for signed, +255 for unsigned
@@ -368,6 +365,7 @@ u'\u00A' // error: invalid UCN
       target.is_char_signed = true;
       CharConstantParser result(lexer, tok_spelling, tok->location(), tok->kind,
                                 target);
+      EXPECT_FALSE(result.has_error);
       EXPECT_EQ(-1u, result.value);
     }
     {
@@ -375,6 +373,7 @@ u'\u00A' // error: invalid UCN
       target.is_char_signed = false;
       CharConstantParser result(lexer, tok_spelling, tok->location(), tok->kind,
                                 target);
+      EXPECT_FALSE(result.has_error);
       EXPECT_EQ(255u, result.value);
     }
   }
@@ -384,8 +383,6 @@ u'\u00A' // error: invalid UCN
     tok = lexer.next_token();
     const std::string tok_spelling = tok->spelling(source);
     ASSERT_TRUE(tok.has_value());
-
-    TargetInfo target;
     CharConstantParser result(lexer, tok_spelling, tok->location(), tok->kind,
                               target);
     EXPECT_TRUE(result.has_error);
@@ -399,6 +396,7 @@ u'\u00A' // error: invalid UCN
     ASSERT_TRUE(tok.has_value());
     CharConstantParser result(lexer, tok_spelling, tok->location(), tok->kind,
                               target);
+    EXPECT_FALSE(result.has_error);
     EXPECT_EQ(0123, result.value);
   }
 
