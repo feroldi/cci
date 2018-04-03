@@ -293,6 +293,7 @@ u'\u00A8'
 u'\u00A' // error: invalid UCN
 'abcd' // multibyte character
 '\xFF' // -1 for signed, +255 for unsigned
+'\u0080' // error: Unicode character is too large
 )";
   DiagnosticsOptions opts;
   CompilerDiagnostics diag(opts);
@@ -355,23 +356,38 @@ u'\u00A' // error: invalid UCN
   }
 
   // '\xFF' // -1 for signed, +255 for unsigned
-  tok = lexer.next_token();
-  const std::string tok_spelling = tok->spelling(source);
-  ASSERT_TRUE(tok.has_value());
+  {
+    tok = lexer.next_token();
+    const std::string tok_spelling = tok->spelling(source);
+    ASSERT_TRUE(tok.has_value());
 
-  {
-    TargetInfo target;
-    target.is_char_signed = true;
-    CharConstantParser result(lexer, tok_spelling, tok->location(), tok->kind,
-                              target);
-    EXPECT_EQ(-1u, result.value);
+    {
+      TargetInfo target;
+      target.is_char_signed = true;
+      CharConstantParser result(lexer, tok_spelling, tok->location(), tok->kind,
+                                target);
+      EXPECT_EQ(-1u, result.value);
+    }
+    {
+      TargetInfo target;
+      target.is_char_signed = false;
+      CharConstantParser result(lexer, tok_spelling, tok->location(), tok->kind,
+                                target);
+      EXPECT_EQ(255u, result.value);
+    }
   }
+
+  // '\u0080' // error: Unicode character is too large
   {
+    tok = lexer.next_token();
+    const std::string tok_spelling = tok->spelling(source);
+    ASSERT_TRUE(tok.has_value());
+
     TargetInfo target;
-    target.is_char_signed = false;
     CharConstantParser result(lexer, tok_spelling, tok->location(), tok->kind,
                               target);
-    EXPECT_EQ(255u, result.value);
+    EXPECT_TRUE(result.has_error);
+    EXPECT_EQ(-128u, result.value);
   }
 }
 

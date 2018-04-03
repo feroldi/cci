@@ -463,6 +463,20 @@ CharConstantParser::CharConstantParser(Lexer &lexer,
   cci_expects((target.char_width & 0b0111) == 0);
   char_byte_width /= 8;
 
+  // Sometimes Unicode characters can't be represented in a single code unit, so
+  // this constant represents the maximum code point a character constant may
+  // hold, depending on its kind. Code points bigger than
+  // `largest_value_for_kind` results in an error.
+  const uint32_t largest_value_for_kind = [&] {
+    if (char_kind == TokenKind::char_constant ||
+        char_kind == TokenKind::utf8_char_constant)
+      return 0x7F;
+    if (char_kind == TokenKind::utf16_char_constant)
+      return 0xFFFF;
+    cci_expects(char_kind == TokenKind::utf32_char_constant);
+    return 0x10FFFFFF;
+  }();
+
   small_vector<uint32_t, 4> codepoint_buffer;
   codepoint_buffer.resize(static_cast<size_t>(tok_end - tok_ptr));
   uint32_t *buf_begin = &codepoint_buffer.front();
@@ -476,6 +490,7 @@ CharConstantParser::CharConstantParser(Lexer &lexer,
       const char *chunk_end =
         std::find_if(tok_ptr, tok_end, [](char c) { return c == '\\'; });
 
+      uint32_t *save_buf_begin = buf_begin;
       uni::ConversionResult res = uni::convert_utf8_to_utf32(
         reinterpret_cast<const uni::UTF8 **>(&tok_ptr),
         reinterpret_cast<const uni::UTF8 *>(chunk_end), &buf_begin, buf_end,
@@ -483,7 +498,14 @@ CharConstantParser::CharConstantParser(Lexer &lexer,
 
       if (res == uni::conversionOK)
       {
-        // TODO: Check for large values.
+        for (; save_buf_begin != buf_begin; ++save_buf_begin)
+        {
+          if (*save_buf_begin > largest_value_for_kind)
+          {
+            diag.report(tok_loc, diag::err_unicode_character_too_large);
+            has_error = true;
+          }
+        }
       }
       else
       {
@@ -500,6 +522,11 @@ CharConstantParser::CharConstantParser(Lexer &lexer,
       if (!parse_ucn_escape(lexer, tok_loc, tok_begin, tok_ptr, tok_end,
                             buf_begin))
         has_error = true;
+      else if (*buf_begin > largest_value_for_kind)
+      {
+        diag.report(tok_loc, diag::err_unicode_character_too_large);
+        has_error = true;
+      }
       ++buf_begin;
     }
     else

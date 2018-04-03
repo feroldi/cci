@@ -15,3 +15,4 @@ DIAG(err_unknown_escape_sequence, ::cci::Severity::Error, "unknown escape sequen
 DIAG(err_nonstd_string_concatenation, ::cci::Severity::Error, "concatenation of different kinds of strings is not standard compliant")
 DIAG(err_unknown_character, ::cci::Severity::Error, "unknown character '{0}'")
 DIAG(err_invalid_unicode_character, ::cci::Severity::Error, "invalid unicode character <U+{0:0>8X}>")
+DIAG(err_unicode_character_too_large, ::cci::Severity::Error, "Unicode character is too large, and can't be represented in a single code unit")
