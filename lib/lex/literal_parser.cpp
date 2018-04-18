@@ -533,6 +533,7 @@ CharConstantParser::CharConstantParser(Lexer &lexer,
           {
             diag.report(tok_loc, diag::err_unicode_character_too_large);
             has_error = true;
+            break;
           }
         }
       }

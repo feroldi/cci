@@ -47,21 +47,11 @@ constexpr TokenKind KEYWORD_KINDS[]{
   TokenKind::kw__Static_assert, TokenKind::kw__Thread_local,
 };
 
-constexpr auto is_nondigit(char C) -> bool
-{
-  return (C >= 'a' && C <= 'z') || (C >= 'A' && C <= 'Z') || C == '_';
-}
-
 constexpr auto is_newline(char C) -> bool { return C == '\n' || C == '\r'; }
 
 constexpr auto is_whitespace(char C) -> bool
 {
   return C == ' ' || C == '\t' || C == '\v' || C == '\f' || is_newline(C);
-}
-
-constexpr auto is_ascii(char C) -> bool
-{
-  return static_cast<unsigned char>(C) < 128;
 }
 
 template <typename ErrorCode, typename... Args>
@@ -425,18 +415,15 @@ auto try_advance_identifier_utf8(Lexer &lex, const char *&cur_ptr) -> bool
 // \return true if identifier was successfully formed.
 auto lex_identifier(Lexer &lex, const char *cur_ptr, Token &result) -> bool
 {
-  char c = *cur_ptr++;
-
+  auto is_ident = [](char c) {
+    return is_alphanum(c) || c == '_' || c == '$';
+  };
   // Most of the heavy work can be avoided if the identifier is
   // formed by ASCII characters only.
-  while (is_nondigit(c) || is_digit(c) || c == '$')
-    c = *cur_ptr++;
+  cur_ptr = std::find_if_not(cur_ptr, lex.buffer_end, is_ident);
 
-  // Backs up to correspond to `c`.
-  --cur_ptr;
-
-  // There's dirt, lexes the rest of the identifier.
-  if (!(is_ascii(c) && is_trivial_character(c)))
+  // If there's dirt, then lexes the rest of the identifier.
+  if (!is_ascii(*cur_ptr) || !is_trivial_character(*cur_ptr))
   {
     auto [c, size] = peek_char_and_size(cur_ptr);
     while (true)
@@ -451,14 +438,14 @@ auto lex_identifier(Lexer &lex, const char *cur_ptr, Token &result) -> bool
         std::tie(c, size) = peek_char_and_size(cur_ptr);
         continue;
       }
-      else if (!(is_nondigit(c) || is_digit(c)))
+      else if (!is_ident(c))
         break; // We're done.
 
       cur_ptr = consume_char(cur_ptr, size, result);
       std::tie(c, size) = peek_char_and_size(cur_ptr);
 
       // Handles escaped newlines and trigraphs.
-      while (is_nondigit(c) || is_digit(c) || c == '$')
+      while (is_ident(c))
       {
         cur_ptr = consume_char(cur_ptr, size, result);
         std::tie(c, size) = peek_char_and_size(cur_ptr);
@@ -504,8 +491,7 @@ auto lex_numeric_constant(Lexer &lex, const char *cur_ptr, Token &result)
   char prev = c;
 
   // Matches the regex /[0-9a-zA-Z.]*/.
-  while (is_digit(c) || (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') ||
-         c == '.')
+  while (is_alphanum(c) || c == '.')
   {
     cur_ptr = consume_char(cur_ptr, digit_size, result);
     prev = c;
@@ -1207,8 +1193,13 @@ auto lex_token(Lexer &lex, const char *cur_ptr, Token &result) -> bool
   if (kind == TokenKind::unknown)
   {
     if (is_ascii(ch))
-      report(lex, lex.buffer_ptr, diag::err_unknown_character,
-             is_printable(ch) ? ch : static_cast<uint32_t>(ch));
+    {
+      if (is_printable(ch))
+        report(lex, lex.buffer_ptr, diag::err_unknown_character, ch);
+      else
+        report(lex, lex.buffer_ptr, diag::err_unknown_character,
+               fmt::format("0x{0:0>4X}", static_cast<uint32_t>(ch)));
+    }
     else
       report(lex, lex.buffer_ptr, diag::err_invalid_unicode_character,
              static_cast<uint8_t>(ch));

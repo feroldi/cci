@@ -144,8 +144,6 @@ static uint8_t ASCII_TABLE[128] = {
   CONTROL, // U+007F (DEL)
 };
 
-bool is_ascii(const char c) { return static_cast<unsigned char>(c) < 128; }
-
 bool is_digit(const char c) { return ASCII_TABLE[c & 0x7F] & DIGIT; }
 
 bool is_hexdigit(const char c) { return ASCII_TABLE[c & 0x7F] & HEXDIG; }

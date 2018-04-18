@@ -27,13 +27,13 @@
 
 namespace cci::uni {
 
-static const int halfShift = 10; /* used for shifting by 10 bits */
-static const UTF32 halfBase = 0x0010000UL;
-static const UTF32 halfMask = 0x3FFUL;
-static const UTF32 UNI_SUR_HIGH_START = 0xD800UL;
-static const UTF32 UNI_SUR_HIGH_END = 0xDBFFUL;
-static const UTF32 UNI_SUR_LOW_START = 0xDC00UL;
-static const UTF32 UNI_SUR_LOW_END = 0xDFFFUL;
+constexpr int halfShift = 10; /* used for shifting by 10 bits */
+constexpr UTF32 halfBase = 0x0010000UL;
+constexpr UTF32 halfMask = 0x3FFUL;
+constexpr UTF32 UNI_SUR_HIGH_START = 0xD800UL;
+constexpr UTF32 UNI_SUR_HIGH_END = 0xDBFFUL;
+constexpr UTF32 UNI_SUR_LOW_START = 0xDC00UL;
+constexpr UTF32 UNI_SUR_LOW_END = 0xDFFFUL;
 
 ConversionResult convert_utf8_sequence(const UTF8 **sourceStart,
                                        const UTF8 *sourceEnd,

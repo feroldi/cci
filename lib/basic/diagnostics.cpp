@@ -19,7 +19,7 @@ constexpr auto to_string(CompilerDiagnostics::Level level) -> std::string_view
     case CompilerDiagnostics::Level::Note:
       return "note";
     case CompilerDiagnostics::Level::Remark:
-      return "mention";
+      return "remark";
     case CompilerDiagnostics::Level::Warning:
       return "warning";
     case CompilerDiagnostics::Level::Error:
@@ -41,33 +41,19 @@ static auto format_error(const CompilerDiagnostics &diag,
   out.reserve(256);
 
   if (!from.empty())
-  {
-    out += from;
-    out += ':';
-  }
+    out += fmt::format("{}:", from);
   else
-  {
     out += "cci:";
-  }
 
   if (line_num)
   {
-    out += std::to_string(line_num);
-    out += ':';
-
+    out += fmt::format("{}:", line_num);
     if (column_num)
-    {
-      out += std::to_string(column_num);
-      out += ':';
-    }
+      out += fmt::format("{}:", column_num);
   }
 
   if (!type.empty())
-  {
-    out += ' ';
-    out += type;
-    out += ": ";
-  }
+    out += fmt::format(" {}: ", type);
 
   if (!message.empty())
   {
@@ -82,6 +68,7 @@ static auto format_error(const CompilerDiagnostics &diag,
       std::string carret;
       carret.reserve(column_num);
 
+      // FIXME: Cover Unicode characters as well.
       for (size_t i = 0; i < column_num; ++i)
         carret.push_back(snippet[i] != '\t' ? ' ' : '\t');
       carret.back() = '^';
