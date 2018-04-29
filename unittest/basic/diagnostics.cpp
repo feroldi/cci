@@ -2,9 +2,9 @@
 #include "cci/basic/source_manager.hpp"
 #include "gtest/gtest.h"
 
-using namespace cci;
+namespace cci {
 
-namespace cci::diag {
+namespace diag {
 enum UDErrorCode
 {
   warn_test_message,
@@ -14,7 +14,7 @@ enum UDErrorCode
 }
 
 template <>
-struct ::cci::diagnostics_error_code<diag::UDErrorCode>
+struct diagnostics_error_code<diag::UDErrorCode>
 {
   constexpr static auto info(diag::UDErrorCode code) -> ErrorCodeInfo
   {
@@ -31,8 +31,12 @@ struct ::cci::diagnostics_error_code<diag::UDErrorCode>
 };
 
 template <>
-struct ::cci::is_diagnostics_error_code<diag::UDErrorCode> : std::true_type
+struct is_diagnostics_error_code<diag::UDErrorCode> : std::true_type
 {};
+
+} // namespace cci
+
+using namespace cci;
 
 namespace {
 
