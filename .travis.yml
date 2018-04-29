@@ -55,9 +55,8 @@ script:
   - $CXX --version
   - cmake --version
   - mkdir build && cd build
-  - cmake ..
-  - cmake --build .
-  - GTEST_COLOR=yes ctest --output-on-failure
+  - cmake -DCMAKE_CXX_FLAGS=${CXXFLAGS} ..
+  - cmake --build . && GTEST_COLOR=yes ctest --output-on-failure
 
 notifications:
   email: false
