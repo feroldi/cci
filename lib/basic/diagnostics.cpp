@@ -3,8 +3,8 @@
 #include "cci/util/contracts.hpp"
 #include "cci/util/variant.hpp"
 #include "fmt/format.h"
-#include <optional>
 #include <cstdio>
+#include <optional>
 #include <string>
 #include <string_view>
 
@@ -14,24 +14,19 @@ constexpr auto to_string(CompilerDiagnostics::Level level) -> std::string_view
 {
   switch (level)
   {
-    case CompilerDiagnostics::Level::Ignore:
-      return "ignored";
-    case CompilerDiagnostics::Level::Note:
-      return "note";
-    case CompilerDiagnostics::Level::Remark:
-      return "remark";
-    case CompilerDiagnostics::Level::Warning:
-      return "warning";
-    case CompilerDiagnostics::Level::Error:
-      return "error";
-    case CompilerDiagnostics::Level::Fatal:
-      return "fatal error";
+    case CompilerDiagnostics::Level::Ignore: return "ignored";
+    case CompilerDiagnostics::Level::Note: return "note";
+    case CompilerDiagnostics::Level::Remark: return "remark";
+    case CompilerDiagnostics::Level::Warning: return "warning";
+    case CompilerDiagnostics::Level::Error: return "error";
+    case CompilerDiagnostics::Level::Fatal: return "fatal error";
+    default: cci_unreachable();
   }
 }
 
-static auto format_error(const CompilerDiagnostics &diag,
-                         std::string_view from, size_t line_num,
-                         size_t column_num, std::string_view type,
+static auto format_error(const CompilerDiagnostics &diag, std::string_view from,
+                         size_t line_num, size_t column_num,
+                         std::string_view type,
                          std::optional<SourceLocation> source_loc,
                          std::string_view message) -> std::string
 {
@@ -83,28 +78,30 @@ static auto format_error(const CompilerDiagnostics &diag,
                          CompilerDiagnostics::Context context,
                          std::string_view message) -> std::string
 {
-  return std::visit(overloaded {
-    [&] (nocontext_t) {
-      return format_error(diag, "", 0ull, 0ull, to_string(level), std::nullopt, message);
-    },
-    [&] (SourceLocation loc) {
-      cci_expects(diag.has_source_manager());
-      const FullSourceLoc full_loc(diag.get_source_manager(), loc);
-      const auto [line_num, col_num] = full_loc.translate_to_linecolumn();
-      const auto filename = full_loc.loaded_from_file() ? full_loc.file_path().c_str() : "<source>";
-      return format_error(diag, filename, line_num, col_num, to_string(level),
-                          loc, message);
-    }
-  }, context);
+  return std::visit(
+    overloaded{[&](nocontext_t) {
+                 return format_error(diag, "", 0ull, 0ull, to_string(level),
+                                     std::nullopt, message);
+               },
+               [&](SourceLocation loc) {
+                 cci_expects(diag.has_source_manager());
+                 const FullSourceLoc full_loc(diag.get_source_manager(), loc);
+                 const auto [line_num, col_num] =
+                   full_loc.translate_to_linecolumn();
+                 const auto filename = full_loc.loaded_from_file()
+                                         ? full_loc.file_path().c_str()
+                                         : "<source>";
+                 return format_error(diag, filename, line_num, col_num,
+                                     to_string(level), loc, message);
+               }},
+    context);
 }
 
-auto CompilerDiagnostics::get_output_level(Severity severity) const
-  -> Level
+auto CompilerDiagnostics::get_output_level(Severity severity) const -> Level
 {
   switch (severity)
   {
-    case Severity::Note:
-      return Level::Note;
+    case Severity::Note: return Level::Note;
     case Severity::Remark:
       if (opts.is_verbose)
         return Level::Remark;

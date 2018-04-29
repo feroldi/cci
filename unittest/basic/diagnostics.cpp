@@ -1,5 +1,6 @@
 #include "cci/basic/diagnostics.hpp"
 #include "cci/basic/source_manager.hpp"
+#include "cci/util/contracts.hpp"
 #include "gtest/gtest.h"
 
 namespace cci {
@@ -26,6 +27,7 @@ struct diagnostics_error_code<diag::UDErrorCode>
         return {Severity::Error, "error message ({0} and {1})"};
       case diag::note_select_message:
         return {Severity::Note, "the {:good|bad|ugly}"};
+      default: cci_unreachable();
     }
   }
 };

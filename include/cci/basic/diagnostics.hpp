@@ -58,8 +58,7 @@ struct diagnostics_error_code;
 
 template <typename>
 struct is_diagnostics_error_code : std::false_type
-{
-};
+{};
 
 namespace diag {
 enum Common
@@ -76,10 +75,10 @@ struct diagnostics_error_code<diag::Common>
   constexpr static auto info(diag::Common code) -> ErrorCodeInfo
   {
 #define DIAG(CODE, LEVEL, FORMAT)                                              \
-  case diag::CODE:                                                             \
-    return {LEVEL, FORMAT};
+  case diag::CODE: return {LEVEL, FORMAT};
     switch (code)
     {
+      default: cci_unreachable();
 #include "cci/basic/diagnostics_common.inc"
     }
 #undef DIAG
@@ -88,8 +87,7 @@ struct diagnostics_error_code<diag::Common>
 
 template <>
 struct is_diagnostics_error_code<diag::Common> : std::true_type
-{
-};
+{};
 
 struct nocontext_t
 {};

@@ -267,6 +267,7 @@ TEST(LiteralParserTest, numericConstants)
     NumericConstantParser result(lexer, spelling, tok->location());
     EXPECT_FALSE(result.has_error);
     const auto [value, overflowed] = result.to_integer(target.long_long_width);
+    static_cast<void>(value);
     ASSERT_TRUE(overflowed);
   }
 
@@ -280,6 +281,7 @@ TEST(LiteralParserTest, numericConstants)
     NumericConstantParser result(lexer, spelling, tok->location());
     ASSERT_FALSE(result.has_error);
     const auto [value, overflowed] = result.to_integer(target.short_width);
+    static_cast<void>(value);
     ASSERT_TRUE(overflowed);
   }
 }
