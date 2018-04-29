@@ -1,5 +1,5 @@
-#include "cci/basic/source_manager.hpp"
 #include "cci/basic/diagnostics.hpp"
+#include "cci/basic/source_manager.hpp"
 #include "gtest/gtest.h"
 
 using namespace cci;
@@ -14,7 +14,7 @@ enum UDErrorCode
 }
 
 template <>
-struct diagnostics_error_code<diag::UDErrorCode>
+struct ::cci::diagnostics_error_code<diag::UDErrorCode>
 {
   constexpr static auto info(diag::UDErrorCode code) -> ErrorCodeInfo
   {
@@ -31,9 +31,8 @@ struct diagnostics_error_code<diag::UDErrorCode>
 };
 
 template <>
-struct is_diagnostics_error_code<diag::UDErrorCode> : std::true_type
-{
-};
+struct ::cci::is_diagnostics_error_code<diag::UDErrorCode> : std::true_type
+{};
 
 namespace {
 
@@ -42,8 +41,7 @@ TEST(DiagnosticsTest, fatalError)
   const char *code = "int x;\n";
   DiagnosticsOptions opts;
   CompilerDiagnostics diag(opts);
-  auto src_mgr =
-    SourceManager::from_buffer(diag, code);
+  auto src_mgr = SourceManager::from_buffer(diag, code);
   diag.set_max_errors(1);
 
   EXPECT_THROW(diag.report(Severity::Error, nocontext, "answer is {}", 42),
