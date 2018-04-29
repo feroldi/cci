@@ -3,34 +3,27 @@ sudo: require
 language: cpp
 matrix:
   include:
-    - compiler: gcc
+    - os: linux
+      compiler: clang
       addons:
         apt:
           sources:
             - ubuntu-toolchain-r-test
           packages:
-            - gcc-6
-            - g++-6
-    - compiler: clang
+            - libstdc++-7-dev
+    - os: linux
       addons:
         apt:
           sources:
             - ubuntu-toolchain-r-test
           packages:
-            - gcc-6
-            - g++-6
-            - libstdc++6 # FIXME: Remove Clang dependency on libstdc++
+            - g++-7
       env:
-        global:
-          - LLVM_VERSION=6.0.0
-          - LLVM_ARCHIVE_PATH=$HOME/clang+llvm.tar.xz
-          - LLVM_BIN_PATH=$HOME/clang+llvm
-        before_install:
-          - wget http://releases.llvm.org/$LLVM_VERSION/clang+llvm-$LLVM_VERSION-x86_64-linux-gnu-ubuntu-14.04.tar.xz -O $LLVM_ARCHIVE_PATH
-          - mkdir $LLVM_BIN_PATH
-          - tar xf $LLVM_ARCHIVE_PATH --strip-components=1 -C $LLVM_BIN_PATH
-          - export PATH=$LLVM_BIN_PATH:$PATH
+        - MATRIX_EVAL="CC=gcc-7 && CXX=g++-7"
+before_install:
+  eval "$MATRIX_EVAL"
 install:
+  # Install GoogleTest.
   - GTEST_VERSION=1.8.0
   - GTEST_ARCHIVE_PATH=$HOME/gtest.tar.gz
   - GTEST_BIN_PATH=$HOME/gtest
@@ -39,14 +32,17 @@ install:
   - tar xf $GTEST_ARCHIVE_PATH --strip-components=1 -C $GTEST_BIN_PATH
   - (cd $GTEST_BIN_PATH/googletest && cmake -DBUILD_SHARED_LIBS=ON . && cmake --build .)
   - sudo cp -a $GTEST_BIN_PATH/googletest/include/gtest /usr/include
-  - sudo cp -a $GTEST_BIN_PATH/googletest/{libgtest_main.so, libgtest.so} /usr/lib/
+  - sudo cp -a $GTEST_BIN_PATH/googletest/libgtest_main.so /usr/lib/
+  - sudo cp -a $GTEST_BIN_PATH/googletest/libgtest.so /usr/lib/
+
+  # Install a recent version of CMake.
   - CMAKE_VERSION=3.11.1
-  - CMAKE_ARCHIVE_PATH=$HOME/cmake.tar.xz
   - CMAKE_BIN_PATH=$HOME/cmake
-  - mkdir $CMAKE_BIN_PATH
-  - wget https://cmake.org/files/v3.11/cmake-$CMAKE_VERSION-Linux-x86_64.tar.gz -O $CMAKE_ARCHIVE_PATH
-  - tar xf $CMAKE_ARCHIVE_PATH --strip-components=1 -C $CMAKE_BIN_PATH
+  - CMAKE_URL="https://cmake.org/files/v${CMAKE_VERSION%.[0-9]}/cmake-$CMAKE_VERSION-Linux-x86_64.tar.gz"
+  - mkdir $CMAKE_BIN_PATH && wget --no-check-certificate -O - ${CMAKE_URL} | tar --strip-components=1 -xz -C $CMAKE_BIN_PATH
   - export PATH=$CMAKE_BIN_PATH/bin:$PATH
+
+  # Install fmtlib.
   - FMT_VERSION=2768af23888d1f598df5238b72fe7dbe9bf11640
   - FMT_ARCHIVE_PATH=$HOME/fmt.tar.gz
   - FMT_BIN_PATH=$HOME/fmt
@@ -55,8 +51,8 @@ install:
   - tar xf $FMT_ARCHIVE_PATH --strip-components=1 -C $FMT_BIN_PATH
   - (cd $FMT_BIN_PATH; cmake -DFMT_TEST=OFF -DBUILD_SHARED_LIBS=ON . && cmake --build . && sudo make install)
 script:
-  - if [ "$CXX" == 'g++' ]; then export CXX=g++-6; fi
   - $CXX --version
+  - cmake --version
   - mkdir build && cd build
   - cmake ..
   - cmake --build .
