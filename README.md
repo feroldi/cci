@@ -1,5 +1,7 @@
 # CCI: C11 Compiler Infrastructure
 
+[![build status](https://travis-ci.org/feroldi/cci.svg?branch=master)](https://travis-ci.org/feroldi/cci)
+
 This is an experimental project, using C++17 to write a C11 compiler.
 It doesn't provide an implementation of the Standard Library.
 The main purpose of this project is to teach me compiler data structures,
