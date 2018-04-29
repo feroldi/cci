@@ -27,8 +27,6 @@ constexpr auto to_string(CompilerDiagnostics::Level level) -> std::string_view
     case CompilerDiagnostics::Level::Fatal:
       return "fatal error";
   }
-
-  cci_unreachable();
 }
 
 static auto format_error(const CompilerDiagnostics &diag,
