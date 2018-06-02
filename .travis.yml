@@ -4,16 +4,6 @@ language: cpp
 matrix:
   include:
     - os: linux
-      compiler: clang
-      addons:
-        apt:
-          sources:
-            - ubuntu-toolchain-r-test
-          packages:
-            - libstdc++-7-dev
-      env:
-        - MATRIX_EVAL="CC=clang && CXX=clang++"
-    - os: linux
       compiler: gcc
       addons:
         apt:

@@ -1,6 +1,6 @@
 # CCI: C11 Compiler Infrastructure
 
-[![build status](https://travis-ci.org/feroldi/cci.svg?branch=master)](https://travis-ci.org/feroldi/cci)
+[![Build Status](https://travis-ci.org/feroldi/cci.svg?branch=master)](https://travis-ci.org/feroldi/cci)
 
 This is an experimental project, using C++17 to write a C11 compiler.
 It doesn't provide an implementation of the Standard Library.
@@ -18,10 +18,10 @@ cmake -DCMAKE_BUILD_TYPE=Release ..
 cmake --build . --target cci
 ```
 
-It's recommended to export `CC` and `CXX` to a preferable compiler before
-you continue with the build process. This project is tested with Clang,
-and GCC occasionally. If you're going with Clang, you can make use of
-the CMake's toolchain file that comes with this project. For example:
+It's recommended to export `CC` and `CXX` to a preferable compiler before you
+continue with the build process. This project is tested with Clang, and GCC. If
+you're going with Clang, you can make use of the CMake's toolchain file that
+comes with this project. For example:
 
 ```
 cmake -DCMAKE_TOOLCHAIN_FILE=../cmake/toolchains/clang.cmake ..
