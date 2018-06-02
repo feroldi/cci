@@ -13,8 +13,8 @@ include(CMakePackageConfigHelpers)
 option(CCI_ENABLE_CONTRACTS "Enable contracts (assertions). This makes the binary slow." ON)
 option(CCI_USE_GIT_REVISION "Use Git revision to make up CCI's build version." ON)
 
-# CCI depends on fmtlib 4.0.0 or later.
-find_package(FMT 4 REQUIRED)
+# CCI depends on fmtlib 5.0.0 or later.
+find_package(FMT 5 REQUIRED)
 
 set(CMAKE_CONFIG_INSTALL_DIR ${CMAKE_INSTALL_LIBDIR}/cmake/${PROJECT_NAME})
 
