@@ -371,16 +371,17 @@ auto try_advance_identifier_ucn(Lexer &lex, const char *&cur_ptr, int64_t size,
 auto try_advance_identifier_utf8(Lexer &lex, const char *&cur_ptr) -> bool
 {
   cci_expects(!is_ascii(cur_ptr[0]));
+  const char *uni_ptr = cur_ptr;
   uni::UTF32 code_point = 0;
   uni::ConversionResult res = uni::convert_utf8_sequence(
-    reinterpret_cast<const uni::UTF8 **>(&cur_ptr),
+    reinterpret_cast<const uni::UTF8 **>(&uni_ptr),
     reinterpret_cast<const uni::UTF8 *>(lex.buffer_end), &code_point,
     uni::strictConversion);
   if (res == uni::conversionOK &&
       is_allowed_id_char(static_cast<uint32_t>(code_point)))
   {
-    if (code_point == 0x037Eul) // GREEK QUESTION MARK (U+037E)
-      report(lex, cur_ptr, diag::warn_greek_question_mark);
+    // TODO: Diagnose UTF8 homoglyphs.
+    cur_ptr = uni_ptr;
     return true;
   }
   return false;
@@ -762,10 +763,7 @@ auto lex_unicode(Lexer &lex, const char *cur_ptr, uint32_t code_point,
   if (is_allowed_id_char(code_point) &&
       is_allowed_initially_id_char(code_point))
   {
-    // FIXME: This check is duplicated in try_advance_identifier_utf8. Find
-    // a way to remove this check from here.
-    if (code_point == 0x037E) // GREEK QUESTION MARK (U+037E)
-      report(lex, lex.buffer_ptr, diag::warn_greek_question_mark);
+    // TODO: Diagnose UTF8 homoglyphs.
     return lex_identifier(lex, cur_ptr, result);
   }
   lex.form_token(result, cur_ptr, TokenKind::unknown);

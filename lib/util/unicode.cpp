@@ -35,18 +35,6 @@ constexpr UTF32 UNI_SUR_HIGH_END = 0xDBFFUL;
 constexpr UTF32 UNI_SUR_LOW_START = 0xDC00UL;
 constexpr UTF32 UNI_SUR_LOW_END = 0xDFFFUL;
 
-ConversionResult convert_utf8_sequence(const UTF8 **sourceStart,
-                                       const UTF8 *sourceEnd,
-                                       UTF32 *targetStart,
-                                       ConversionFlags flags)
-{
-  const UTF8 *srcEnd =
-    *sourceStart + std::min(sizeof(*targetStart),
-                            static_cast<size_t>(sourceEnd - *sourceStart));
-  return convert_utf8_to_utf32(sourceStart, srcEnd, &targetStart,
-                               std::next(targetStart), flags);
-}
-
 ConversionResult convert_utf32_to_utf16(const UTF32 **sourceStart,
                                         const UTF32 *sourceEnd,
                                         UTF16 **targetStart, UTF16 *targetEnd,
@@ -707,6 +695,21 @@ ConversionResult convert_utf8_to_utf32(const UTF8 **sourceStart,
   *sourceStart = source;
   *targetStart = target;
   return result;
+}
+
+// Converts the first UTF-8 sequence into a UTF-32 code point.
+ConversionResult convert_utf8_sequence(const UTF8 **sourceStart,
+                                       const UTF8 *sourceEnd,
+                                       UTF32 *targetStart,
+                                       ConversionFlags flags)
+{
+  if (*sourceStart == sourceEnd)
+    return sourceExhausted;
+  size_t num_bytes_for_utf8 = trailingBytesForUTF8[**sourceStart] + 1;
+  if (sourceEnd - *sourceStart < static_cast<ptrdiff_t>(num_bytes_for_utf8))
+    return sourceExhausted;
+  return convert_utf8_to_utf32(sourceStart, *sourceStart + num_bytes_for_utf8,
+                               &targetStart, targetStart + 1, flags);
 }
 
 /* ---------------------------------------------------------------------
