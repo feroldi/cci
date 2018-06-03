@@ -5,6 +5,7 @@
 #include "cci/langopts.hpp"
 #include "cci/lex/char_info.hpp"
 #include "cci/lex/lexer.hpp"
+#include "cci/util/span.hpp"
 #include "cci/util/unicode.hpp"
 #include <algorithm>
 #include <climits>
@@ -13,6 +14,9 @@
 
 using namespace cci;
 
+// Returns the correct selector (i.e. if it's a decimal, octal, or hexadecimal)
+// for a given radix. This is used only for diagnostics to select the
+// appropriate message for a given number base.
 static auto select_radix(uint32_t radix) -> selector
 {
   return selector{
@@ -28,6 +32,8 @@ static void report(Lexer &lex, const char *char_ptr, SourceLocation tok_loc,
               std::forward<Args>(args)...);
 }
 
+// Returns the respective character type width for a given string literal or
+// character constant token.
 static auto resolve_char_width(TokenKind kind, const TargetInfo &target)
   -> size_t
 {
@@ -174,17 +180,17 @@ NumericConstantParser::NumericConstantParser(Lexer &lexer,
       case 'u':
       case 'U':
         if (is_fp || is_unsigned)
-          break;
+          break; // Repeated u or U suffix.
         is_unsigned = true;
         continue;
       case 'l':
       case 'L':
         if (is_long || is_long_long)
-          break;
+          break; // Repeated l or L suffix.
         if (s[1] == s[0])
         {
           if (is_fp)
-            break;
+            break; // Invalid ll or LL suffix for floating constants.
           ++s;
           is_long_long = true;
         }
@@ -194,10 +200,10 @@ NumericConstantParser::NumericConstantParser(Lexer &lexer,
       case 'f':
       case 'F':
         if (!is_fp || is_float)
-          break;
+          break; // Repeated f or F suffix.
         is_float = true;
         continue;
-      default: break;
+      default: break; // Unknown suffix.
     }
 
     // Getting here means the suffix is invalid. Breaks the loop so the error
@@ -205,6 +211,7 @@ NumericConstantParser::NumericConstantParser(Lexer &lexer,
     break;
   }
 
+  // If it hasn't maximal-munched, then the suffix is invalid.
   if (s != tok_end)
   {
     report(lexer, s, tok_loc, tok_begin, diag::err_invalid_suffix,
@@ -214,7 +221,8 @@ NumericConstantParser::NumericConstantParser(Lexer &lexer,
   }
 }
 
-auto NumericConstantParser::to_integer(size_t width) -> std::pair<uint64_t, bool>
+auto NumericConstantParser::to_integer(size_t width) const
+  -> std::pair<uint64_t, bool>
 {
   cci_expects(is_integer_literal());
   cci_expects(radix == 8 || radix == 10 || radix == 16);
@@ -222,9 +230,9 @@ auto NumericConstantParser::to_integer(size_t width) -> std::pair<uint64_t, bool
   uint64_t value = 0;
   bool overflowed = false;
 
-  // FIXME: This handles the worst case scenario, where the number of digits
-  // is relevant to conclude whether it overflows. Integer literals with fewer
-  // digits won't ever overflow, which it's almost always the case, so we're
+  // FIXME: This handles the worst case scenario, where the number of digits is
+  // relevant to conclude whether it overflows. Integer literals with fewer
+  // digits won't ever overflow, which is almost always the case, so we're
   // paying too much for these overflow checks here.
   for (auto it = digit_begin; it != digit_end; ++it)
   {
@@ -361,8 +369,10 @@ static auto parse_escape_sequence(Lexer &lex, SourceLocation tok_loc,
   // http://en.cppreference.com/w/c/language/escape
   switch (result)
   {
-    case '\'': case '"': case '?': case '\\':
-      break;
+    case '\'':
+    case '"':
+    case '?':
+    case '\\': break;
     case 'a': // audible bell
       result = 0x07;
       break;
@@ -396,8 +406,9 @@ static auto parse_escape_sequence(Lexer &lex, SourceLocation tok_loc,
         ++num_digits;
       }
 
-      // Checks whether this octal escape fits in a character literal whose width
-      // is less than 32 bits. L'\777' should fit, whereas '\777' should not.
+      // Checks whether this octal escape fits in a character literal whose
+      // width is less than 32 bits. L'\777' should fit, whereas '\777' should
+      // not.
       if (char_width < 32 && (result >> char_width) != 0)
       {
         report(lex, escape_begin, tok_loc, tok_begin,
@@ -425,10 +436,12 @@ static auto parse_escape_sequence(Lexer &lex, SourceLocation tok_loc,
       for (; tok_ptr != tok_end; ++tok_ptr)
       {
         auto val = hexdigit_value(*tok_ptr);
-        if (val == -1U) break;
+        if (val == -1U)
+          break;
         // Shifting out some existing bits from the result means it is about to
         // overflow.
-        if (result & 0xF0000000) overflowed = true;
+        if (result & 0xF0000000)
+          overflowed = true;
         result <<= 4;
         result += val;
       }
@@ -611,8 +624,9 @@ CharConstantParser::CharConstantParser(Lexer &lexer,
 
   // [C11 6.4.4.4p13 EXAMPLE 2]
   // In an implementation in which type char has the same range of values as
-  // signed char, the integer character constant '\xFF' has the value -1; if type
-  // char has the same range of values as unsigned char, the character constant
+  // signed char, the integer character constant '\xFF' has the value -1; if
+  // type char has the same range of values as unsigned char, the character
+  // constant
   // '\xFF' has the value +255.
   if (kind == TokenKind::char_constant && num_of_chars == 1 &&
       target.is_char_signed)
@@ -622,7 +636,7 @@ CharConstantParser::CharConstantParser(Lexer &lexer,
 }
 
 StringLiteralParser::StringLiteralParser(Lexer &lexer,
-                                         const std::vector<Token> &string_toks,
+                                         span<const Token> string_toks,
                                          const TargetInfo &target)
 {
   auto &diag = lexer.diagnostics();
@@ -644,7 +658,7 @@ StringLiteralParser::StringLiteralParser(Lexer &lexer,
   kind = string_toks[0].kind;
 
   // Performs C11 5.1.1.2/6: Adjacent string literal tokens are concatenated.
-  for (size_t i = 1; i != string_toks.size(); ++i)
+  for (ptrdiff_t i = 1; i != string_toks.size(); ++i)
   {
     cci_expects(is_string_literal(string_toks[i].kind));
     if (string_toks[i].is_not(kind) &&

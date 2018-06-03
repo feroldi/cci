@@ -10,7 +10,7 @@
 #define __has_builtin(x) 0
 #endif
 
-#if CCI_ENABLE_CONTRACTS
+#ifndef NDEBUG
 #include <cassert>
 #include <stdexcept>
 
@@ -49,7 +49,7 @@ struct unreachable_exception : std::runtime_error
   (throw unreachable_exception("unreachable code reached at " __FILE__         \
                                ":" STRINGIFY(__LINE__)))
 
-#else // if CCI_ENABLE_CONTRACTS
+#else // ifndef NDEBUG
 
 #define cci_expects(cond)
 #define cci_ensures(cond)
