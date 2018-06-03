@@ -5,7 +5,7 @@
 //
 // Copyright (c) 2018 Martin Moene
 //
-// Distributed under the Boost Software License, Version 1.0. 
+// Distributed under the Boost Software License, Version 1.0.
 // (See accompanying file LICENSE.txt or copy at http://www.boost.org/LICENSE_1_0.txt)
 
 #ifndef NONSTD_SPAN_HPP_INCLUDED
@@ -25,7 +25,7 @@
 # define span_FEATURE_WITH_CONTAINER_TO_STD  0
 #endif
 
-#ifndef  span_FEATURE_CONSTRUCTION_FROM_STDARRAY_ELEMENT_TYPE 
+#ifndef  span_FEATURE_CONSTRUCTION_FROM_STDARRAY_ELEMENT_TYPE
 # define span_FEATURE_CONSTRUCTION_FROM_STDARRAY_ELEMENT_TYPE  0
 #endif
 
@@ -95,6 +95,8 @@
 
 #if    defined( span_CONFIG_CONTRACT_VIOLATION_THROWS )
 # define        span_CONFIG_CONTRACT_VIOLATION_THROWS_V  span_CONFIG_CONTRACT_VIOLATION_THROWS
+#else
+# define        span_CONFIG_CONTRACT_VIOLATION_THROWS_V 0
 #endif
 
 #if    defined( span_CONFIG_CONTRACT_VIOLATION_THROWS     ) && span_CONFIG_CONTRACT_VIOLATION_THROWS && \
@@ -272,6 +274,7 @@ span_DISABLE_MSVC_WARNINGS( 26439 26440 26472 26473 26481 26490 )
 #define span_HAVE_IS_DEFAULT            span_CPP11_140
 #define span_HAVE_IS_DELETE             span_CPP11_140
 #define span_HAVE_NOEXCEPT              span_CPP11_140
+#define span_HAVE_INLINE_NAMESPACE      span_CPP11_140
 
 // Presence of C++14 language features:
 
@@ -548,7 +551,7 @@ inline void throw_out_of_range( index_t idx, index_t size )
     const char fmt[] = "span::at(): index '%lli' is out of range [0..%lli)";
     char buffer[ 2 * 20 + sizeof fmt ];
     sprintf( buffer, fmt, static_cast<long long>(idx), static_cast<long long>(size) );
-    
+
     throw std::out_of_range( buffer );
 }
 
@@ -598,8 +601,8 @@ inline span_constexpr index_t to_size( T size )
 
 // Can construct from containers that:
 
-template< 
-    class Container, class ElementType 
+template<
+    class Container, class ElementType
     , class = typename std::enable_if<
         ! detail::is_span< Container >::value &&
         ! detail::is_array< Container >::value &&
@@ -905,7 +908,7 @@ public:
 #if span_CONFIG( NO_EXCEPTIONS )
         return this->operator[]( idx );
 #else
-        if ( idx < 0 || size() <= idx ) 
+        if ( idx < 0 || size() <= idx )
         {
             detail::throw_out_of_range( idx, size() );
         }
