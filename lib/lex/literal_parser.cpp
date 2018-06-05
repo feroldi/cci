@@ -148,7 +148,7 @@ NumericConstantParser::NumericConstantParser(Lexer &lexer,
     else
     {
       radix = 8;
-      ++digit_begin;
+      ++digit_begin; // Skips leading zero for later parsing.
       s = std::find_if_not(s, tok_end, is_octdigit);
       if (s != tok_end)
       {
@@ -171,6 +171,9 @@ NumericConstantParser::NumericConstantParser(Lexer &lexer,
 
   digit_end = s;
   const bool is_fp = is_floating_literal();
+
+  if (radix == 8 && digit_end - digit_begin == 0)
+    radix = 10; // This is just a 0 literal.
 
   // Parses suffix.
   for (; s != tok_end; ++s)
