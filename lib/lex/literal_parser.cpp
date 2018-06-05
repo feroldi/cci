@@ -224,6 +224,41 @@ NumericConstantParser::NumericConstantParser(Lexer &lexer,
   }
 }
 
+
+// In order to know how many digits are enough to guarantee that overflow won't
+// happen to an integer literal, we need to know the number base and bits of
+// the storage.  Take for instance an integer of 64 bits represented in binary
+// (i.e. number base 2): it needs at least more than 64 digits to overflow,
+// because the maximum number represented in binary that is limited to 64 bits
+// has all bits turned on. One more bit would overflow it. The same principle
+// applies to other number bases. Using the same example, but in hexadecimal,
+// it takes more than 64/4 digits to overflow, because one digit is a group of
+// 4 bits, so it is natural to divide the bits by 4. But how is it done for
+// integer literals with number base 10?
+//
+// The math behind this idea is rather simple: given the maximum number
+// representable (which is given by 2^N, where N is number of bits), and the
+// number base, we need to find some other number that relates to these two.
+// Assuming a function f(N, B), where N is number of bits, and B is the number
+// base, should return the number of digits that can fit the maximum number
+// representable. If f(2^64, 2) results in 64, and f(2^64, 4) results in 16,
+// then it makes sense that f should be `log`. So, log(2^64, 10) should return
+// something like 19.26, which we can round to 19. So, 19 digits are enough to
+// represent the maximum number in base 10 in 64 bits. More than that and we
+// are able to overflow it.
+static auto integer_fits_into_64bits(int32_t num_of_digits, int32_t radix)
+  -> bool
+{
+  switch (radix)
+  {
+    // Base 2 doesn't exist, as C11 doesn't support binary notation.
+    case 8: return num_of_digits <= 64 / 3; // log(2^64, 8)
+    case 10: return num_of_digits <= 19; // log(2^64, 10)
+    case 16: return num_of_digits <= 64 / 4; // log(2^64, 16)
+    default: cci_unreachable();
+  }
+}
+
 auto NumericConstantParser::to_integer(size_t width) const
   -> std::pair<uint64_t, bool>
 {
@@ -231,27 +266,35 @@ auto NumericConstantParser::to_integer(size_t width) const
   cci_expects(radix == 8 || radix == 10 || radix == 16);
 
   uint64_t value = 0;
+
+  cci_expects(width <= sizeof(value)*8);
+
   bool overflowed = false;
+  ptrdiff_t num_of_digits = digit_end - digit_begin;
 
-  // FIXME: This handles the worst case scenario, where the number of digits is
-  // relevant to conclude whether it overflows. Integer literals with fewer
-  // digits won't ever overflow, which is almost always the case, so we're
-  // paying too much for these overflow checks here.
-  for (auto it = digit_begin; it != digit_end; ++it)
+  if (integer_fits_into_64bits(num_of_digits, radix))
   {
-    uint64_t old_val = value;
-    value *= radix;
-    overflowed |= (value / radix) != old_val;
+    for (auto it = digit_begin; it != digit_end; ++it)
+      value = value * radix + hexdigit_value(*it);
+  }
+  else
+  {
+    for (auto it = digit_begin; it != digit_end; ++it)
+    {
+      uint64_t old_val = value;
+      value *= radix;
+      overflowed |= (value / radix) != old_val;
 
-    old_val = value;
-    value += hexdigit_value(*it);
-    overflowed |= value < old_val;
+      old_val = value;
+      value += hexdigit_value(*it);
+      overflowed |= value < old_val;
+    }
   }
 
-  if (width != sizeof(value) * 8)
-    overflowed |= static_cast<bool>(value >> width);
+  const uint64_t truncated = value & (~0ull >> (64 - width));
+  overflowed |= value != truncated;
 
-  return {value & (~0ull >> width), overflowed};
+  return {truncated, overflowed};
 }
 
 // Reads a UCN escape value and sets it to `*code_point`. Returns true
