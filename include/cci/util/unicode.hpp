@@ -23,6 +23,7 @@
 #pragma once
 
 #include <cstdint>
+#include <cstddef>
 
 namespace cci::uni {
 
@@ -84,5 +85,7 @@ ConversionResult convert_utf32_to_utf16(const UTF32 **sourceStart,
                                         ConversionFlags flags);
 
 bool is_legal_utf8_sequence(const UTF8 *source, const UTF8 *sourceEnd);
+
+size_t num_bytes_for_utf8(UTF8 ch);
 
 } // namespace cci::uni

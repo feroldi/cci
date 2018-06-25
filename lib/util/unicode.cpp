@@ -697,6 +697,11 @@ ConversionResult convert_utf8_to_utf32(const UTF8 **sourceStart,
   return result;
 }
 
+size_t num_bytes_for_utf8(UTF8 ch)
+{
+  return trailingBytesForUTF8[ch] + 1;
+}
+
 // Converts the first UTF-8 sequence into a UTF-32 code point.
 ConversionResult convert_utf8_sequence(const UTF8 **sourceStart,
                                        const UTF8 *sourceEnd,
@@ -705,10 +710,10 @@ ConversionResult convert_utf8_sequence(const UTF8 **sourceStart,
 {
   if (*sourceStart == sourceEnd)
     return sourceExhausted;
-  size_t num_bytes_for_utf8 = trailingBytesForUTF8[**sourceStart] + 1;
-  if (sourceEnd - *sourceStart < static_cast<ptrdiff_t>(num_bytes_for_utf8))
+  size_t num_bytes = num_bytes_for_utf8(**sourceStart);
+  if (sourceEnd - *sourceStart < static_cast<ptrdiff_t>(num_bytes))
     return sourceExhausted;
-  return convert_utf8_to_utf32(sourceStart, *sourceStart + num_bytes_for_utf8,
+  return convert_utf8_to_utf32(sourceStart, *sourceStart + num_bytes,
                                &targetStart, targetStart + 1, flags);
 }
 

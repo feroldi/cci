@@ -30,24 +30,12 @@ TEST(LiteralParserTest, numericConstants)
 0xep1f // ok, hexadecimal floating constant
 0x.f // error: missing exponent
 18446744073709551616ull // error: overflow
-65536 // type is short, error: overflow
 )";
   DiagnosticsOptions opts;
   CompilerDiagnostics diag(opts);
   auto source = SourceManager::from_buffer(diag, code);
   auto lexer = Lexer(source);
   std::optional<Token> tok;
-  const TargetInfo target{
-    /*.char_width = */sizeof(char) * 8,
-    /*.wchar_width = */sizeof(wchar_t) * 8,
-    /*.char16_t_width = */sizeof(char16_t) * 8,
-    /*.char32_t_width = */sizeof(char32_t) * 8,
-
-    /*.short_width = */sizeof(short) * 8,
-    /*.int_width = */sizeof(int) * 8,
-    /*.long_width = */sizeof(long) * 8,
-    /*.long_long_width = */sizeof(long long) * 8,
-  };
 
   // 42ul
   {
@@ -64,7 +52,7 @@ TEST(LiteralParserTest, numericConstants)
     EXPECT_TRUE(result.is_long);
     EXPECT_FALSE(result.is_long_long);
 
-    const auto [value, overflowed] = result.to_integer(target.long_long_width);
+    const auto [value, overflowed] = result.to_integer();
 
     ASSERT_FALSE(overflowed);
     EXPECT_EQ(42ull, value);
@@ -85,7 +73,7 @@ TEST(LiteralParserTest, numericConstants)
     EXPECT_FALSE(result.is_long);
     EXPECT_FALSE(result.is_long_long);
 
-    const auto [value, overflowed] = result.to_integer(target.long_long_width);
+    const auto [value, overflowed] = result.to_integer();
 
     ASSERT_FALSE(overflowed);
     EXPECT_EQ(34ull, value);
@@ -106,7 +94,7 @@ TEST(LiteralParserTest, numericConstants)
     EXPECT_FALSE(result.is_long);
     EXPECT_TRUE(result.is_long_long);
 
-    const auto [value, overflowed] = result.to_integer(target.long_long_width);
+    const auto [value, overflowed] = result.to_integer();
 
     ASSERT_FALSE(overflowed);
     EXPECT_EQ(3735929054ull, value);
@@ -266,21 +254,7 @@ TEST(LiteralParserTest, numericConstants)
     std::string spelling = tok->spelling(source);
     NumericConstantParser result(lexer, spelling, tok->location());
     EXPECT_FALSE(result.has_error);
-    const auto [value, overflowed] = result.to_integer(target.long_long_width);
-    static_cast<void>(value);
-    ASSERT_TRUE(overflowed);
-  }
-
-  // 65536 // type is short, error: overflow
-  {
-    tok = lexer.next_token();
-    ASSERT_TRUE(tok.has_value());
-    EXPECT_EQ(TokenKind::numeric_constant, tok->kind);
-
-    std::string spelling = tok->spelling(source);
-    NumericConstantParser result(lexer, spelling, tok->location());
-    ASSERT_FALSE(result.has_error);
-    const auto [value, overflowed] = result.to_integer(target.short_width);
+    const auto [value, overflowed] = result.to_integer();
     static_cast<void>(value);
     ASSERT_TRUE(overflowed);
   }
@@ -442,7 +416,7 @@ u8"𐐷"; // UTF-8 string
       string_toks.push_back(*tok);
     StringLiteralParser str(lexer, string_toks, target);
     EXPECT_STREQ("small string that has become long now",
-                 str.result_buf.data());
+                 str.string().data());
   }
 
   {
@@ -453,7 +427,7 @@ u8"𐐷"; // UTF-8 string
     EXPECT_EQ(4, str.char_byte_width);
     EXPECT_EQ(TokenKind::wide_string_literal, str.kind);
     EXPECT_STREQ(L"good wide strings are good",
-                 reinterpret_cast<wchar_t *>(str.result_buf.data()));
+                 reinterpret_cast<const wchar_t *>(str.string().data()));
   }
 
   {
@@ -469,7 +443,7 @@ u8"𐐷"; // UTF-8 string
     while ((tok = lexer.next_token()) && tok->is_not(TokenKind::semi))
       string_toks.push_back(*tok);
     StringLiteralParser str(lexer, string_toks, target);
-    uni::UTF32 chr = reinterpret_cast<char32_t *>(str.result_buf.data())[0];
+    const uni::UTF32 chr = reinterpret_cast<const char32_t *>(str.string().data())[0];
     EXPECT_EQ(0ul, chr);
   }
 
@@ -478,8 +452,8 @@ u8"𐐷"; // UTF-8 string
     while ((tok = lexer.next_token()) && tok->is_not(TokenKind::semi))
       string_toks.push_back(*tok);
     StringLiteralParser str(lexer, string_toks, target);
-    char16_t encoded[] = {0xD801, 0xDC37, 0x0000};
-    auto result = reinterpret_cast<char16_t *>(str.result_buf.data());
+    const char16_t encoded[] = {0xD801, 0xDC37, 0x0000};
+    const auto result = reinterpret_cast<const char16_t *>(str.string().data());
     for (int i = 0; encoded[i]; ++i)
       EXPECT_EQ(encoded[i], result[i]) << "encoded and result differ at " << i;
   }
@@ -489,8 +463,8 @@ u8"𐐷"; // UTF-8 string
     while ((tok = lexer.next_token()) && tok->is_not(TokenKind::semi))
       string_toks.push_back(*tok);
     StringLiteralParser str(lexer, string_toks, target);
-    uni::UTF8 encoded[] = {0xF0, 0x90, 0x90, 0xB7, 0x00};
-    uni::UTF8 *result = reinterpret_cast<uni::UTF8 *>(str.result_buf.data());
+    const uni::UTF8 encoded[] = {0xF0, 0x90, 0x90, 0xB7, 0x00};
+    const uni::UTF8 *result = reinterpret_cast<const uni::UTF8 *>(str.string().data());
     for (int i = 0; encoded[i]; ++i)
       EXPECT_EQ(encoded[i], result[i]) << "encoded and result differ at " << i;
   }

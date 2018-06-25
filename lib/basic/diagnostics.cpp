@@ -1,6 +1,7 @@
 #include "cci/basic/diagnostics.hpp"
 #include "cci/basic/source_manager.hpp"
 #include "cci/util/contracts.hpp"
+#include "cci/util/unicode.hpp"
 #include "cci/util/variant.hpp"
 #include "fmt/format.h"
 #include <cstdio>
@@ -61,11 +62,11 @@ static auto format_error(const CompilerDiagnostics &diag, std::string_view from,
       std::string carret;
       carret.reserve(column_num);
 
-      // FIXME: Cover Unicode characters as well.
-      for (size_t i = 0; i < column_num; ++i)
+      for (size_t i = 0; i < column_num;
+           i += uni::num_bytes_for_utf8(snippet[i]))
         carret.push_back(snippet[i] != '\t' ? ' ' : '\t');
-      carret.back() = '^';
 
+      carret.back() = '^';
       out += fmt::format("\n{}\n{}", snippet, carret);
     }
   }
@@ -137,7 +138,7 @@ void CompilerDiagnostics::report_message(Severity severity, Context context,
   if (level != Level::Ignore)
   {
     const auto out = format_error(*this, level, std::move(context), message);
-    std::fprintf(this->out_stream, "\n%s\n", out.c_str());
+    std::fprintf(this->out_stream, "%s\n", out.c_str());
 
     if (level == Level::Warning)
       ++warn_count;

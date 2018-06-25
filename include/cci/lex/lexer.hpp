@@ -1,7 +1,7 @@
 #pragma once
 
-#include "cci/basic/source_manager.hpp"
 #include "cci/basic/diagnostics.hpp"
+#include "cci/basic/source_manager.hpp"
 #include "cci/util/contracts.hpp"
 #include <string>
 #include <string_view>
@@ -152,10 +152,8 @@ constexpr auto is_string_literal(TokenKind k) -> bool
     case TokenKind::utf8_string_literal:
     case TokenKind::utf16_string_literal:
     case TokenKind::utf32_string_literal:
-    case TokenKind::wide_string_literal:
-      return true;
-    default:
-      return false;
+    case TokenKind::wide_string_literal: return true;
+    default: return false;
   }
 }
 
@@ -168,10 +166,8 @@ constexpr auto is_char_constant(TokenKind k) -> bool
     case TokenKind::utf8_char_constant:
     case TokenKind::utf16_char_constant:
     case TokenKind::utf32_char_constant:
-    case TokenKind::wide_char_constant:
-      return true;
-    default:
-      return false;
+    case TokenKind::wide_char_constant: return true;
+    default: return false;
   }
 }
 
@@ -265,6 +261,8 @@ struct Lexer
     cci_expects(buffer_end[0] == '\0');
   }
 
+  auto source_manager() const -> const SourceManager & { return source_mgr; }
+
   auto diagnostics() const -> CompilerDiagnostics &
   {
     return source_mgr.get_diagnostics();
@@ -310,6 +308,15 @@ struct Lexer
   // `spelling_buf`. Returns the size in bytes of written data.
   static auto get_spelling_to_buffer(const Token &, char *spelling_buf,
                                      const SourceManager &) -> size_t;
+
+  auto get_spelling(const Token &tok, small_vector_impl<char> &out) const
+    -> std::string_view
+  {
+    out.resize(tok.size());
+    size_t spell_length =
+      Lexer::get_spelling_to_buffer(tok, out.data(), source_mgr);
+    return {out.data(), spell_length};
+  }
 };
 
 constexpr inline auto hexdigit_value(char C) -> uint32_t

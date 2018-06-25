@@ -34,7 +34,7 @@ static void report(Lexer &lex, const char *char_ptr, SourceLocation tok_loc,
 
 // Returns the respective character type width for a given string literal or
 // character constant token.
-static auto resolve_char_width(TokenKind kind, const TargetInfo &target)
+static auto map_char_width(TokenKind kind, const TargetInfo &target)
   -> size_t
 {
   cci_expects(is_char_constant(kind) || is_string_literal(kind));
@@ -259,15 +259,13 @@ static auto integer_fits_into_64bits(int32_t num_of_digits, int32_t radix)
   }
 }
 
-auto NumericConstantParser::to_integer(size_t width) const
+auto NumericConstantParser::to_integer() const
   -> std::pair<uint64_t, bool>
 {
   cci_expects(is_integer_literal());
   cci_expects(radix == 8 || radix == 10 || radix == 16);
 
   uint64_t value = 0;
-
-  cci_expects(width <= sizeof(value)*8);
 
   bool overflowed = false;
   ptrdiff_t num_of_digits = digit_end - digit_begin;
@@ -291,10 +289,7 @@ auto NumericConstantParser::to_integer(size_t width) const
     }
   }
 
-  const uint64_t truncated = value & (~0ull >> (64 - width));
-  overflowed |= value != truncated;
-
-  return {truncated, overflowed};
+  return {value, overflowed};
 }
 
 // Reads a UCN escape value and sets it to `*code_point`. Returns true
@@ -546,7 +541,7 @@ CharConstantParser::CharConstantParser(Lexer &lexer,
   --tok_end; // Trims ending quote.
   cci_expects(*tok_end == '\'');
 
-  char_byte_width = resolve_char_width(kind, target);
+  size_t char_byte_width = map_char_width(kind, target);
   // Assumes that the char width for this target is a multiple of 8.
   cci_expects((target.char_width & 0b0111) == 0);
   char_byte_width /= 8;
@@ -703,7 +698,7 @@ StringLiteralParser::StringLiteralParser(Lexer &lexer,
   cci_expects(is_string_literal(string_toks[0].kind));
   kind = string_toks[0].kind;
 
-  // Performs C11 5.1.1.2/6: Adjacent string literal tokens are concatenated.
+  // Performs [C11 5.1.1.2p6]: Adjacent string literal tokens are concatenated.
   for (ptrdiff_t i = 1; i != string_toks.size(); ++i)
   {
     cci_expects(is_string_literal(string_toks[i].kind));
@@ -715,7 +710,15 @@ StringLiteralParser::StringLiteralParser(Lexer &lexer,
       else
       {
         // Concatenation of different kinds of strings could be supported, but
-        // that would not be standard compliant.
+        // that would not be standard compliant, except if we take into account
+        // [C11 6.4.5p5]:
+        //
+        //    […] Whether differently-prefixed wide string literal tokens can
+        //    be concatenated and, if so, the treatment of the resulting
+        //    multibyte character sequence are implementation-defined.
+        //
+        // Which means wide string literals (ones prefixed with L, u or U)
+        // could be concatenated.
         diag.report(string_toks[i].location(),
                     diag::err_nonstd_string_concatenation);
         has_error = true;
@@ -730,7 +733,7 @@ StringLiteralParser::StringLiteralParser(Lexer &lexer,
   // Allows an space for the null terminator.
   ++size_bound;
 
-  char_byte_width = resolve_char_width(kind, target);
+  char_byte_width = map_char_width(kind, target);
   // Assumes that the char width for this target is a multiple of 8.
   cci_expects((target.char_width & 0b0111) == 0);
   char_byte_width /= 8;
@@ -748,7 +751,7 @@ StringLiteralParser::StringLiteralParser(Lexer &lexer,
   if (size_bound == 0)
     return;
 
-  char *result_ptr = result_buf.data();
+  this->result_ptr = result_buf.data();
 
   for (const auto &string_tok : string_toks)
   {

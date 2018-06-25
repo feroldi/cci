@@ -1,53 +1,57 @@
+#include "cci/parser/parser.hpp"
 #include "cci/lex/lexer.hpp"
 #include "cci/util/contracts.hpp"
 
-namespace cci {
+using namespace cci;
 
-struct BuiltinType
+auto Parser::parse_primary_expression() -> std::unique_ptr<Expr>
 {
-  enum class Kind
+  std::unique_ptr<Expr> res;
+
+  switch (tok.kind)
   {
-    Void,
-    SChar,
-    UChar,
-    WChar,
-    Char16,
-    Char32,
-    Short,
-    UShort,
-    Int,
-    UInt,
-    Long,
-    ULong,
-    LongLong,
-    ULongLong,
-    Float,
-    Double,
-    LongDouble,
-    Bool,
-  };
+    case TokenKind::numeric_constant:
+      res = sema.act_on_numeric_constant(tok);
+      consume_token();
+      break;
 
-  Kind kind;
-};
+    case TokenKind::char_constant:
+    case TokenKind::utf8_char_constant:
+    case TokenKind::utf16_char_constant:
+    case TokenKind::utf32_char_constant:
+    case TokenKind::wide_char_constant:
+      res = sema.act_on_char_constant(tok);
+      consume_token();
+      break;
 
-struct Parser
+    case TokenKind::string_literal:
+    case TokenKind::utf8_string_literal:
+    case TokenKind::utf16_string_literal:
+    case TokenKind::utf32_string_literal:
+    case TokenKind::wide_string_literal:
+      res = parse_string_literal_expression();
+      break;
+    default:
+      cci_unreachable();
+  }
+
+  return res;
+}
+
+auto Parser::parse_string_literal_expression() -> std::unique_ptr<StringLiteral>
 {
-  Lexer &lex;
-  Token tok;
+  cci_expects(is_string_literal(tok.kind));
 
-  Parser(Lexer &lex) noexcept : lex(lex) {}
-};
+  small_vector<Token, 1> string_toks;
 
-// primary-expression:
-//   identifier
-//   constant
-//   string-literal
-//   '(' expression ')'
-//   generic-selection
+  string_toks.push_back(tok);
+  consume_token();
 
-struct IntegerConstant
-{
-  BuiltinType type;
-};
+  while (is_string_literal(tok.kind))
+  {
+    string_toks.push_back(tok);
+    consume_token();
+  }
 
-} // namespace cci
+  return sema.act_on_string_literal(string_toks);
+}

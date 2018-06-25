@@ -69,6 +69,7 @@
 #include <initializer_list>
 #include <iterator>
 #include <memory>
+#include "cci/util/span.hpp"
 
 // LLVM Macros
 #define LLVM_VECSMALL_NODISCARD [[nodiscard]]
@@ -933,6 +934,10 @@ public:
     this->assign(IL);
   }
 
+  template <typename U, ::std::enable_if_t<std::is_same_v<T, ::std::remove_cv_t<U>>>* = nullptr>
+  SmallVector(const ::nonstd::span<U> &RHS) : SmallVector(RHS.begin(), RHS.end()) {
+  }
+
   SmallVector(const SmallVector &RHS) : SmallVectorImpl<T>(N) {
     if (!RHS.empty())
       SmallVectorImpl<T>::operator=(RHS);
@@ -940,6 +945,12 @@ public:
 
   const SmallVector &operator=(const SmallVector &RHS) {
     SmallVectorImpl<T>::operator=(RHS);
+    return *this;
+  }
+
+  template <typename U, ::std::enable_if_t<std::is_same_v<T, ::std::remove_cv_t<U>>>* = nullptr>
+  SmallVector &operator=(const ::nonstd::span<U> &RHS) {
+    SmallVectorImpl<T>::operator=(static_cast<SmallVector>(RHS));
     return *this;
   }
 
@@ -965,6 +976,12 @@ public:
 
   const SmallVector &operator=(std::initializer_list<T> IL) {
     this->assign(IL);
+    return *this;
+  }
+
+  template <typename U, ::std::enable_if_t<std::is_same_v<T, ::std::remove_cv_t<U>>>* = nullptr>
+  const SmallVector &operator=(::nonstd::span<U> &&RHS) {
+    SmallVectorImpl<T>::operator=(static_cast<SmallVector>(::std::move(RHS)));
     return *this;
   }
 };
@@ -1020,6 +1037,9 @@ void SmallVectorBase::grow_pod(void *FirstEl, size_t MinSizeInBytes,
   this->CapacityX = (char*)this->BeginX + NewCapacityInBytes;
 }
 }
+
+template <typename T>
+using small_vector_impl = llvm_vecsmall::SmallVectorImpl<T>;
 
 template <typename T, std::size_t N>
 using small_vector = llvm_vecsmall::SmallVector<T, N>;
