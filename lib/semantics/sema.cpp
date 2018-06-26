@@ -7,11 +7,26 @@
 #include <memory>
 #include <string_view>
 
+static_assert(2 == sizeof(char16_t),
+              "UTF-16 string literals assume that char16_t is 2 bytes long");
+static_assert(4 == sizeof(char32_t),
+              "UTF-32 string literals assume that char32_t is 4 bytes long");
+
 using namespace cci;
 
 auto Sema::act_on_numeric_constant(const Token &tok) -> std::unique_ptr<Expr>
 {
-  // TODO: This is too much when there's only a single digit.
+  cci_expects(tok.is(TokenKind::numeric_constant));
+
+  if (tok.size() == 1)
+  {
+    const char digit = tok.raw_spelling(lex.source_manager())[0];
+    QualifiedType ty(std::make_unique<BuiltinType>(BuiltinTypeKind::Int),
+                     Qualifiers::None);
+    return std::make_unique<IntegerLiteral>(digit - '0', std::move(ty),
+                                            tok.location());
+  }
+
   small_string<64> spell_buffer;
   std::string_view spelling = lex.get_spelling(tok, spell_buffer);
   NumericConstantParser literal(lex, spelling, tok.location());
@@ -31,6 +46,10 @@ auto Sema::act_on_numeric_constant(const Token &tok) -> std::unique_ptr<Expr>
                                               tok.location());
     }
   }
+  else if (literal.is_floating_literal())
+  {
+    cci_unreachable(); // TODO: Implement me!
+  }
 
   return nullptr;
 }
@@ -38,6 +57,10 @@ auto Sema::act_on_numeric_constant(const Token &tok) -> std::unique_ptr<Expr>
 auto Sema::act_on_char_constant(const Token &tok)
   -> std::unique_ptr<CharacterConstant>
 {
+  cci_expects(tok.is_one_of(
+    TokenKind::char_constant, TokenKind::utf16_char_constant,
+    TokenKind::utf32_char_constant, TokenKind::wide_char_constant));
+
   small_string<8> spell_buffer;
   std::string_view spelling = lex.get_spelling(tok, spell_buffer);
   CharConstantParser literal(lex, spelling, tok.location(), tok.kind,
@@ -130,7 +153,7 @@ auto Sema::act_on_string_literal(span<const Token> string_toks)
   if (literal.char_byte_width == 1)
   {
     auto data = new (storage_ptr) char[length];
-    std::memcpy(data, str.data(), length);
+    std::memcpy(data, str.data(), length * sizeof(*data));
   }
   else if (literal.char_byte_width == 2)
   {
