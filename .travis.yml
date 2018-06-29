@@ -10,9 +10,9 @@ matrix:
           sources:
             - ubuntu-toolchain-r-test
           packages:
-            - g++-7
+            - g++-8
       env:
-        - MATRIX_EVAL="CC=gcc-7 && CXX=g++-7"
+        - MATRIX_EVAL="export CC=gcc-8 CXX=g++-8 LDFLAGS=-lstdc++fs"
 before_install:
   - eval "${MATRIX_EVAL}"
 install:
@@ -29,7 +29,7 @@ install:
   - sudo cp -a $GTEST_BIN_PATH/googletest/libgtest.so /usr/lib/
 
   # Install a recent version of CMake.
-  - CMAKE_VERSION=3.11.1
+  - CMAKE_VERSION=3.11.4
   - CMAKE_BIN_PATH=$HOME/cmake
   - CMAKE_URL="https://cmake.org/files/v${CMAKE_VERSION%.[0-9]}/cmake-$CMAKE_VERSION-Linux-x86_64.tar.gz"
   - mkdir $CMAKE_BIN_PATH && wget --no-check-certificate -O - ${CMAKE_URL} | tar --strip-components=1 -xz -C $CMAKE_BIN_PATH
@@ -43,14 +43,12 @@ install:
   - mkdir $FMT_BIN_PATH
   - tar xf $FMT_ARCHIVE_PATH --strip-components=1 -C $FMT_BIN_PATH
   - (cd $FMT_BIN_PATH; cmake -DFMT_TEST=OFF -DBUILD_SHARED_LIBS=ON . && cmake --build . && sudo make install)
-
 script:
   - $CXX --version
   - cmake --version
-  - mkdir build && cd build
-  - cmake -DCMAKE_TOOLCHAIN_FILE=../cmake/toolchains/gcc.cmake ..
-  - cmake --build .
-  - GTEST_COLOR=yes ctest --output-on-failure
+  - export VERBOSE=1
+  - cmake .
+  - cmake --build . && ctest --output-on-failure
 
 notifications:
   email: false
