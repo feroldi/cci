@@ -12,10 +12,13 @@ struct Sema
 {
 private:
   Lexer &lex;
+  CompilerDiagnostics &diags;
   ASTContext &context;
 
 public:
-  Sema(Lexer &lex, ASTContext &ctx) : lex(lex), context(ctx) {}
+  Sema(Lexer &lex, ASTContext &ctx)
+    : lex(lex), diags(lex.diagnostics()), context(ctx)
+  {}
 
   auto act_on_numeric_constant(const Token &) -> std::unique_ptr<Expr>;
   auto act_on_char_constant(const Token &)

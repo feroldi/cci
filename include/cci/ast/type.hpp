@@ -79,6 +79,7 @@ public:
 enum class BuiltinTypeKind
 {
   Void,
+  Bool,
   Char,
   SChar,
   UChar,
@@ -96,7 +97,6 @@ enum class BuiltinTypeKind
   Float,
   Double,
   LongDouble,
-  Bool,
 };
 
 // Builtin types.

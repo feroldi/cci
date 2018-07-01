@@ -1,9 +1,11 @@
 #include "cci/semantics/sema.hpp"
 #include "cci/ast/expr.hpp"
 #include "cci/ast/type.hpp"
+#include "cci/basic/diagnostics.hpp"
 #include "cci/lex/lexer.hpp"
 #include "cci/lex/literal_parser.hpp"
 #include "cci/util/small_vector.hpp"
+#include "sema_diagnostics.hpp"
 #include <memory>
 #include <string_view>
 
@@ -37,14 +39,81 @@ auto Sema::act_on_numeric_constant(const Token &tok) -> std::unique_ptr<Expr>
   if (literal.is_integer_literal())
   {
     auto [val, overflowed] = literal.to_integer();
-    if (!overflowed)
+
+    if (overflowed)
     {
-      // TODO: Discover this numeric constant's actual type.
-      QualifiedType ty(std::make_unique<BuiltinType>(BuiltinTypeKind::Int),
-                       Qualifiers::None);
-      return std::make_unique<IntegerLiteral>(val, std::move(ty),
-                                              tok.location());
+      // We could just stop here, but let's be friends with the user and try to
+      // parse and diagnose the source code as much as possible.
+      diags.report(tok.location(), diag::err_integer_literal_too_large);
     }
+
+    bool allow_unsigned = literal.is_unsigned || literal.radix != 10;
+    std::optional<BuiltinTypeKind> kind;
+    size_t width = 0;
+
+    // Apply [C11 6.4.4.1p5]: The type of an integer constant is the first of
+    // the corresponding list in which its value can be represented.
+    if (!literal.is_long && !literal.is_long_long)
+    {
+      size_t int_width = context.target_info().int_width;
+      if (val >> int_width == 0)
+      {
+        if (!literal.is_unsigned && (val >> (int_width - 1)) == 0)
+          kind = BuiltinTypeKind::Int;
+        else if (allow_unsigned)
+          kind = BuiltinTypeKind::UInt;
+        width = int_width;
+      }
+    }
+
+    if (!kind && !literal.is_long_long)
+    {
+      size_t long_width = context.target_info().long_width;
+      if (val >> long_width == 0)
+      {
+        if (!literal.is_unsigned && (val >> (long_width - 1)) == 0)
+          kind = BuiltinTypeKind::Long;
+        else if (allow_unsigned)
+          kind = BuiltinTypeKind::ULong;
+        width = long_width;
+      }
+    }
+
+    if (!kind)
+    {
+      size_t long_long_width = context.target_info().long_long_width;
+      if (val >> long_long_width == 0)
+      {
+        if (!literal.is_unsigned && (val >> (long_long_width - 1)) == 0)
+          kind = BuiltinTypeKind::LongLong;
+        else if (allow_unsigned)
+          kind = BuiltinTypeKind::ULongLong;
+        width = long_long_width;
+      }
+    }
+
+    if (!kind)
+    {
+      // [C11 6.4.4.1p6] says that "if an integer constant cannot be
+      // represented by any type in its list and has no extended integer
+      // type, then the integer constant has no type." However, leaving an
+      // expression without a type breaks the code generator and whatnot, so
+      // we'll just do whatever GCC or Clang does here. GCC attempts to use
+      // __int128, an extended integer type (which [C11 6.4.4.1p6] suggests
+      // doing), and Clang settles down to unsigned long long. Given we don't
+      // support any extended types, unsigned long long will be the chosen one.
+      diags.report(tok.location(), diag::ext_no_type_for_integer_literal);
+      kind = BuiltinTypeKind::ULongLong;
+      width = context.target_info().long_long_width;
+    }
+
+    // Truncates the result.
+    // FIXME: This 64 is hardcoded, get the correct maximum width from the
+    // target info.
+    val &= -1U >> (64 - width);
+
+    QualifiedType ty(std::make_unique<BuiltinType>(*kind), Qualifiers::None);
+    return std::make_unique<IntegerLiteral>(val, std::move(ty), tok.location());
   }
   else if (literal.is_floating_literal())
   {
@@ -134,13 +203,12 @@ auto Sema::act_on_string_literal(span<const Token> string_toks)
     default: cci_expects(TokenKind::string_literal == literal.kind);
   }
 
-  auto element_ty =
-    QualifiedType(std::make_unique<BuiltinType>(elem_type_kind), 0);
+  QualifiedType element_ty(std::make_unique<BuiltinType>(elem_type_kind),
+                           Qualifiers::None);
 
-  auto str_ty =
-    QualifiedType(std::make_unique<ConstantArrayType>(
-                    std::move(element_ty), literal.num_string_chars() + 1),
-                  0);
+  QualifiedType str_ty(std::make_unique<ConstantArrayType>(
+                         std::move(element_ty), literal.num_string_chars() + 1),
+                       Qualifiers::None);
 
   std::vector<std::byte> str_storage;
   str_storage.resize(literal.byte_length());
