@@ -1178,20 +1178,11 @@ auto Lexer::lex_token(const char *cur_ptr, Token &result) -> bool
 // characters.
 auto Token::spelling(const SourceManager &source_mgr) const -> std::string
 {
-  const std::string_view raw_text = source_mgr.text_slice(source_range());
-  if (!is_dirty())
-    return std::string(raw_text);
   std::string spelling;
-  spelling.reserve(raw_text.size());
-  auto it = raw_text.begin();
-  while (it != raw_text.end())
-  {
-    const auto [c, size] = peek_char_and_size_nontrivial(it, 0, nullptr);
-    spelling.push_back(c);
-    it += size;
-  }
-  // Dirty tokens have to shrink in size.
-  cci_ensures(spelling.size() < raw_text.size());
+  spelling.resize(this->size());
+  size_t len =
+    Lexer::get_spelling_to_buffer(*this, spelling.data(), source_mgr);
+  spelling.resize(len);
   return spelling;
 }
 
