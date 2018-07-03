@@ -243,15 +243,18 @@ struct Token
 // lot more appealing.
 struct Lexer
 {
-  // TODO: Make these private, and create a LexerContext for internal
-  // usage of these members.
+private:
   const SourceManager &source_mgr; //< Input stream.
+  CompilerDiagnostics &diags;
+
   const char *buffer_begin; //< Iterator into the start of the buffer.
   const char *buffer_end; //< Iterator into the end of the buffer.
   const char *buffer_ptr; //< Current position into the buffer to be analyzed.
 
-  Lexer(const SourceManager &src_mgr)
+public:
+  explicit Lexer(const SourceManager &src_mgr)
     : source_mgr(src_mgr)
+    , diags(src_mgr.diagnostics())
     , buffer_begin(src_mgr.full_text().begin())
     , buffer_end(src_mgr.full_text().end())
     , buffer_ptr(buffer_begin)
@@ -262,11 +265,7 @@ struct Lexer
   }
 
   auto source_manager() const -> const SourceManager & { return source_mgr; }
-
-  auto diagnostics() const -> CompilerDiagnostics &
-  {
-    return source_mgr.get_diagnostics();
-  }
+  auto diagnostics() const -> CompilerDiagnostics & { return diags; }
 
   // Parses the next token in the input stream.
   //
@@ -279,15 +278,6 @@ struct Lexer
   //
   // \return The parsed token on success, and std::nullopt otherwise.
   auto next_token() -> std::optional<Token>;
-
-  // Fitly finalizes the lexing of a token, advancing the buffer pointer past
-  // the new token. This is used only by the internals of the lexical analysis.
-  void form_token(Token &tok, const char *tok_end, TokenKind kind)
-  {
-    tok.kind = kind;
-    tok.range = {location_for_ptr(buffer_ptr), location_for_ptr(tok_end)};
-    buffer_ptr = tok_end;
-  }
 
   // Translates a buffer pointer into a SourceLocation.
   auto location_for_ptr(const char *ptr) const -> SourceLocation
@@ -316,6 +306,31 @@ struct Lexer
     size_t spell_length =
       Lexer::get_spelling_to_buffer(tok, out.data(), source_mgr);
     return {out.data(), spell_length};
+  }
+
+
+private:
+  auto try_read_ucn(const char *&start_ptr, const char *slash_ptr, Token *tok = nullptr) -> uint32_t;
+  auto try_advance_identifier_utf8(const char *&cur_ptr) -> bool;
+  auto try_advance_identifier_ucn(const char *&cur_ptr, int64_t size, Token &result) -> bool;
+
+  auto skip_line_comment(const char *cur_ptr) -> const char *;
+  auto skip_block_comment(const char *cur_ptr) -> const char *;
+
+  auto lex_identifier(const char *cur_ptr, Token &result) -> bool;
+  auto lex_numeric_constant(const char *cur_ptr, Token &result) -> bool;
+  auto lex_character_constant(const char *cur_ptr, Token &result, TokenKind char_kind) -> bool;
+  auto lex_string_literal(const char *cur_ptr, Token &result, TokenKind str_kind) -> bool;
+  auto lex_unicode(const char *cur_ptr, uint32_t code_point, Token &result) -> bool;
+  auto lex_token(const char *cur_ptr, Token &result) -> bool;
+
+  // Fitly finalizes the lexing of a token, advancing the buffer pointer past
+  // the new token. This is used only by the internals of the lexical analysis.
+  void form_token(Token &tok, const char *tok_end, TokenKind kind)
+  {
+    tok.kind = kind;
+    tok.range = {location_for_ptr(buffer_ptr), location_for_ptr(tok_end)};
+    buffer_ptr = tok_end;
   }
 };
 

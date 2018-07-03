@@ -54,10 +54,10 @@ constexpr auto is_whitespace(char C) -> bool
   return C == ' ' || C == '\t' || C == '\v' || C == '\f' || is_newline(C);
 }
 
-template <typename ErrorCode, typename... Args>
-void report(Lexer &lex, const char *ctx, ErrorCode err_code, Args &&... args)
+template <typename... Args>
+void report(Lexer &lex, const char *ctx, diag::Lex err_code, Args &&... args)
 {
-  auto &diag = lex.source_mgr.get_diagnostics();
+  auto &diag = lex.diagnostics();
   return diag.report(lex.location_for_ptr(ctx), err_code,
                      std::forward<Args>(args)...);
 }
@@ -117,10 +117,7 @@ auto size_for_escaped_newline(const char *ptr) -> int64_t
 //
 // \param c The character to be checked.
 // \return true if character doesn't need special care.
-constexpr bool is_trivial_character(char c)
-{
-  return c != '?' && c != '\\';
-}
+constexpr bool is_trivial_character(char c) { return c != '?' && c != '\\'; }
 
 // C11 5.2.1.1 Trigraph sequences.
 constexpr auto decode_trigraph_letter(char letter)
@@ -159,13 +156,15 @@ auto peek_char_and_size_nontrivial(const char *ptr, int64_t size,
     ++ptr;
     ++size;
 
-backslash:
+  backslash:
     // There's no need to escape anything other than new-lines.
-    if (!is_newline(*ptr)) return {'\\', size};
+    if (!is_newline(*ptr))
+      return {'\\', size};
 
     if (int64_t nlsize = size_for_escaped_newline(ptr))
     {
-      if (tok) tok->set_flags(Token::IsDirty);
+      if (tok)
+        tok->set_flags(Token::IsDirty);
       ptr += nlsize;
       size += nlsize;
       return peek_char_and_size_nontrivial(ptr, size, tok);
@@ -182,8 +181,10 @@ backslash:
     {
       ptr += 3;
       size += 3;
-      if (tok) tok->set_flags(Token::IsDirty);
-      if (c == '\\') goto backslash;
+      if (tok)
+        tok->set_flags(Token::IsDirty);
+      if (c == '\\')
+        goto backslash;
       return {c, size};
     }
   }
@@ -203,7 +204,8 @@ backslash:
 // \return The character pointed by ptr before advancing.
 auto peek_char_advance(const char *&ptr, Token &tok) -> char
 {
-  if (is_trivial_character(*ptr)) return *ptr++;
+  if (is_trivial_character(*ptr))
+    return *ptr++;
   const auto [c, size] = peek_char_and_size_nontrivial(ptr, 0, &tok);
   ptr += size;
   return c;
@@ -248,6 +250,8 @@ auto consume_char(const char *ptr, int64_t size, Token &tok) -> const char *
   return ptr + size;
 }
 
+} // namespace
+
 // universal-character-name: [C11 6.4.3/1]
 //     '\u' hex-quad
 //     '\U' hex-quad  hex-quad
@@ -263,14 +267,13 @@ auto consume_char(const char *ptr, int64_t size, Token &tok) -> const char *
 // diagnostics and returns 0, but still consumes the buffer pointer.  Ill-formed
 // UCNs prevent the buffer pointer from being consumed, however.
 //
-// \param lex The lexer.
 // \param start_ptr Buffer pointer to the UCN kind ('u' or 'U').
 // \param slash_ptr Buffer pointer to the UCN slash ('\') before its kind.
 // \param tok The token being formed, if any.
 //
 // \return The code point represented by the UCN.
-auto try_read_ucn(Lexer &lex, const char *&start_ptr, const char *slash_ptr,
-                  Token *tok = nullptr) -> uint32_t
+auto Lexer::try_read_ucn(const char *&start_ptr, const char *slash_ptr,
+                         Token *tok) -> uint32_t
 {
   const auto [kind, kind_size] = peek_char_and_size(start_ptr);
   const int num_hexdigits = kind == 'u' ? 4 : kind == 'U' ? 8 : 0;
@@ -288,7 +291,7 @@ auto try_read_ucn(Lexer &lex, const char *&start_ptr, const char *slash_ptr,
     const uint32_t value = hexdigit_value(c);
     if (value == -1U)
     {
-      report(lex, slash_ptr, diag::warn_ucn_incomplete);
+      report(*this, slash_ptr, diag::warn_ucn_incomplete);
       return 0;
     }
     code_point <<= 4;
@@ -319,14 +322,14 @@ auto try_read_ucn(Lexer &lex, const char *&start_ptr, const char *slash_ptr,
   {
     if (code_point != 0x24 && code_point != 0x40 && code_point != 0x60)
     {
-      report(lex, slash_ptr, diag::err_ucn_invalid);
+      report(*this, slash_ptr, diag::err_ucn_invalid);
       return 0;
     }
   }
   // high and low surrogates
   else if (code_point >= 0xD800 && code_point <= 0xDFFF)
   {
-    report(lex, slash_ptr, diag::err_ucn_invalid);
+    report(*this, slash_ptr, diag::err_ucn_invalid);
     return 0;
   }
 
@@ -337,7 +340,6 @@ auto try_read_ucn(Lexer &lex, const char *&start_ptr, const char *slash_ptr,
 //
 // This makes sure that the lexed UCN is a valid character for an identifier.
 //
-// \param lex The lexer.
 // \param cur_ptr Buffer pointer that points to the slash ('\'). This pointer
 //                is updated to point past the end of the UCN only if the UCN
 //                is well-formed in an identifier.
@@ -345,11 +347,11 @@ auto try_read_ucn(Lexer &lex, const char *&start_ptr, const char *slash_ptr,
 // \param result Token being formed.
 //
 // \return true if UCN is well-formed for an identifier.
-auto try_advance_identifier_ucn(Lexer &lex, const char *&cur_ptr, int64_t size,
-                                Token &result) -> bool
+auto Lexer::try_advance_identifier_ucn(const char *&cur_ptr, int64_t size,
+                                       Token &result) -> bool
 {
   auto ucn_ptr = cur_ptr + size;
-  if (uint32_t code_point = try_read_ucn(lex, ucn_ptr, cur_ptr, nullptr);
+  if (uint32_t code_point = try_read_ucn(ucn_ptr, cur_ptr, nullptr);
       code_point == 0)
     return false;
   const auto ucn_size = std::distance(cur_ptr, ucn_ptr);
@@ -364,19 +366,18 @@ auto try_advance_identifier_ucn(Lexer &lex, const char *&cur_ptr, int64_t size,
 
 // Lexes a UTF-8 character that is part of an identifier.
 //
-// \param lex The lexer.
 // \param cur_ptr Buffer pointer at the start of the UTF-8 sequence.
 //
 // \return true if a UTF-8 sequence is parsed, false otherwise.
-auto try_advance_identifier_utf8(Lexer &lex, const char *&cur_ptr) -> bool
+auto Lexer::try_advance_identifier_utf8(const char *&cur_ptr) -> bool
 {
   cci_expects(!is_ascii(cur_ptr[0]));
   const char *uni_ptr = cur_ptr;
   uni::UTF32 code_point = 0;
-  uni::ConversionResult res = uni::convert_utf8_sequence(
-    reinterpret_cast<const uni::UTF8 **>(&uni_ptr),
-    reinterpret_cast<const uni::UTF8 *>(lex.buffer_end), &code_point,
-    uni::strictConversion);
+  uni::ConversionResult res =
+    uni::convert_utf8_sequence(reinterpret_cast<const uni::UTF8 **>(&uni_ptr),
+                               reinterpret_cast<const uni::UTF8 *>(buffer_end),
+                               &code_point, uni::strictConversion);
   if (res == uni::conversionOK &&
       is_allowed_id_char(static_cast<uint32_t>(code_point)))
   {
@@ -408,20 +409,17 @@ auto try_advance_identifier_utf8(Lexer &lex, const char *&cur_ptr) -> bool
 //
 // Lexes an identifier. Assumes that the identifier's head is already consumed.
 //
-// \param lex The lexer.
 // \param cur_ptr A pointer into the buffer that is past the first identifier's
 //                character.
 // \param result Token being formed.
 //
 // \return true if identifier was successfully formed.
-auto lex_identifier(Lexer &lex, const char *cur_ptr, Token &result) -> bool
+auto Lexer::lex_identifier(const char *cur_ptr, Token &result) -> bool
 {
-  auto is_ident = [](char c) {
-    return is_alphanum(c) || c == '_' || c == '$';
-  };
+  auto is_ident = [](char c) { return is_alphanum(c) || c == '_' || c == '$'; };
   // Most of the heavy work can be avoided if the identifier is
   // formed by ASCII characters only.
-  cur_ptr = std::find_if_not(cur_ptr, lex.buffer_end, is_ident);
+  cur_ptr = std::find_if_not(cur_ptr, buffer_end, is_ident);
 
   // If there's dirt, then lexes the rest of the identifier.
   if (!is_ascii(*cur_ptr) || !is_trivial_character(*cur_ptr))
@@ -429,12 +427,12 @@ auto lex_identifier(Lexer &lex, const char *cur_ptr, Token &result) -> bool
     auto [c, size] = peek_char_and_size(cur_ptr);
     while (true)
     {
-      if (c == '\\' && try_advance_identifier_ucn(lex, cur_ptr, size, result))
+      if (c == '\\' && try_advance_identifier_ucn(cur_ptr, size, result))
       {
         std::tie(c, size) = peek_char_and_size(cur_ptr);
         continue;
       }
-      else if (!is_ascii(c) && try_advance_identifier_utf8(lex, cur_ptr))
+      else if (!is_ascii(c) && try_advance_identifier_utf8(cur_ptr))
       {
         std::tie(c, size) = peek_char_and_size(cur_ptr);
         continue;
@@ -454,13 +452,13 @@ auto lex_identifier(Lexer &lex, const char *cur_ptr, Token &result) -> bool
     }
   }
 
-  lex.form_token(result, cur_ptr, TokenKind::identifier);
+  form_token(result, cur_ptr, TokenKind::identifier);
 
   // Changes the token's kind to a keyword if this happens to be one.
   if (!result.has_UCN())
   {
     // FIXME: This is rather slow.
-    auto spelling = result.spelling(lex.source_mgr);
+    auto spelling = result.spelling(source_mgr);
     for (auto kind : KEYWORD_KINDS)
     {
       if (spelling == to_string(kind))
@@ -480,13 +478,11 @@ auto lex_identifier(Lexer &lex, const char *cur_ptr, Token &result) -> bool
 // This just matches a regex that validates such constants. Syntax checking is
 // delayed to semantic analysis.
 //
-// \param lex The lexer.
 // \param cur_ptr Pointer past the first digit of the numeric constant.
 // \param result Token being formed.
 //
 // \return true if numeric constant was successfully formed.
-auto lex_numeric_constant(Lexer &lex, const char *cur_ptr, Token &result)
-  -> bool
+auto Lexer::lex_numeric_constant(const char *cur_ptr, Token &result) -> bool
 {
   auto [c, digit_size] = peek_char_and_size(cur_ptr);
   char prev = c;
@@ -511,10 +507,10 @@ auto lex_numeric_constant(Lexer &lex, const char *cur_ptr, Token &result)
   //    'P' sign[opt] digit-sequence
   if ((c == '+' || c == '-') ||
       (prev == 'e' || prev == 'E' || prev == 'p' || prev == 'P'))
-    return lex_numeric_constant(lex, consume_char(cur_ptr, digit_size, result),
+    return lex_numeric_constant(consume_char(cur_ptr, digit_size, result),
                                 result);
 
-  lex.form_token(result, cur_ptr, TokenKind::numeric_constant);
+  form_token(result, cur_ptr, TokenKind::numeric_constant);
   result.set_flags(Token::IsLiteral);
   return true;
 }
@@ -522,12 +518,11 @@ auto lex_numeric_constant(Lexer &lex, const char *cur_ptr, Token &result)
 // Skips a line comment, returning a pointer past the end of the comment.
 // Assumes that the // part is already lexed.
 //
-// \param lex The lexer.
 // \param cur_ptr Buffer pointer which points past the second '/' comment
 //                character.
 //
 // \return A pointer past the end of the comment, i.e. the newline.
-auto skip_line_comment(Lexer &lex, const char *cur_ptr) -> const char *
+auto Lexer::skip_line_comment(const char *cur_ptr) -> const char *
 {
   auto [c, c_size] = peek_char_and_size(cur_ptr);
 
@@ -548,7 +543,7 @@ auto skip_line_comment(Lexer &lex, const char *cur_ptr) -> const char *
     // happen, we still let this check here.
     if (c == '\0')
     {
-      report(lex, cur_ptr, diag::err_unterminated_comment, selector{0});
+      report(*this, cur_ptr, diag::err_unterminated_comment, selector{0});
       break;
     }
 
@@ -562,12 +557,11 @@ auto skip_line_comment(Lexer &lex, const char *cur_ptr) -> const char *
 // Skips a block comment, returning a pointer past the end of the comment, i.e.
 // after the */ part. Assumes that the // part is already lexed.
 //
-// \param lex The lexer.
 // \param cur_ptr Buffer pointer which points past the '*' from /*
 //                string.
 //
 // \return A pointer past the end of the comment.
-auto skip_block_comment(Lexer &lex, const char *cur_ptr) -> const char *
+auto Lexer::skip_block_comment(const char *cur_ptr) -> const char *
 {
   auto [c, c_size] = peek_char_and_size(cur_ptr);
   char prev = c;
@@ -579,8 +573,8 @@ auto skip_block_comment(Lexer &lex, const char *cur_ptr) -> const char *
   {
     // C11 6.4.9/1: Except within a character constant, a string literal, or a
     // comment, the characters /* introduce a comment. The contents of such a
-    // comment are examined only to identify multibyte characters and to find the
-    // characters */ that terminate it. 83)
+    // comment are examined only to identify multibyte characters and to find
+    // the characters */ that terminate it. 83)
     //
     // 83) Thus, /* ... */ comments do not nest.
     if (c == '/' && prev == '*')
@@ -592,7 +586,7 @@ auto skip_block_comment(Lexer &lex, const char *cur_ptr) -> const char *
     // Missing the terminating */ block comment.
     if (c == '\0')
     {
-      report(lex, cur_ptr, diag::err_unterminated_comment, selector{1});
+      report(*this, cur_ptr, diag::err_unterminated_comment, selector{1});
       break;
     }
 
@@ -640,15 +634,14 @@ auto skip_block_comment(Lexer &lex, const char *cur_ptr) -> const char *
 // Lexes a character constant literal. Assumes that the prefix and ' are already
 // lexed.
 //
-// \param lex The lexer.
 // \param cur_ptr Buffer pointer that points past the ' character.
 // \param result Token being formed.
 // \param char_kind Token kind of this character constant. This is given by the
 //                 character constant's prefix (or the lack thereof).
 //
 // \return true if character constant is successfully lexed.
-auto lex_character_constant(Lexer &lex, const char *cur_ptr, Token &result,
-                            const TokenKind char_kind) -> bool
+auto Lexer::lex_character_constant(const char *cur_ptr, Token &result,
+                                   const TokenKind char_kind) -> bool
 {
   cci_expects(char_kind == TokenKind::char_constant ||
               char_kind == TokenKind::utf8_char_constant ||
@@ -660,8 +653,8 @@ auto lex_character_constant(Lexer &lex, const char *cur_ptr, Token &result,
 
   if (c == '\'')
   {
-    report(lex, lex.buffer_ptr, diag::err_empty_character);
-    lex.form_token(result, cur_ptr, TokenKind::unknown);
+    report(*this, buffer_ptr, diag::err_empty_character);
+    form_token(result, cur_ptr, TokenKind::unknown);
     return true;
   }
 
@@ -674,16 +667,16 @@ auto lex_character_constant(Lexer &lex, const char *cur_ptr, Token &result,
 
     else if (is_newline(c) || c == '\0')
     {
-      report(lex, lex.buffer_ptr, diag::err_unterminated_char_or_string, '\'',
+      report(*this, buffer_ptr, diag::err_unterminated_char_or_string, '\'',
              to_string(char_kind));
-      lex.form_token(result, std::prev(cur_ptr), TokenKind::unknown);
+      form_token(result, std::prev(cur_ptr), TokenKind::unknown);
       return true;
     }
 
     c = peek_char_advance(cur_ptr, result);
   }
 
-  lex.form_token(result, cur_ptr, char_kind);
+  form_token(result, cur_ptr, char_kind);
   result.set_flags(Token::IsLiteral);
   return true;
 }
@@ -708,15 +701,14 @@ auto lex_character_constant(Lexer &lex, const char *cur_ptr, Token &result,
 //
 // Lexes a string literal. Assumes that the prefix and " are already lexed.
 //
-// \param lex The lexer.
 // \param cur_ptr Buffer pointer that points pat the " character.
 // \param result Token being formed.
 // \param str_kind Token kind of this string literal. This is given by the
 //                 string literals's prefix (or the lack thereof).
 //
 // \return true if string literal is successfully lexed.
-auto lex_string_literal(Lexer &lex, const char *cur_ptr, Token &result,
-                        const TokenKind str_kind) -> bool
+auto Lexer::lex_string_literal(const char *cur_ptr, Token &result,
+                               const TokenKind str_kind) -> bool
 {
   cci_expects(str_kind == TokenKind::string_literal ||
               str_kind == TokenKind::utf8_string_literal ||
@@ -735,53 +727,51 @@ auto lex_string_literal(Lexer &lex, const char *cur_ptr, Token &result,
 
     else if (is_newline(c) || c == '\0')
     {
-      report(lex, lex.buffer_ptr, diag::err_unterminated_char_or_string, '"',
+      report(*this, buffer_ptr, diag::err_unterminated_char_or_string, '"',
              to_string(str_kind));
-      lex.form_token(result, std::prev(cur_ptr), TokenKind::unknown);
+      form_token(result, std::prev(cur_ptr), TokenKind::unknown);
       return true;
     }
 
     c = peek_char_advance(cur_ptr, result);
   }
 
-  lex.form_token(result, cur_ptr, str_kind);
+  form_token(result, cur_ptr, str_kind);
   result.set_flags(Token::IsLiteral);
   return true;
 }
 
 // Lexes an identifier that starts with a UCN or a UTF-8 character.
 //
-// \param lex The lexer.
 // \param cur_ptr Buffer pointer past the lexed code point.
 // \param code_point Identifier's UTF-8 code point head.
 // \param result Token being formed.
 //
 // \return true if identifier is lexed.
-auto lex_unicode(Lexer &lex, const char *cur_ptr, uint32_t code_point,
-                 Token &result) -> bool
+auto Lexer::lex_unicode(const char *cur_ptr, uint32_t code_point, Token &result)
+  -> bool
 {
   if (is_allowed_id_char(code_point) &&
       is_allowed_initially_id_char(code_point))
   {
     // TODO: Diagnose UTF8 homoglyphs.
-    return lex_identifier(lex, cur_ptr, result);
+    return lex_identifier(cur_ptr, result);
   }
-  lex.form_token(result, cur_ptr, TokenKind::unknown);
+  form_token(result, cur_ptr, TokenKind::unknown);
   return true;
 }
 
 // Lexes the next token in the source buffer.
 //
-// \param lex The lexer.
 // \param cur_ptr Pointer into the source buffer from which to lex a token.
 // \param result Output parameter to which a lexed token is set on success.
 //
 // \return true if a token was lexed, and false if end of input is reached.
-auto lex_token(Lexer &lex, const char *cur_ptr, Token &result) -> bool
+auto Lexer::lex_token(const char *cur_ptr, Token &result) -> bool
 {
   // Skips any whitespace before the token.
-  cur_ptr = std::find_if_not(cur_ptr, lex.buffer_end, is_whitespace);
-  lex.buffer_ptr = cur_ptr;
+  cur_ptr = std::find_if_not(cur_ptr, buffer_end, is_whitespace);
+  buffer_ptr = cur_ptr;
 
   auto [ch, ch_size] = peek_char_and_size(cur_ptr);
   cur_ptr = consume_char(cur_ptr, ch_size, result);
@@ -794,39 +784,31 @@ auto lex_token(Lexer &lex, const char *cur_ptr, Token &result) -> bool
       return false; // End of input.
 
     case '\\':
-      if (uint32_t code_point = try_read_ucn(lex, cur_ptr, lex.buffer_ptr, nullptr);
+      if (uint32_t code_point = try_read_ucn(cur_ptr, buffer_ptr, nullptr);
           code_point != 0)
-        return lex_unicode(lex, cur_ptr, code_point, result);
+        return lex_unicode(cur_ptr, code_point, result);
       else
         break;
 
-    case '[':
-      kind = TokenKind::l_bracket;
-      break;
-    case ']':
-      kind = TokenKind::r_bracket;
-      break;
-    case '(':
-      kind = TokenKind::l_paren;
-      break;
-    case ')':
-      kind = TokenKind::r_paren;
-      break;
-    case '{':
-      kind = TokenKind::l_brace;
-      break;
-    case '}':
-      kind = TokenKind::r_brace;
-      break;
+    case '[': kind = TokenKind::l_bracket; break;
+    case ']': kind = TokenKind::r_bracket; break;
+    case '(': kind = TokenKind::l_paren; break;
+    case ')': kind = TokenKind::r_paren; break;
+    case '{': kind = TokenKind::l_brace; break;
+    case '}': kind = TokenKind::r_brace; break;
+    case '~': kind = TokenKind::tilde; break;
+    case ';': kind = TokenKind::semi; break;
+    case ',': kind = TokenKind::comma; break;
 
     case '.':
       std::tie(ch, ch_size) = peek_char_and_size(cur_ptr);
       if (is_digit(ch))
-        return lex_numeric_constant(lex, consume_char(cur_ptr, ch_size, result),
+        return lex_numeric_constant(consume_char(cur_ptr, ch_size, result),
                                     result);
       else if (ch == '.')
       {
-        if (const auto [after, after_size] = peek_char_and_size(cur_ptr + ch_size);
+        if (const auto [after, after_size] =
+              peek_char_and_size(cur_ptr + ch_size);
             after == '.')
         {
           kind = TokenKind::ellipsis;
@@ -902,10 +884,6 @@ auto lex_token(Lexer &lex, const char *cur_ptr, Token &result) -> bool
         kind = TokenKind::star;
       break;
 
-    case '~':
-      kind = TokenKind::tilde;
-      break;
-
     case '/':
       std::tie(ch, ch_size) = peek_char_and_size(cur_ptr);
       if (ch == '/')
@@ -913,13 +891,13 @@ auto lex_token(Lexer &lex, const char *cur_ptr, Token &result) -> bool
         // NOTE: Don't handle line comments that are actually an operator and a
         // block comment in C89. E.g. `a //**/ b`, which should be `a / b` in
         // C89, but is currently parsed as `a`, because of C11's line comments.
-        lex.buffer_ptr = skip_line_comment(lex, cur_ptr + ch_size);
-        return lex_token(lex, lex.buffer_ptr, result);
+        buffer_ptr = skip_line_comment(cur_ptr + ch_size);
+        return lex_token(buffer_ptr, result);
       }
       else if (ch == '*')
       {
-        lex.buffer_ptr = skip_block_comment(lex, cur_ptr + ch_size);
-        return lex_token(lex, lex.buffer_ptr, result);
+        buffer_ptr = skip_block_comment(cur_ptr + ch_size);
+        return lex_token(buffer_ptr, result);
       }
       else if (ch == '=')
       {
@@ -965,7 +943,8 @@ auto lex_token(Lexer &lex, const char *cur_ptr, Token &result) -> bool
       std::tie(ch, ch_size) = peek_char_and_size(cur_ptr);
       if (ch == '<')
       {
-        if (const auto [after, after_size] = peek_char_and_size(cur_ptr + ch_size);
+        if (const auto [after, after_size] =
+              peek_char_and_size(cur_ptr + ch_size);
             after == '=')
         {
           kind = TokenKind::lesslessequal;
@@ -1001,7 +980,8 @@ auto lex_token(Lexer &lex, const char *cur_ptr, Token &result) -> bool
       std::tie(ch, ch_size) = peek_char_and_size(cur_ptr);
       if (ch == '>')
       {
-        if (const auto [after, after_size] = peek_char_and_size(cur_ptr + ch_size);
+        if (const auto [after, after_size] =
+              peek_char_and_size(cur_ptr + ch_size);
             after == '=')
         {
           kind = TokenKind::greatergreaterequal;
@@ -1087,14 +1067,6 @@ auto lex_token(Lexer &lex, const char *cur_ptr, Token &result) -> bool
         kind = TokenKind::colon;
       break;
 
-    case ';':
-      kind = TokenKind::semi;
-      break;
-
-    case ',':
-      kind = TokenKind::comma;
-      break;
-
     case '#':
       std::tie(ch, ch_size) = peek_char_and_size(cur_ptr);
       if (ch == '#')
@@ -1108,49 +1080,46 @@ auto lex_token(Lexer &lex, const char *cur_ptr, Token &result) -> bool
 
     case '0': case '1': case '2': case '3': case '4':
     case '5': case '6': case '7': case '8': case '9':
-      return lex_numeric_constant(lex, cur_ptr, result);
+      return lex_numeric_constant(cur_ptr, result);
 
     case 'L':
       std::tie(ch, ch_size) = peek_char_and_size(cur_ptr);
       if (ch == '\'')
-        return lex_character_constant(lex,
-                                      consume_char(cur_ptr, ch_size, result),
+        return lex_character_constant(consume_char(cur_ptr, ch_size, result),
                                       result, TokenKind::wide_char_constant);
       if (ch == '"')
-        return lex_string_literal(lex, consume_char(cur_ptr, ch_size, result),
+        return lex_string_literal(consume_char(cur_ptr, ch_size, result),
                                   result, TokenKind::wide_string_literal);
-      return lex_identifier(lex, cur_ptr, result);
+      return lex_identifier(cur_ptr, result);
 
     case 'u':
       std::tie(ch, ch_size) = peek_char_and_size(cur_ptr);
       if (ch == '\'')
-        return lex_character_constant(lex,
-                                      consume_char(cur_ptr, ch_size, result),
+        return lex_character_constant(consume_char(cur_ptr, ch_size, result),
                                       result, TokenKind::utf16_char_constant);
       if (ch == '8')
       {
-        if (const auto [after, after_size] = peek_char_and_size(cur_ptr + ch_size);
+        if (const auto [after, after_size] =
+              peek_char_and_size(cur_ptr + ch_size);
             after == '"')
         {
           cur_ptr = consume_char(cur_ptr, ch_size, result);
-          return lex_string_literal(lex,
-                                    consume_char(cur_ptr, after_size, result),
+          return lex_string_literal(consume_char(cur_ptr, after_size, result),
                                     result, TokenKind::utf8_string_literal);
         }
       }
       if (ch == '"')
-        return lex_string_literal(lex, consume_char(cur_ptr, ch_size, result),
+        return lex_string_literal(consume_char(cur_ptr, ch_size, result),
                                   result, TokenKind::utf16_string_literal);
-      return lex_identifier(lex, cur_ptr, result);
+      return lex_identifier(cur_ptr, result);
 
     case 'U':
       std::tie(ch, ch_size) = peek_char_and_size(cur_ptr);
       if (ch == '\'')
-        return lex_character_constant(lex,
-                                      consume_char(cur_ptr, ch_size, result),
+        return lex_character_constant(consume_char(cur_ptr, ch_size, result),
                                       result, TokenKind::utf32_char_constant);
       if (ch == '"')
-        return lex_string_literal(lex, consume_char(cur_ptr, ch_size, result),
+        return lex_string_literal(consume_char(cur_ptr, ch_size, result),
                                   result, TokenKind::utf32_string_literal);
       [[fallthrough]];
 
@@ -1162,15 +1131,13 @@ auto lex_token(Lexer &lex, const char *cur_ptr, Token &result) -> bool
     case 'J': case 'K': /*   'L'*/case 'M': case 'N': case 'O': case 'P':
     case 'Q': case 'R': case 'S': case 'T': /*   'U'*/case 'V': case 'W':
     case 'X': case 'Y': case 'Z': case '_': case '$':
-      return lex_identifier(lex, cur_ptr, result);
+      return lex_identifier(cur_ptr, result);
 
     case '\'':
-      return lex_character_constant(lex, cur_ptr, result,
-                                    TokenKind::char_constant);
+      return lex_character_constant(cur_ptr, result, TokenKind::char_constant);
 
     case '"':
-      return lex_string_literal(lex, cur_ptr, result,
-                                TokenKind::string_literal);
+      return lex_string_literal(cur_ptr, result, TokenKind::string_literal);
 
     default:
     {
@@ -1180,11 +1147,10 @@ auto lex_token(Lexer &lex, const char *cur_ptr, Token &result) -> bool
       uni::UTF32 code_point = 0;
       uni::ConversionResult res = uni::convert_utf8_sequence(
         reinterpret_cast<const uni::UTF8 **>(&cur_ptr),
-        reinterpret_cast<const uni::UTF8 *>(lex.buffer_end), &code_point,
+        reinterpret_cast<const uni::UTF8 *>(buffer_end), &code_point,
         uni::strictConversion);
       if (res == uni::conversionOK)
-        return lex_unicode(lex, cur_ptr, static_cast<uint32_t>(code_point),
-                           result);
+        return lex_unicode(cur_ptr, static_cast<uint32_t>(code_point), result);
     }
   }
 
@@ -1193,21 +1159,19 @@ auto lex_token(Lexer &lex, const char *cur_ptr, Token &result) -> bool
     if (is_ascii(ch))
     {
       if (is_printable(ch))
-        report(lex, lex.buffer_ptr, diag::err_unknown_character, ch);
+        report(*this, buffer_ptr, diag::err_unknown_character, ch);
       else
-        report(lex, lex.buffer_ptr, diag::err_unknown_character,
+        report(*this, buffer_ptr, diag::err_unknown_character,
                fmt::format("0x{0:0>4X}", static_cast<uint32_t>(ch)));
     }
     else
-      report(lex, lex.buffer_ptr, diag::err_invalid_unicode_character,
+      report(*this, buffer_ptr, diag::err_invalid_unicode_character,
              static_cast<uint8_t>(ch));
   }
 
-  lex.form_token(result, cur_ptr, kind);
+  form_token(result, cur_ptr, kind);
   return true;
 }
-
-} // namespace
 
 // Parses the spelling of a token, expanding any trigraphs and escaped
 // new-lines, thus returning the uncanonical representation of this token's
@@ -1276,7 +1240,7 @@ auto Lexer::get_spelling_to_buffer(const Token &tok, char *spelling_buf,
 // Lexes a token in the position `buffer_ptr`.
 auto Lexer::next_token() -> std::optional<Token>
 {
-  if (Token result; lex_token(*this, buffer_ptr, result))
+  if (Token result; lex_token(buffer_ptr, result))
     return result;
   return std::nullopt;
 }

@@ -46,7 +46,7 @@ public:
   static auto from_buffer(CompilerDiagnostics &, std::string buffer)
     -> SourceManager;
 
-  auto get_diagnostics() const -> CompilerDiagnostics & { return diag; }
+  auto diagnostics() const -> CompilerDiagnostics & { return diag; }
 
   // Returns the text slice represented by a SourceRange.
   auto text_slice(SourceRange) const -> std::string_view;
@@ -88,8 +88,8 @@ public:
     : src_mgr(ctx), loc(loc)
   {}
 
-  auto get_manager() const -> const SourceManager & { return src_mgr; }
-  auto get_location() const -> SourceLocation { return loc; }
+  auto source_manager() const -> const SourceManager & { return src_mgr; }
+  auto location() const -> SourceLocation { return loc; }
   auto full_text() const -> std::string_view { return src_mgr.full_text(); }
   auto text_line() const -> std::string_view { return src_mgr.text_line(loc); }
   auto translate_to_linecolumn() const -> std::pair<size_t, size_t>

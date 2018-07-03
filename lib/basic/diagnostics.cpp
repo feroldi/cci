@@ -58,7 +58,7 @@ static auto format_error(const CompilerDiagnostics &diag, std::string_view from,
       cci_expects(line_num && column_num);
       cci_expects(diag.has_source_manager());
 
-      const auto snippet = diag.get_source_manager().text_line(*source_loc);
+      const auto snippet = diag.source_manager().text_line(*source_loc);
       std::string carret;
       carret.reserve(column_num);
 
@@ -86,7 +86,7 @@ static auto format_error(const CompilerDiagnostics &diag,
                },
                [&](SourceLocation loc) {
                  cci_expects(diag.has_source_manager());
-                 const FullSourceLoc full_loc(diag.get_source_manager(), loc);
+                 const FullSourceLoc full_loc(diag.source_manager(), loc);
                  const auto [line_num, col_num] =
                    full_loc.translate_to_linecolumn();
                  const auto filename = full_loc.loaded_from_file()
@@ -98,7 +98,7 @@ static auto format_error(const CompilerDiagnostics &diag,
     context);
 }
 
-auto CompilerDiagnostics::get_output_level(Severity severity) const -> Level
+auto CompilerDiagnostics::map_output_level(Severity severity) const -> Level
 {
   switch (severity)
   {
@@ -133,7 +133,7 @@ auto CompilerDiagnostics::get_output_level(Severity severity) const -> Level
 void CompilerDiagnostics::report_message(Severity severity, Context context,
                                          std::string_view message)
 {
-  const auto level = get_output_level(severity);
+  const auto level = map_output_level(severity);
 
   if (level != Level::Ignore)
   {

@@ -760,7 +760,7 @@ StringLiteralParser::StringLiteralParser(Lexer &lexer,
     // to the buffer, which is enough to form a range of iterators.
     const char *tokbuf_ptr = token_buf.data();
     const size_t tok_length = Lexer::get_spelling_to_buffer(
-      string_tok, token_buf.data(), lexer.source_mgr);
+      string_tok, token_buf.data(), lexer.source_manager());
 
     const char *tokbuf_begin = tokbuf_ptr;
     const char *tokbuf_end = tokbuf_begin + tok_length;

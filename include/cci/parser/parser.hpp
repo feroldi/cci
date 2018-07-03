@@ -9,10 +9,12 @@ namespace cci {
 
 struct Parser
 {
+private:
   Lexer &lex;
   Sema &sema;
   Token tok;
 
+public:
   Parser(Lexer &lex, Sema &sema) : lex(lex), sema(sema)
   {
     // Sets up the peek token.

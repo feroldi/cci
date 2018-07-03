@@ -130,7 +130,7 @@ public:
 
   auto has_source_manager() const -> bool { return source_mgr != nullptr; }
 
-  auto get_source_manager() const -> SourceManager &
+  auto source_manager() const -> SourceManager &
   {
     cci_expects(has_source_manager());
     return *source_mgr;
@@ -191,7 +191,7 @@ private:
   void report_message(Severity, Context, std::string_view message);
 
   // Returns an output level for a mapped severity.
-  auto get_output_level(Severity) const -> Level;
+  auto map_output_level(Severity) const -> Level;
 };
 
 // selector - This is used to select between cases in a fmt::format string. For
