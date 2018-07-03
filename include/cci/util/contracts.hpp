@@ -10,7 +10,7 @@
 #define __has_builtin(x) 0
 #endif
 
-#ifndef NDEBUG
+#if CCI_ENABLE_CONTRACTS
 #include <cassert>
 #include <stdexcept>
 
@@ -31,14 +31,16 @@ struct unreachable_exception : std::runtime_error
 };
 
 /// I.6: Prefer Expects() for expressing preconditions.
-/// See https://github.com/isocpp/CppCoreGuidelines/blob/master/CppCoreGuidelines.md#Ri-expects
+/// See
+/// https://github.com/isocpp/CppCoreGuidelines/blob/master/CppCoreGuidelines.md#Ri-expects
 #define cci_expects(cond)                                                      \
   ((cond) ? void(0)                                                            \
           : throw broken_contract("precondition failure at  " __FILE__         \
                                   ":" STRINGIFY(__LINE__) ": " #cond))
 
 /// I.8: Prefer Ensures() for expressing postconditions.
-/// See https://github.com/isocpp/CppCoreGuidelines/blob/master/CppCoreGuidelines.md#Ri-ensures
+/// See
+/// https://github.com/isocpp/CppCoreGuidelines/blob/master/CppCoreGuidelines.md#Ri-ensures
 #define cci_ensures(cond)                                                      \
   ((cond) ? void(0)                                                            \
           : throw broken_contract("postcondition failure at  " __FILE__        \
@@ -49,7 +51,7 @@ struct unreachable_exception : std::runtime_error
   (throw unreachable_exception("unreachable code reached at " __FILE__         \
                                ":" STRINGIFY(__LINE__)))
 
-#else // ifndef NDEBUG
+#else
 
 #define cci_expects(cond)
 #define cci_ensures(cond)
