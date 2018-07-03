@@ -2,8 +2,8 @@
 #include "cci/ast/expr.hpp"
 #include "cci/ast/type.hpp"
 #include "cci/basic/diagnostics.hpp"
-#include "cci/lex/lexer.hpp"
 #include "cci/lex/literal_parser.hpp"
+#include "cci/lex/lexer.hpp"
 #include "cci/util/small_vector.hpp"
 #include "sema_diagnostics.hpp"
 #include <memory>

@@ -4,7 +4,7 @@
 
 using namespace cci;
 
-auto Parser::parse_primary_expression() -> std::unique_ptr<Expr>
+auto Parser::parse_expression() -> std::unique_ptr<Expr>
 {
   std::unique_ptr<Expr> res;
 

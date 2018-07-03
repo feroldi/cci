@@ -1,8 +1,8 @@
 #pragma once
-#include "cci/lex/lexer.hpp"
 #include "cci/ast/ast_context.hpp"
-#include "cci/ast/type.hpp"
 #include "cci/ast/expr.hpp"
+#include "cci/ast/type.hpp"
+#include "cci/lex/lexer.hpp"
 #include "cci/semantics/sema.hpp"
 
 namespace cci {
@@ -18,7 +18,9 @@ public:
   Parser(Lexer &lex, Sema &sema) : lex(lex), sema(sema)
   {
     // Sets up the peek token.
-    consume_token();
+    auto new_tok = lex.next_token();
+    cci_expects(new_tok.has_value());
+    tok = *new_tok;
   }
 
   // Consumes the current token and peeks the next one. Returns a SourceLocation
@@ -31,7 +33,7 @@ public:
     return old_loc;
   }
 
-  auto parse_primary_expression() -> std::unique_ptr<Expr>;
+  auto parse_expression() -> std::unique_ptr<Expr>;
   auto parse_string_literal_expression() -> std::unique_ptr<StringLiteral>;
 };
 

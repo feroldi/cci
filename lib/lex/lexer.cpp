@@ -3,6 +3,7 @@
 #include "cci/basic/diagnostics.hpp"
 #include "cci/basic/source_manager.hpp"
 #include "cci/lex/char_info.hpp"
+#include "cci/lex/token.hpp"
 #include "cci/lex/unicode_char_set.hpp"
 #include "cci/util/contracts.hpp"
 #include "cci/util/unicode.hpp"
