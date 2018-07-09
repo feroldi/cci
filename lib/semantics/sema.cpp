@@ -2,8 +2,8 @@
 #include "cci/ast/expr.hpp"
 #include "cci/ast/type.hpp"
 #include "cci/basic/diagnostics.hpp"
-#include "cci/lex/literal_parser.hpp"
 #include "cci/lex/lexer.hpp"
+#include "cci/lex/literal_parser.hpp"
 #include "cci/util/small_vector.hpp"
 #include "sema_diagnostics.hpp"
 #include <memory>
@@ -238,4 +238,10 @@ auto Sema::act_on_string_literal(span<const Token> string_toks)
   return std::make_unique<StringLiteral>(std::move(str_ty),
                                          std::move(str_storage), str_kind,
                                          literal.char_byte_width, tok_locs);
+}
+
+auto Sema::act_on_paren_expr(std::unique_ptr<Expr> expr, SourceLocation left,
+                             SourceLocation right) -> std::unique_ptr<ParenExpr>
+{
+  return std::make_unique<ParenExpr>(std::move(expr), left, right);
 }

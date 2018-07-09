@@ -25,6 +25,8 @@ public:
     -> std::unique_ptr<CharacterConstant>;
   auto act_on_string_literal(span<const Token> string_toks)
     -> std::unique_ptr<StringLiteral>;
+  auto act_on_paren_expr(std::unique_ptr<Expr> expr, SourceLocation left,
+                         SourceLocation right) -> std::unique_ptr<ParenExpr>;
 };
 
 } // namespace cci

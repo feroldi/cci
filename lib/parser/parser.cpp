@@ -1,6 +1,10 @@
 #include "cci/parser/parser.hpp"
+#include "cci/ast/expr.hpp"
+#include "cci/ast/type.hpp"
 #include "cci/lex/lexer.hpp"
+#include "cci/semantics/sema.hpp"
 #include "cci/util/contracts.hpp"
+#include <string_view>
 
 using namespace cci;
 
@@ -10,6 +14,7 @@ auto Parser::parse_expression() -> std::unique_ptr<Expr>
 
   switch (tok.kind)
   {
+    default: cci_unreachable();
     case TokenKind::numeric_constant:
       res = sema.act_on_numeric_constant(tok);
       consume_token();
@@ -31,8 +36,21 @@ auto Parser::parse_expression() -> std::unique_ptr<Expr>
     case TokenKind::wide_string_literal:
       res = parse_string_literal_expression();
       break;
-    default:
-      cci_unreachable();
+    case TokenKind::l_paren:
+    {
+      SourceLocation lparen_loc = consume_token();
+      res = parse_expression();
+      if (tok.is_not(TokenKind::r_paren))
+      {
+        diags.report(tok.location(), diag::err_expected, "')'");
+        diags.report(lparen_loc, diag::note_to_match_this, "'('");
+        // FIXME: Should break here?
+        break;
+      }
+      SourceLocation  rparen_loc = consume_token();
+      res = sema.act_on_paren_expr(std::move(res), lparen_loc, rparen_loc);
+      break;
+    }
   }
 
   return res;

@@ -74,6 +74,14 @@ public:
   QualifiedType(std::unique_ptr<Type> ty, Qualifiers quals)
     : type(std::move(ty)), qualifiers(quals)
   {}
+
+  // FIXME: This is temporary. Do not depend on this. Will be removed once Types
+  // are treated like raw pointers.
+  auto clone() const -> QualifiedType
+  {
+    auto ty = std::make_unique<Type>(this->type->type_class());
+    return QualifiedType(std::move(ty), this->qualifiers);
+  }
 };
 
 enum class BuiltinTypeKind

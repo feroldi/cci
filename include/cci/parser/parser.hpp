@@ -4,6 +4,7 @@
 #include "cci/ast/type.hpp"
 #include "cci/lex/lexer.hpp"
 #include "cci/semantics/sema.hpp"
+#include <string_view>
 
 namespace cci {
 
@@ -13,9 +14,11 @@ private:
   Lexer &lex;
   Sema &sema;
   Token tok;
+  CompilerDiagnostics &diags;
 
 public:
-  Parser(Lexer &lex, Sema &sema) : lex(lex), sema(sema)
+  Parser(Lexer &lex, Sema &sema)
+    : lex(lex), sema(sema), tok(), diags(lex.diagnostics())
   {
     // Sets up the peek token.
     auto new_tok = lex.next_token();

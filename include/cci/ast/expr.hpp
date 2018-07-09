@@ -19,6 +19,7 @@ enum class ExprClass
   IntegerLiteral,
   CharacterConstant,
   StringLiteral,
+  ParenExpr,
 };
 
 // Expression.
@@ -130,6 +131,28 @@ public:
   auto char_byte_width() const -> size_t { return char_byte_width_; }
   auto byte_length() const -> size_t { return str_data.size(); }
   auto length() const -> size_t { return byte_length() / char_byte_width(); }
+};
+
+struct ParenExpr : Expr
+{
+private:
+  std::unique_ptr<Expr> inner_expr_;
+  SourceLocation lparen_loc;
+  SourceLocation rparen_loc;
+
+public:
+  ParenExpr(std::unique_ptr<Expr> expr, SourceLocation lparen,
+            SourceLocation rparen)
+    : Expr(ExprClass::ParenExpr, expr->category(), expr->type().clone())
+    , inner_expr_(std::move(expr))
+    , lparen_loc(lparen)
+    , rparen_loc(rparen)
+  {}
+
+  auto inner_expr() -> Expr * { return inner_expr_.get(); }
+  auto inner_expr() const -> const Expr * { return inner_expr_.get(); }
+  auto left_paren_loc() const -> SourceLocation { return lparen_loc; }
+  auto right_paren_loc() const -> SourceLocation { return rparen_loc; }
 };
 
 } // namespace cci
