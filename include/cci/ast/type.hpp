@@ -1,8 +1,10 @@
 #pragma once
+#include "cci/ast/arena_types.hpp"
 #include <cstdint>
 #include <memory>
 
 namespace cci {
+struct ASTContext;
 
 struct Qualifiers
 {
@@ -54,34 +56,34 @@ struct Type
 private:
   TypeClass tc;
 
-public:
+protected:
+  friend struct ASTContext;
   explicit Type(TypeClass tc) : tc(tc) {}
+
+public:
+  Type(const Type &) = delete;
+  Type &operator=(const Type &) = delete;
 
   auto type_class() const -> TypeClass { return tc; }
 };
 
-struct QualifiedType
+struct QualType
 {
 private:
-  std::unique_ptr<Type> type;
-  Qualifiers qualifiers;
+  arena_ptr<Type> type;
+  Qualifiers quals;
 
 public:
-  QualifiedType() = default;
-  QualifiedType(std::unique_ptr<Type> ty, uint32_t quals_mask)
-    : type(std::move(ty)), qualifiers(Qualifiers::from_mask(quals_mask))
+  QualType() = default;
+  QualType(arena_ptr<Type> ty, uint32_t quals_mask)
+    : type(ty), quals(Qualifiers::from_mask(quals_mask))
   {}
-  QualifiedType(std::unique_ptr<Type> ty, Qualifiers quals)
-    : type(std::move(ty)), qualifiers(quals)
-  {}
+  QualType(arena_ptr<Type> ty, Qualifiers quals) : type(ty), quals(quals) {}
 
-  // FIXME: This is temporary. Do not depend on this. Will be removed once Types
-  // are treated like raw pointers.
-  auto clone() const -> QualifiedType
-  {
-    auto ty = std::make_unique<Type>(this->type->type_class());
-    return QualifiedType(std::move(ty), this->qualifiers);
-  }
+  auto qualifiers() const -> Qualifiers { return quals; }
+
+  explicit operator bool() const noexcept { return type; }
+  auto operator-> () const noexcept { return type; }
 };
 
 enum class BuiltinTypeKind
@@ -122,13 +124,12 @@ public:
 struct ArrayType : Type
 {
 private:
-  QualifiedType elem_type;
+  QualType elem_type;
 
 public:
-  ArrayType(TypeClass tc, QualifiedType et) : Type(tc), elem_type(std::move(et))
-  {}
+  ArrayType(TypeClass tc, QualType et) : Type(tc), elem_type(et) {}
 
-  auto element_type() const -> const QualifiedType & { return elem_type; }
+  auto element_type() const -> const QualType & { return elem_type; }
 };
 
 struct ConstantArrayType : ArrayType
@@ -137,8 +138,8 @@ private:
   uint64_t size_;
 
 public:
-  ConstantArrayType(QualifiedType elem_ty, uint64_t sz)
-    : ArrayType(TypeClass::ConstantArray, std::move(elem_ty)), size_(sz)
+  ConstantArrayType(QualType elem_ty, uint64_t sz)
+    : ArrayType(TypeClass::ConstantArray, elem_ty), size_(sz)
   {}
 
   auto size() const -> uint64_t { return size_; }

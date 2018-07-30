@@ -8,9 +8,9 @@
 
 using namespace cci;
 
-auto Parser::parse_expression() -> std::unique_ptr<Expr>
+auto Parser::parse_expression() -> ASTResult<Expr>
 {
-  std::unique_ptr<Expr> res;
+  ASTResult<Expr> res;
 
   switch (tok.kind)
   {
@@ -47,8 +47,8 @@ auto Parser::parse_expression() -> std::unique_ptr<Expr>
         // FIXME: Should break here?
         break;
       }
-      SourceLocation  rparen_loc = consume_token();
-      res = sema.act_on_paren_expr(std::move(res), lparen_loc, rparen_loc);
+      SourceLocation rparen_loc = consume_token();
+      res = sema.act_on_paren_expr(res.value(), lparen_loc, rparen_loc);
       break;
     }
   }
@@ -56,11 +56,11 @@ auto Parser::parse_expression() -> std::unique_ptr<Expr>
   return res;
 }
 
-auto Parser::parse_string_literal_expression() -> std::unique_ptr<StringLiteral>
+auto Parser::parse_string_literal_expression() -> ASTResult<StringLiteral>
 {
   cci_expects(is_string_literal(tok.kind));
 
-  small_vector<Token, 1> string_toks;
+  small_vector<Token, 4> string_toks;
 
   string_toks.push_back(tok);
   consume_token();

@@ -1,9 +1,11 @@
 #pragma once
+#include "cci/ast/arena_types.hpp"
 #include "cci/ast/ast_context.hpp"
 #include "cci/ast/expr.hpp"
 #include "cci/ast/type.hpp"
 #include "cci/lex/lexer.hpp"
 #include "cci/semantics/sema.hpp"
+#include <optional>
 #include <string_view>
 
 namespace cci {
@@ -36,8 +38,9 @@ public:
     return old_loc;
   }
 
-  auto parse_expression() -> std::unique_ptr<Expr>;
-  auto parse_string_literal_expression() -> std::unique_ptr<StringLiteral>;
+private:
+  auto parse_expression() -> ASTResult<Expr>;
+  auto parse_string_literal_expression() -> ASTResult<StringLiteral>;
 };
 
 } // namespace cci

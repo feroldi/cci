@@ -1,4 +1,6 @@
 #include "cci/semantics/sema.hpp"
+#include "cci/ast/arena_types.hpp"
+#include "cci/ast/ast_context.hpp"
 #include "cci/ast/expr.hpp"
 #include "cci/ast/type.hpp"
 #include "cci/basic/diagnostics.hpp"
@@ -16,17 +18,15 @@ static_assert(4 == sizeof(char32_t),
 
 using namespace cci;
 
-auto Sema::act_on_numeric_constant(const Token &tok) -> std::unique_ptr<Expr>
+auto Sema::act_on_numeric_constant(const Token &tok) -> ASTResult<Expr>
 {
   cci_expects(tok.is(TokenKind::numeric_constant));
 
   if (tok.size() == 1)
   {
     const char digit = tok.raw_spelling(lex.source_manager())[0];
-    QualifiedType ty(std::make_unique<BuiltinType>(BuiltinTypeKind::Int),
-                     Qualifiers::None);
-    return std::make_unique<IntegerLiteral>(digit - '0', std::move(ty),
-                                            tok.location());
+    return new (context)
+      IntegerLiteral(digit - '0', context.int_ty, tok.location());
   }
 
   small_string<64> spell_buffer;
@@ -48,7 +48,7 @@ auto Sema::act_on_numeric_constant(const Token &tok) -> std::unique_ptr<Expr>
     }
 
     bool allow_unsigned = literal.is_unsigned || literal.radix != 10;
-    std::optional<BuiltinTypeKind> kind;
+    QualType integer_ty;
     size_t width = 0;
 
     // Apply [C11 6.4.4.1p5]: The type of an integer constant is the first of
@@ -59,40 +59,40 @@ auto Sema::act_on_numeric_constant(const Token &tok) -> std::unique_ptr<Expr>
       if (val >> int_width == 0)
       {
         if (!literal.is_unsigned && (val >> (int_width - 1)) == 0)
-          kind = BuiltinTypeKind::Int;
+          integer_ty = context.int_ty;
         else if (allow_unsigned)
-          kind = BuiltinTypeKind::UInt;
+          integer_ty = context.uint_ty;
         width = int_width;
       }
     }
 
-    if (!kind && !literal.is_long_long)
+    if (!integer_ty && !literal.is_long_long)
     {
       size_t long_width = context.target_info().long_width;
       if (val >> long_width == 0)
       {
         if (!literal.is_unsigned && (val >> (long_width - 1)) == 0)
-          kind = BuiltinTypeKind::Long;
+          integer_ty = context.long_ty;
         else if (allow_unsigned)
-          kind = BuiltinTypeKind::ULong;
+          integer_ty = context.ulong_ty;
         width = long_width;
       }
     }
 
-    if (!kind)
+    if (!integer_ty)
     {
       size_t long_long_width = context.target_info().long_long_width;
       if (val >> long_long_width == 0)
       {
         if (!literal.is_unsigned && (val >> (long_long_width - 1)) == 0)
-          kind = BuiltinTypeKind::LongLong;
+          integer_ty = context.long_long_ty;
         else if (allow_unsigned)
-          kind = BuiltinTypeKind::ULongLong;
+          integer_ty = context.ulong_long_ty;
         width = long_long_width;
       }
     }
 
-    if (!kind)
+    if (!integer_ty)
     {
       // [C11 6.4.4.1p6] says that "if an integer constant cannot be
       // represented by any type in its list and has no extended integer
@@ -103,7 +103,7 @@ auto Sema::act_on_numeric_constant(const Token &tok) -> std::unique_ptr<Expr>
       // doing), and Clang settles down to unsigned long long. Given we don't
       // support any extended types, unsigned long long will be the chosen one.
       diags.report(tok.location(), diag::ext_no_type_for_integer_literal);
-      kind = BuiltinTypeKind::ULongLong;
+      integer_ty = context.ulong_long_ty;
       width = context.target_info().long_long_width;
     }
 
@@ -112,8 +112,7 @@ auto Sema::act_on_numeric_constant(const Token &tok) -> std::unique_ptr<Expr>
     // target info.
     val &= -1U >> (64 - width);
 
-    QualifiedType ty(std::make_unique<BuiltinType>(*kind), Qualifiers::None);
-    return std::make_unique<IntegerLiteral>(val, std::move(ty), tok.location());
+    return new (context) IntegerLiteral(val, integer_ty, tok.location());
   }
   else if (literal.is_floating_literal())
   {
@@ -124,7 +123,7 @@ auto Sema::act_on_numeric_constant(const Token &tok) -> std::unique_ptr<Expr>
 }
 
 auto Sema::act_on_char_constant(const Token &tok)
-  -> std::unique_ptr<CharacterConstant>
+  -> ASTResult<CharacterConstant>
 {
   cci_expects(tok.is_one_of(
     TokenKind::char_constant, TokenKind::utf16_char_constant,
@@ -139,34 +138,32 @@ auto Sema::act_on_char_constant(const Token &tok)
     return nullptr;
 
   // [C11 6.4.4.4p10]: An integer character constant has type int.
-  auto char_type = BuiltinTypeKind::Int;
+  QualType char_type = context.int_ty;
   auto char_kind = CharacterConstantKind::Ascii;
 
   switch (literal.kind)
   {
     case TokenKind::utf16_char_constant:
-      char_type = BuiltinTypeKind::Char16;
+      char_type = context.char16_t_ty;
       char_kind = CharacterConstantKind::UTF16;
       break;
     case TokenKind::utf32_char_constant:
-      char_type = BuiltinTypeKind::Char32;
+      char_type = context.char32_t_ty;
       char_kind = CharacterConstantKind::UTF32;
       break;
     case TokenKind::wide_char_constant:
-      char_type = BuiltinTypeKind::WChar;
+      char_type = context.wchar_ty;
       char_kind = CharacterConstantKind::Wide;
       break;
     default: cci_expects(TokenKind::char_constant == literal.kind);
   }
 
-  QualifiedType char_ty(std::make_unique<BuiltinType>(char_type),
-                        Qualifiers::None);
-  return std::make_unique<CharacterConstant>(
-    literal.value, char_kind, std::move(char_ty), tok.location());
+  return new (context)
+    CharacterConstant(literal.value, char_kind, char_type, tok.location());
 }
 
 auto Sema::act_on_string_literal(span<const Token> string_toks)
-  -> std::unique_ptr<StringLiteral>
+  -> ASTResult<StringLiteral>
 {
   cci_expects(!string_toks.empty());
   StringLiteralParser literal(lex, string_toks, context.target_info());
@@ -176,11 +173,7 @@ auto Sema::act_on_string_literal(span<const Token> string_toks)
   cci_expects(literal.char_byte_width == 1 || literal.char_byte_width == 2 ||
               literal.char_byte_width == 4);
 
-  small_vector<SourceLocation, 1> tok_locs;
-  for (auto tok : string_toks)
-    tok_locs.push_back(tok.location());
-
-  auto elem_type_kind = BuiltinTypeKind::Char;
+  QualType elem_type = context.char_ty;
   auto str_kind = StringLiteralKind::Ascii;
 
   switch (literal.kind)
@@ -189,59 +182,58 @@ auto Sema::act_on_string_literal(span<const Token> string_toks)
       str_kind = StringLiteralKind::UTF8;
       break;
     case TokenKind::utf16_string_literal:
-      elem_type_kind = BuiltinTypeKind::Char16;
+      elem_type = context.char16_t_ty;
       str_kind = StringLiteralKind::UTF16;
       break;
     case TokenKind::utf32_string_literal:
-      elem_type_kind = BuiltinTypeKind::Char32;
+      elem_type = context.char32_t_ty;
       str_kind = StringLiteralKind::UTF32;
       break;
     case TokenKind::wide_string_literal:
-      elem_type_kind = BuiltinTypeKind::WChar;
+      elem_type = context.wchar_ty;
       str_kind = StringLiteralKind::Wide;
       break;
     default: cci_expects(TokenKind::string_literal == literal.kind);
   }
 
-  QualifiedType element_ty(std::make_unique<BuiltinType>(elem_type_kind),
-                           Qualifiers::None);
+  // Length of string literal including null character.
+  const size_t chars_count = literal.num_string_chars() + 1;
+  const size_t bytes_count = literal.byte_length();
 
-  QualifiedType str_ty(std::make_unique<ConstantArrayType>(
-                         std::move(element_ty), literal.num_string_chars() + 1),
-                       Qualifiers::None);
+  // FIXME: Save this type in ASTContext so it can be reused as canonical.
+  auto str_ty = QualType(
+    new (context) ConstantArrayType(elem_type, chars_count), Qualifiers::None);
 
-  std::vector<std::byte> str_storage;
-  str_storage.resize(literal.byte_length());
-  std::byte *const storage_ptr = str_storage.data();
-  std::string_view str = literal.string();
-
-  // Length of string including null character.
-  const size_t length = literal.num_string_chars() + 1;
+  arena_ptr<std::byte> str_data = new (context) std::byte[bytes_count];
 
   if (literal.char_byte_width == 1)
-  {
-    auto data = new (storage_ptr) char[length];
-    std::memcpy(data, str.data(), length * sizeof(*data));
-  }
+    new (str_data) char[chars_count];
   else if (literal.char_byte_width == 2)
-  {
-    auto data = new (storage_ptr) char16_t[length];
-    std::memcpy(data, str.data(), length * sizeof(*data));
-  }
+    new (str_data) char16_t[chars_count];
   else
   {
     cci_expects(literal.char_byte_width == 4);
-    auto data = new (storage_ptr) char32_t[length];
-    std::memcpy(data, str.data(), length * sizeof(*data));
+    new (str_data) char32_t[chars_count];
   }
 
-  return std::make_unique<StringLiteral>(std::move(str_ty),
-                                         std::move(str_storage), str_kind,
-                                         literal.char_byte_width, tok_locs);
+  std::memcpy(str_data, literal.string().data(), bytes_count);
+
+  const size_t num_concatenated = string_toks.size();
+  arena_ptr<SourceLocation> tok_locs =
+    new (context) SourceLocation[num_concatenated];
+
+  auto locs_ptr = tok_locs;
+  for (const Token &tok : string_toks)
+    *locs_ptr++ = tok.location();
+  cci_ensures(locs_ptr == tok_locs + num_concatenated);
+
+  return new (context)
+    StringLiteral(str_ty, span(str_data, bytes_count), str_kind,
+                  literal.char_byte_width, span(tok_locs, num_concatenated));
 }
 
-auto Sema::act_on_paren_expr(std::unique_ptr<Expr> expr, SourceLocation left,
-                             SourceLocation right) -> std::unique_ptr<ParenExpr>
+auto Sema::act_on_paren_expr(arena_ptr<Expr> expr, SourceLocation left,
+                             SourceLocation right) -> ASTResult<ParenExpr>
 {
-  return std::make_unique<ParenExpr>(std::move(expr), left, right);
+  return new (context) ParenExpr(expr, left, right);
 }

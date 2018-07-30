@@ -2,6 +2,7 @@
 #include "cci/ast/ast_context.hpp"
 #include "cci/ast/expr.hpp"
 #include "cci/ast/type.hpp"
+#include "cci/ast/arena_types.hpp"
 #include "cci/basic/source_manager.hpp"
 #include "cci/lex/lexer.hpp"
 
@@ -20,13 +21,13 @@ public:
     : lex(lex), diags(lex.diagnostics()), context(ctx)
   {}
 
-  auto act_on_numeric_constant(const Token &) -> std::unique_ptr<Expr>;
+  auto act_on_numeric_constant(const Token &) -> ASTResult<Expr>;
   auto act_on_char_constant(const Token &)
-    -> std::unique_ptr<CharacterConstant>;
+    -> ASTResult<CharacterConstant>;
   auto act_on_string_literal(span<const Token> string_toks)
-    -> std::unique_ptr<StringLiteral>;
-  auto act_on_paren_expr(std::unique_ptr<Expr> expr, SourceLocation left,
-                         SourceLocation right) -> std::unique_ptr<ParenExpr>;
+    -> ASTResult<StringLiteral>;
+  auto act_on_paren_expr(arena_ptr<Expr> expr, SourceLocation left,
+                         SourceLocation right) -> ASTResult<ParenExpr>;
 };
 
 } // namespace cci
