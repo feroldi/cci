@@ -1,7 +1,6 @@
 #pragma once
 #include "cci/ast/arena_types.hpp"
 #include <cstdint>
-#include <memory>
 
 namespace cci {
 struct ASTContext;

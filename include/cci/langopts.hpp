@@ -1,5 +1,8 @@
 #pragma once
 
+#include <cstdint>
+#include <cstddef>
+
 namespace cci {
 
 // TargetInfo - Holds information about the target architecture.

@@ -1,9 +1,9 @@
 #pragma once
 #include "cci/ast/arena_types.hpp"
 #include "cci/ast/type.hpp"
-#include "cci/basic/diagnostics.hpp"
-#include "cci/basic/source_manager.hpp"
 #include "cci/langopts.hpp"
+#include "cci/syntax/diagnostics.hpp"
+#include "cci/syntax/source_map.hpp"
 #include "cci/util/memory_resource.hpp"
 #include "cci/util/span.hpp"
 #include <cstdint>
@@ -23,15 +23,15 @@ using ASTResult = std::optional<arena_ptr<T>>;
 // Side-table and resource manager of the AST.
 struct ASTContext
 {
-  ASTContext(const SourceManager &sm, CompilerDiagnostics &d,
-             const TargetInfo &ti)
-    : src_mgr(sm), diags(d), target(ti)
+  ASTContext(const srcmap::SourceMap &src_map, diag::Handler &diag,
+             const TargetInfo &target)
+    : src_map(src_map), diag(diag), target(target)
   {
     init_builtin_types();
   }
 
-  auto source_mgr() const -> const SourceManager & { return src_mgr; }
-  auto diagnostics() const -> CompilerDiagnostics & { return diags; }
+  auto source_map() const -> const srcmap::SourceMap & { return src_map; }
+  auto diagnostics() const -> diag::Handler & { return diag; }
   auto target_info() const -> const TargetInfo & { return target; }
 
   [[nodiscard]] auto
@@ -73,8 +73,8 @@ public:
   QualType long_double_ty;
 
 private:
-  const SourceManager &src_mgr;
-  CompilerDiagnostics &diags;
+  const srcmap::SourceMap &src_map;
+  diag::Handler &diag;
   const TargetInfo &target;
 
   // Arena memory resource used to create AST objects.
@@ -129,7 +129,7 @@ operator new(std::size_t bytes, const cci::ASTContext &c,
 //
 //     ASTContext context(...);
 //     // Default alignment.
-//     auto locs = new (context) SourceLocation[length];
+//     auto locs = new (context) srcmap::ByteLoc[length];
 //     // Custom alignment.
 //     auto data = new (context, 4) std::byte[4096];
 [[nodiscard]] inline void *

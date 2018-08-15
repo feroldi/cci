@@ -1,4 +1,4 @@
-add_library(cci_util unicode.cpp)
+add_library(cci_util unicode.cpp file_stream.cpp)
 target_include_directories(cci_util
   PUBLIC $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/include>
   PUBLIC $<INSTALL_INTERFACE:include>)

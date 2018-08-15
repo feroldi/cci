@@ -1,7 +1,7 @@
 #pragma once
 
-#include "cci/basic/diagnostics.hpp"
-#include "cci/basic/source_manager.hpp"
+#include "cci/syntax/source_map.hpp"
+#include "fmt/format.h"
 #include <string>
 #include <string_view>
 
@@ -181,15 +181,15 @@ struct Token
   };
 
   // Token's syntactic category, e.g. kw_return, identifier etc.
-  TokenKind kind{TokenKind::unknown};
+  TokenKind kind = TokenKind::unknown;
 
   // Token's start and end locations on the source file.
-  SourceRange range{};
+  srcmap::Range range;
 
   uint8_t flags = TokenFlags::None;
 
   Token() = default;
-  Token(TokenKind k, SourceRange r) noexcept : kind(k), range(r) {}
+  Token(TokenKind k, srcmap::Range r) noexcept : kind(k), range(r) {}
 
   // Checks whether this token is of kind `k`.
   bool is(TokenKind k) const { return kind == k; }
@@ -206,23 +206,13 @@ struct Token
   }
 
   // Returns the source location at which this token starts.
-  auto location() const -> SourceLocation { return range.start; }
+  auto location() const -> srcmap::ByteLoc { return range.start; }
 
-  // Returns a `SourceRange` for the token's text (spelling).
-  auto source_range() const -> SourceRange { return range; }
-
-  // Returns the raw spelling text of this token.
-  auto raw_spelling(const SourceManager &src_mgr) const -> std::string_view
-  {
-    return src_mgr.text_slice(this->source_range());
-  }
+  // Returns a source range for the token's text (spelling).
+  auto source_range() const -> srcmap::Range { return range; }
 
   // Returns the size of the token spelling in source.
-  auto size() const -> size_t { return range.end.offset - range.start.offset; }
-
-  // Returns the spelling text after escaped new-line folding and trigraph
-  // expansion of this token.
-  auto spelling(const SourceManager &) const -> std::string;
+  auto size() const { return static_cast<size_t>(range.end - range.start); }
 
   void set_flags(TokenFlags fs) { flags |= fs; }
   void clear_flags(TokenFlags fs) { flags &= ~fs; }
@@ -233,3 +223,20 @@ struct Token
 };
 
 } // namespace cci
+
+namespace fmt {
+template <>
+struct formatter<cci::TokenKind>
+{
+  auto parse(parse_context &ctx) -> parse_context::iterator
+  {
+    return begin(ctx);
+  }
+
+  template <typename FormatContext>
+  auto format(cci::TokenKind tok_kind, FormatContext &ctx)
+  {
+    return format_to(begin(ctx), cci::to_string(tok_kind));
+  }
+};
+} // namespace fmt

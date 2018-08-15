@@ -20,7 +20,7 @@ set(CMAKE_CONFIG_INSTALL_DIR ${CMAKE_INSTALL_LIBDIR}/cmake/${PROJECT_NAME})
 
 # Includes building pieces of the compiler.
 add_subdirectory(lib)
-add_subdirectory(src)
+#add_subdirectory(src)
 
 if (BUILD_TESTING)
   add_subdirectory(unittest)

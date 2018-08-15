@@ -1,9 +1,7 @@
 #pragma once
 
-#include "cci/basic/source_manager.hpp"
 #include "cci/langopts.hpp"
-#include "cci/lex/lexer.hpp"
-#include "cci/util/small_vector.hpp"
+#include "cci/syntax/lexer.hpp"
 #include "cci/util/span.hpp"
 #include <vector>
 
@@ -27,7 +25,7 @@ public:
   int32_t radix = 0;
 
   NumericConstantParser(Lexer &, std::string_view tok_spelling,
-                        SourceLocation tok_loc);
+                        srcmap::ByteLoc tok_loc);
 
   // Evaluates and returns the numeric constant to an integer constant value, as
   // well as whether the evaluation overflowed.
@@ -45,14 +43,14 @@ struct CharConstantParser
   bool has_error = false;
 
   CharConstantParser(Lexer &, std::string_view tok_spelling,
-                     SourceLocation tok_loc, TokenKind char_kind,
+                     srcmap::ByteLoc tok_loc, TokenKind char_kind,
                      const TargetInfo &);
 };
 
 struct StringLiteralParser
 {
 private:
-  small_string<256> result_buf;
+  std::vector<char> result_buf;
   char *result_ptr;
 
 public:
@@ -66,7 +64,8 @@ public:
   // Returns the size in bytes of the string, excluding the null character.
   size_t byte_length() const { return result_ptr - result_buf.data(); }
 
-  // Returns the number of characters in the string, excluding the null character.
+  // Returns the number of characters in the string, excluding the null
+  // character. Note: this doesn't respect Unicode.
   size_t num_string_chars() const { return byte_length() / char_byte_width; }
 
   auto string() const -> std::string_view

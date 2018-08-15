@@ -1,4 +1,4 @@
-#include "cci/lex/char_info.hpp"
+#include "cci/syntax/char_info.hpp"
 #include <cstdint>
 
 namespace cci::charinfo {

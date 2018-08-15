@@ -1,5 +1,9 @@
 add_executable(cci cci.cpp)
-target_link_libraries(cci PRIVATE cci_basic cci_lex cci_parser fmt::fmt)
+target_link_libraries(cci PRIVATE
+  cci_syntax
+  cci_sema
+  cci_util
+  fmt::fmt)
 target_compile_features(cci PUBLIC cxx_std_17)
 
 # Takes advantage of git version control to make up the compiler's build version.

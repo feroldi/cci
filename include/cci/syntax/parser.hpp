@@ -3,8 +3,10 @@
 #include "cci/ast/ast_context.hpp"
 #include "cci/ast/expr.hpp"
 #include "cci/ast/type.hpp"
-#include "cci/lex/lexer.hpp"
 #include "cci/semantics/sema.hpp"
+#include "cci/syntax/diagnostics.hpp"
+#include "cci/syntax/lexer.hpp"
+#include "cci/syntax/source_map.hpp"
 #include <optional>
 #include <string_view>
 
@@ -16,25 +18,22 @@ private:
   Lexer &lex;
   Sema &sema;
   Token tok;
-  CompilerDiagnostics &diags;
+  diag::Handler &diag;
 
 public:
   Parser(Lexer &lex, Sema &sema)
-    : lex(lex), sema(sema), tok(), diags(lex.diagnostics())
+    : lex(lex), sema(sema), diag(lex.diagnostics())
   {
     // Sets up the peek token.
-    auto new_tok = lex.next_token();
-    cci_expects(new_tok.has_value());
-    tok = *new_tok;
+    tok = lex.next_token();
   }
 
   // Consumes the current token and peeks the next one. Returns a SourceLocation
   // to the consumed token.
-  auto consume_token() -> SourceLocation
+  auto consume_token() -> srcmap::ByteLoc
   {
-    SourceLocation old_loc = tok.location();
-    if (auto new_tok = lex.next_token())
-      tok = *new_tok;
+    auto old_loc = tok.location();
+    tok = lex.next_token();
     return old_loc;
   }
 

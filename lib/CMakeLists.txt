@@ -1,5 +1,3 @@
-add_subdirectory(lex)
-add_subdirectory(parser)
+add_subdirectory(syntax)
 add_subdirectory(semantics)
-add_subdirectory(basic)
 add_subdirectory(util)

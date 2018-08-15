@@ -1,9 +1,9 @@
 #pragma once
 
-#include "cci/basic/diagnostics.hpp"
-#include "cci/basic/source_manager.hpp"
+#include "cci/syntax/diagnostics.hpp"
+#include "cci/syntax/source_map.hpp"
+#include "cci/syntax/token.hpp"
 #include "cci/util/contracts.hpp"
-#include "cci/lex/token.hpp"
 #include <string>
 #include <string_view>
 
@@ -19,28 +19,32 @@ namespace cci {
 struct Lexer
 {
 private:
-  const SourceManager &source_mgr; //< Input stream.
-  CompilerDiagnostics &diags;
+  const srcmap::SourceMap &src_map; //< Source of the file map being lexed.
+  srcmap::ByteLoc file_loc; //< Start location of the file map being lexed.
+  diag::Handler &diag;
 
   const char *buffer_begin; //< Iterator into the start of the buffer.
   const char *buffer_end; //< Iterator into the end of the buffer.
   const char *buffer_ptr; //< Current position into the buffer to be analyzed.
 
 public:
-  explicit Lexer(const SourceManager &src_mgr)
-    : source_mgr(src_mgr)
-    , diags(src_mgr.diagnostics())
-    , buffer_begin(src_mgr.full_text().begin())
-    , buffer_end(src_mgr.full_text().end())
-    , buffer_ptr(buffer_begin)
+  explicit Lexer(const srcmap::SourceMap &src, srcmap::ByteLoc file_loc,
+                 const char *buf_begin, const char *buf_end,
+                 diag::Handler &diag)
+    : src_map(src)
+    , file_loc(file_loc)
+    , diag(diag)
+    , buffer_begin(buf_begin)
+    , buffer_end(buf_end)
+    , buffer_ptr(buf_begin)
   {
     // Having a null character at the end of the input makes lexing a lot
     // easier.
     cci_expects(buffer_end[0] == '\0');
   }
 
-  auto source_manager() const -> const SourceManager & { return source_mgr; }
-  auto diagnostics() const -> CompilerDiagnostics & { return diags; }
+  auto source_map() const -> const srcmap::SourceMap & { return this->src_map; }
+  auto diagnostics() const -> diag::Handler & { return this->diag; }
 
   // Parses the next token in the input stream.
   //
@@ -48,16 +52,16 @@ public:
   // interpret whatever `buffer_ptr` is currently pointing to, and if it
   // recognizes something it knows about (such as an identifier's head, a
   // numeric constant etc), then it does the appropriate lexical analysis of
-  // that token's grammar, and and returns the parsed token.
-  // When end of input is reached, this simply returns std::nullopt.
+  // that token's grammar, and returns the parsed token. When end of input is
+  // reached, this simply returns an eof token.
   //
-  // \return The parsed token on success, and std::nullopt otherwise.
-  auto next_token() -> std::optional<Token>;
+  // \return The parsed token on success.
+  auto next_token() -> Token;
 
-  // Translates a buffer pointer into a SourceLocation.
-  auto location_for_ptr(const char *ptr) const -> SourceLocation
+  // Translates a buffer pointer into a global ByteLoc.
+  auto location_for_ptr(const char *ptr) const -> srcmap::ByteLoc
   {
-    return SourceLocation(static_cast<size_t>(ptr - buffer_begin));
+    return this->source_map().ptr_to_byteloc(this->file_loc, ptr);
   }
 
   // Tranlates a position in the spelling of a token into the buffer pointer
@@ -65,38 +69,42 @@ public:
   //
   // This is useful when the resulting spelling of a token doesn't equal the
   // canonical representation in source code, and one needs to know the actual
-  // SourceLocation of some given character in the spelling.
-  auto character_location(SourceLocation tok_loc, const char *spelling_begin,
-                          const char *char_pos) const -> SourceLocation;
+  // ByteLoc of some given character in the spelling.
+  auto character_location(srcmap::ByteLoc tok_loc, const char *spelling_begin,
+                          const char *char_pos) const -> srcmap::ByteLoc;
 
   // Computes the spelling of a token, and writes it to the caller's buffer
   // `spelling_buf`. Returns the size in bytes of written data.
   static auto get_spelling_to_buffer(const Token &, char *spelling_buf,
-                                     const SourceManager &) -> size_t;
+                                     const srcmap::SourceMap &) -> size_t;
 
   auto get_spelling(const Token &tok, small_vector_impl<char> &out) const
     -> std::string_view
   {
     out.resize(tok.size());
     size_t spell_length =
-      Lexer::get_spelling_to_buffer(tok, out.data(), source_mgr);
+      Lexer::get_spelling_to_buffer(tok, out.data(), this->source_map());
     return {out.data(), spell_length};
   }
 
-
 private:
-  auto try_read_ucn(const char *&start_ptr, const char *slash_ptr, Token *tok = nullptr) -> uint32_t;
+  auto try_read_ucn(const char *&start_ptr, const char *slash_ptr,
+                    Token *tok = nullptr) -> uint32_t;
   auto try_advance_identifier_utf8(const char *&cur_ptr) -> bool;
-  auto try_advance_identifier_ucn(const char *&cur_ptr, int64_t size, Token &result) -> bool;
+  auto try_advance_identifier_ucn(const char *&cur_ptr, int64_t size,
+                                  Token &result) -> bool;
 
   auto skip_line_comment(const char *cur_ptr) -> const char *;
   auto skip_block_comment(const char *cur_ptr) -> const char *;
 
   auto lex_identifier(const char *cur_ptr, Token &result) -> bool;
   auto lex_numeric_constant(const char *cur_ptr, Token &result) -> bool;
-  auto lex_character_constant(const char *cur_ptr, Token &result, TokenKind char_kind) -> bool;
-  auto lex_string_literal(const char *cur_ptr, Token &result, TokenKind str_kind) -> bool;
-  auto lex_unicode(const char *cur_ptr, uint32_t code_point, Token &result) -> bool;
+  auto lex_character_constant(const char *cur_ptr, Token &result,
+                              TokenKind char_kind) -> bool;
+  auto lex_string_literal(const char *cur_ptr, Token &result,
+                          TokenKind str_kind) -> bool;
+  auto lex_unicode(const char *cur_ptr, uint32_t code_point, Token &result)
+    -> bool;
   auto lex_token(const char *cur_ptr, Token &result) -> bool;
 
   // Fitly finalizes the lexing of a token, advancing the buffer pointer past
@@ -106,6 +114,14 @@ private:
     tok.kind = kind;
     tok.range = {location_for_ptr(buffer_ptr), location_for_ptr(tok_end)};
     buffer_ptr = tok_end;
+  }
+
+  auto report(const char *loc_ptr, std::string message) const
+    -> diag::DiagnosticBuilder
+  {
+    return this->diag.report(
+      this->source_map().ptr_to_byteloc(this->file_loc, loc_ptr),
+      std::move(message));
   }
 };
 

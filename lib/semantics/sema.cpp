@@ -3,11 +3,11 @@
 #include "cci/ast/ast_context.hpp"
 #include "cci/ast/expr.hpp"
 #include "cci/ast/type.hpp"
-#include "cci/basic/diagnostics.hpp"
-#include "cci/lex/lexer.hpp"
-#include "cci/lex/literal_parser.hpp"
+#include "cci/syntax/diagnostics.hpp"
+#include "cci/syntax/lexer.hpp"
+#include "cci/syntax/literal_parser.hpp"
+#include "cci/syntax/source_map.hpp"
 #include "cci/util/small_vector.hpp"
-#include "sema_diagnostics.hpp"
 #include <memory>
 #include <string_view>
 
@@ -24,7 +24,7 @@ auto Sema::act_on_numeric_constant(const Token &tok) -> ASTResult<Expr>
 
   if (tok.size() == 1)
   {
-    const char digit = tok.raw_spelling(lex.source_manager())[0];
+    const char digit = lex.source_map().range_to_snippet(tok.source_range())[0];
     return new (context)
       IntegerLiteral(digit - '0', context.int_ty, tok.location());
   }
@@ -44,7 +44,7 @@ auto Sema::act_on_numeric_constant(const Token &tok) -> ASTResult<Expr>
     {
       // We could just stop here, but let's be friends with the user and try to
       // parse and diagnose the source code as much as possible.
-      diags.report(tok.location(), diag::err_integer_literal_too_large);
+      diag.report(tok.location(), "integer literal is too large");
     }
 
     bool allow_unsigned = literal.is_unsigned || literal.radix != 10;
@@ -102,7 +102,9 @@ auto Sema::act_on_numeric_constant(const Token &tok) -> ASTResult<Expr>
       // __int128, an extended integer type (which [C11 6.4.4.1p6] suggests
       // doing), and Clang settles down to unsigned long long. Given we don't
       // support any extended types, unsigned long long will be the chosen one.
-      diags.report(tok.location(), diag::ext_no_type_for_integer_literal);
+      diag.report(tok.location(),
+                  "integer literal is too large to fit in any standard type; "
+                  "leaving it as unsigned long long");
       integer_ty = context.ulong_long_ty;
       width = context.target_info().long_long_width;
     }
@@ -219,8 +221,8 @@ auto Sema::act_on_string_literal(span<const Token> string_toks)
   std::memcpy(str_data, literal.string().data(), bytes_count);
 
   const size_t num_concatenated = string_toks.size();
-  arena_ptr<SourceLocation> tok_locs =
-    new (context) SourceLocation[num_concatenated];
+  arena_ptr<srcmap::ByteLoc> tok_locs =
+    new (context) srcmap::ByteLoc[num_concatenated];
 
   auto locs_ptr = tok_locs;
   for (const Token &tok : string_toks)
@@ -232,8 +234,8 @@ auto Sema::act_on_string_literal(span<const Token> string_toks)
                   literal.char_byte_width, span(tok_locs, num_concatenated));
 }
 
-auto Sema::act_on_paren_expr(arena_ptr<Expr> expr, SourceLocation left,
-                             SourceLocation right) -> ASTResult<ParenExpr>
+auto Sema::act_on_paren_expr(arena_ptr<Expr> expr, srcmap::ByteLoc left,
+                             srcmap::ByteLoc right) -> ASTResult<ParenExpr>
 {
   return new (context) ParenExpr(expr, left, right);
 }

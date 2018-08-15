@@ -1,10 +1,9 @@
-#include "cci/lex/lexer.hpp"
-#include "./lex_diagnostics.hpp"
-#include "cci/basic/diagnostics.hpp"
-#include "cci/basic/source_manager.hpp"
-#include "cci/lex/char_info.hpp"
-#include "cci/lex/token.hpp"
-#include "cci/lex/unicode_char_set.hpp"
+#include "cci/syntax/lexer.hpp"
+#include "cci/syntax/char_info.hpp"
+#include "cci/syntax/diagnostics.hpp"
+#include "cci/syntax/source_map.hpp"
+#include "cci/syntax/token.hpp"
+#include "cci/syntax/unicode_char_set.hpp"
 #include "cci/util/contracts.hpp"
 #include "cci/util/unicode.hpp"
 #include <algorithm>
@@ -52,15 +51,7 @@ constexpr auto is_newline(char C) -> bool { return C == '\n' || C == '\r'; }
 
 constexpr auto is_whitespace(char C) -> bool
 {
-  return C == ' ' || C == '\t' || C == '\v' || C == '\f' || is_newline(C);
-}
-
-template <typename... Args>
-void report(Lexer &lex, const char *ctx, diag::Lex err_code, Args &&... args)
-{
-  auto &diag = lex.diagnostics();
-  return diag.report(lex.location_for_ptr(ctx), err_code,
-                     std::forward<Args>(args)...);
+  return C == ' ' || C == '\t' || is_newline(C) || C == '\v' || C == '\f';
 }
 
 // The following few helper functions are inspired by Clang's lexer
@@ -292,7 +283,7 @@ auto Lexer::try_read_ucn(const char *&start_ptr, const char *slash_ptr,
     const uint32_t value = hexdigit_value(c);
     if (value == -1U)
     {
-      report(*this, slash_ptr, diag::warn_ucn_incomplete);
+      report(slash_ptr, "incomplete universal character name");
       return 0;
     }
     code_point <<= 4;
@@ -323,14 +314,14 @@ auto Lexer::try_read_ucn(const char *&start_ptr, const char *slash_ptr,
   {
     if (code_point != 0x24 && code_point != 0x40 && code_point != 0x60)
     {
-      report(*this, slash_ptr, diag::err_ucn_invalid);
+      report(slash_ptr, "invalid universal character name");
       return 0;
     }
   }
   // high and low surrogates
   else if (code_point >= 0xD800 && code_point <= 0xDFFF)
   {
-    report(*this, slash_ptr, diag::err_ucn_invalid);
+    report(slash_ptr, "invalid universal character name");
     return 0;
   }
 
@@ -458,9 +449,11 @@ auto Lexer::lex_identifier(const char *cur_ptr, Token &result) -> bool
   // Changes the token's kind to a keyword if this happens to be one.
   if (!result.has_UCN())
   {
+    small_string<16> ident_buf;
+    const auto spelling = this->get_spelling(result, ident_buf);
+
     // FIXME: This is rather slow.
-    auto spelling = result.spelling(source_mgr);
-    for (auto kind : KEYWORD_KINDS)
+    for (const TokenKind kind : KEYWORD_KINDS)
     {
       if (spelling == to_string(kind))
       {
@@ -544,7 +537,7 @@ auto Lexer::skip_line_comment(const char *cur_ptr) -> const char *
     // happen, we still let this check here.
     if (c == '\0')
     {
-      report(*this, cur_ptr, diag::err_unterminated_comment, selector{0});
+      report(cur_ptr, "unterminated line comment");
       break;
     }
 
@@ -587,7 +580,7 @@ auto Lexer::skip_block_comment(const char *cur_ptr) -> const char *
     // Missing the terminating */ block comment.
     if (c == '\0')
     {
-      report(*this, cur_ptr, diag::err_unterminated_comment, selector{1});
+      report(cur_ptr, "unterminated block comment");
       break;
     }
 
@@ -654,7 +647,7 @@ auto Lexer::lex_character_constant(const char *cur_ptr, Token &result,
 
   if (c == '\'')
   {
-    report(*this, buffer_ptr, diag::err_empty_character);
+    report(buffer_ptr, "character constant is empty");
     form_token(result, cur_ptr, TokenKind::unknown);
     return true;
   }
@@ -668,8 +661,8 @@ auto Lexer::lex_character_constant(const char *cur_ptr, Token &result,
 
     else if (is_newline(c) || c == '\0')
     {
-      report(*this, buffer_ptr, diag::err_unterminated_char_or_string, '\'',
-             to_string(char_kind));
+      report(buffer_ptr,
+             fmt::format("missing terminating ' for this {}", char_kind));
       form_token(result, std::prev(cur_ptr), TokenKind::unknown);
       return true;
     }
@@ -728,8 +721,8 @@ auto Lexer::lex_string_literal(const char *cur_ptr, Token &result,
 
     else if (is_newline(c) || c == '\0')
     {
-      report(*this, buffer_ptr, diag::err_unterminated_char_or_string, '"',
-             to_string(str_kind));
+      report(buffer_ptr,
+             fmt::format("missing terminating \" for this {}", str_kind));
       form_token(result, std::prev(cur_ptr), TokenKind::unknown);
       return true;
     }
@@ -770,13 +763,23 @@ auto Lexer::lex_unicode(const char *cur_ptr, uint32_t code_point, Token &result)
 // \return true if a token was lexed, and false if end of input is reached.
 auto Lexer::lex_token(const char *cur_ptr, Token &result) -> bool
 {
+lex:
+  if (cur_ptr == buffer_end)
+    return false;
+
   // Skips any whitespace before the token.
   cur_ptr = std::find_if_not(cur_ptr, buffer_end, is_whitespace);
   buffer_ptr = cur_ptr;
 
   auto [ch, ch_size] = peek_char_and_size(cur_ptr);
-  cur_ptr = consume_char(cur_ptr, ch_size, result);
 
+  if (is_newline(ch))
+  {
+    cur_ptr += ch_size;
+    goto lex;
+  }
+
+  cur_ptr = consume_char(cur_ptr, ch_size, result);
   auto kind = TokenKind::unknown;
 
   switch (ch)
@@ -991,7 +994,7 @@ auto Lexer::lex_token(const char *cur_ptr, Token &result) -> bool
         }
         else
         {
-          kind = TokenKind::greater;
+          kind = TokenKind::greatergreater;
           cur_ptr = consume_char(cur_ptr, ch_size, result);
         }
       }
@@ -1160,51 +1163,47 @@ auto Lexer::lex_token(const char *cur_ptr, Token &result) -> bool
     if (is_ascii(ch))
     {
       if (is_printable(ch))
-        report(*this, buffer_ptr, diag::err_unknown_character, ch);
+        report(buffer_ptr, fmt::format("unknown character '{}'", ch));
       else
-        report(*this, buffer_ptr, diag::err_unknown_character,
-               fmt::format("0x{0:0>4X}", static_cast<uint32_t>(ch)));
+        report(buffer_ptr, fmt::format("unknown character '0x{0:0>4X}'",
+                                       static_cast<uint32_t>(ch)));
     }
     else
-      report(*this, buffer_ptr, diag::err_invalid_unicode_character,
-             static_cast<uint8_t>(ch));
+      report(buffer_ptr, fmt::format("invalid unicode character <U+{0:0>4X}>",
+                                     static_cast<uint8_t>(ch)));
   }
 
   form_token(result, cur_ptr, kind);
   return true;
 }
 
-// Parses the spelling of a token, expanding any trigraphs and escaped
-// new-lines, thus returning the uncanonical representation of this token's
-// characters.
-auto Token::spelling(const SourceManager &source_mgr) const -> std::string
+// Lexes a token in the position `buffer_ptr`.
+auto Lexer::next_token() -> Token
 {
-  std::string spelling;
-  spelling.resize(this->size());
-  size_t len =
-    Lexer::get_spelling_to_buffer(*this, spelling.data(), source_mgr);
-  spelling.resize(len);
-  return spelling;
+  if (Token result; lex_token(buffer_ptr, result))
+    return result;
+  return Token(TokenKind::eof, srcmap::Range{});
 }
 
-auto Lexer::character_location(SourceLocation tok_loc,
+auto Lexer::character_location(srcmap::ByteLoc tok_loc,
                                const char *spelling_begin,
-                               const char *char_pos) const -> SourceLocation
+                               const char *char_pos) const -> srcmap::ByteLoc
 {
-  const char *cur_ptr = source_mgr.decode_to_raw_ptr(tok_loc);
+  const auto [file, offset] = this->source_map().lookup_byte_offset(tok_loc);
+  const char *cur_ptr = this->buffer_begin + static_cast<size_t>(offset);
   for (auto it = spelling_begin; it != char_pos; ++it)
   {
     const auto [c, size] = peek_char_and_size_nontrivial(cur_ptr, 0, nullptr);
     cci_expects(c == *it);
     cur_ptr += size;
   }
-  return location_for_ptr(cur_ptr);
+  return this->source_map().ptr_to_byteloc(this->file_loc, cur_ptr);
 }
 
 auto Lexer::get_spelling_to_buffer(const Token &tok, char *spelling_buf,
-                                   const SourceManager &sm) -> size_t
+                                   const srcmap::SourceMap &map) -> size_t
 {
-  std::string_view spelling = sm.text_slice(tok.source_range());
+  std::string_view spelling = map.range_to_snippet(tok.source_range());
   const auto spell_start = spelling.begin();
   const auto spell_end = spelling.end();
 
@@ -1227,14 +1226,6 @@ auto Lexer::get_spelling_to_buffer(const Token &tok, char *spelling_buf,
   // Dirty tokens have to shrink in size.
   cci_ensures(length < tok.size());
   return length;
-}
-
-// Lexes a token in the position `buffer_ptr`.
-auto Lexer::next_token() -> std::optional<Token>
-{
-  if (Token result; lex_token(buffer_ptr, result))
-    return result;
-  return std::nullopt;
 }
 
 auto to_string(TokenKind k) -> std::string_view

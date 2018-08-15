@@ -1,9 +1,10 @@
 #pragma once
 #include "cci/ast/type.hpp"
-#include "cci/basic/source_location.hpp"
 #include "cci/langopts.hpp"
+#include "cci/syntax/source_map.hpp"
 #include "cci/util/span.hpp"
 #include <cstdint>
+#include <cstddef>
 
 namespace cci {
 
@@ -45,17 +46,17 @@ struct IntegerLiteral : Expr
 {
 private:
   uint64_t value_;
-  SourceLocation loc;
+  srcmap::ByteLoc loc;
 
 public:
-  IntegerLiteral(uint64_t val, QualType ty, SourceLocation l)
+  IntegerLiteral(uint64_t val, QualType ty, srcmap::ByteLoc l)
     : Expr(ExprClass::IntegerLiteral, ExprCategory::RValue, ty)
     , value_(val)
     , loc(l)
   {}
 
   auto value() const -> uint64_t { return value_; }
-  auto location() const -> SourceLocation { return loc; }
+  auto location() const -> srcmap::ByteLoc { return loc; }
 };
 
 enum class CharacterConstantKind
@@ -71,11 +72,11 @@ struct CharacterConstant : Expr
 private:
   uint32_t value_;
   CharacterConstantKind kind_;
-  SourceLocation loc;
+  srcmap::ByteLoc loc;
 
 public:
   CharacterConstant(uint32_t val, CharacterConstantKind k, QualType ty,
-                    SourceLocation l)
+                    srcmap::ByteLoc l)
     : Expr(ExprClass::CharacterConstant, ExprCategory::RValue, ty)
     , value_(val)
     , kind_(k)
@@ -84,7 +85,7 @@ public:
 
   auto value() const -> uint32_t { return value_; }
   auto kind() const -> CharacterConstantKind { return kind_; }
-  auto location() const -> SourceLocation { return loc; }
+  auto location() const -> srcmap::ByteLoc { return loc; }
 };
 
 enum class StringLiteralKind
@@ -102,11 +103,11 @@ private:
   span<std::byte> str_data; //< String content.
   StringLiteralKind kind_;
   size_t char_byte_width_; //< Character's size in bytes.
-  span<SourceLocation> tok_locs; //< Sequence of each string location
+  span<srcmap::ByteLoc> tok_locs; //< Sequence of each string location
 
 public:
   StringLiteral(QualType ty, span<std::byte> str_data, StringLiteralKind kind,
-                size_t char_byte_width, span<SourceLocation> locs)
+                size_t char_byte_width, span<srcmap::ByteLoc> locs)
     : Expr(ExprClass::StringLiteral, ExprCategory::LValue, ty)
     , str_data(str_data)
     , kind_(kind)
@@ -135,7 +136,7 @@ public:
   auto byte_length() const -> size_t { return str_data.size(); }
   auto length() const -> size_t { return byte_length() / char_byte_width(); }
 
-  auto location() const -> SourceLocation { return tok_locs[0]; }
+  auto location() const -> srcmap::ByteLoc { return tok_locs[0]; }
   auto loc_begin() const { return tok_locs.begin(); }
   auto loc_end() const { return tok_locs.end(); }
 };
@@ -144,11 +145,12 @@ struct ParenExpr : Expr
 {
 private:
   arena_ptr<Expr> inner_expr_;
-  SourceLocation lparen_loc;
-  SourceLocation rparen_loc;
+  srcmap::ByteLoc lparen_loc;
+  srcmap::ByteLoc rparen_loc;
 
 public:
-  ParenExpr(arena_ptr<Expr> expr, SourceLocation lparen, SourceLocation rparen)
+  ParenExpr(arena_ptr<Expr> expr, srcmap::ByteLoc lparen,
+            srcmap::ByteLoc rparen)
     : Expr(ExprClass::ParenExpr, expr->category(), expr->type())
     , inner_expr_(expr)
     , lparen_loc(lparen)
@@ -156,8 +158,8 @@ public:
   {}
 
   auto inner_expr() const -> arena_ptr<Expr> { return inner_expr_; }
-  auto left_paren_loc() const -> SourceLocation { return lparen_loc; }
-  auto right_paren_loc() const -> SourceLocation { return rparen_loc; }
+  auto left_paren_loc() const -> srcmap::ByteLoc { return lparen_loc; }
+  auto right_paren_loc() const -> srcmap::ByteLoc { return rparen_loc; }
 };
 
 } // namespace cci

@@ -1,4 +1,4 @@
-#include "cci/lex/unicode_char_set.hpp"
+#include "cci/syntax/unicode_char_set.hpp"
 #include <algorithm>
 #include <cstdint>
 #include <iterator>

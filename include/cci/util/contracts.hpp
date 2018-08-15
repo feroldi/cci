@@ -14,6 +14,8 @@
 #include <cassert>
 #include <stdexcept>
 
+namespace cci {
+
 // http://stackoverflow.com/a/19343239/2679626
 #ifndef STRINGIFY
 #define STRINGIFY_DETAIL(x) #x
@@ -62,3 +64,5 @@ struct unreachable_exception : std::runtime_error
 #endif
 
 #endif // if CCI_ENABLE_CONTRACTS
+
+} // namespace cci

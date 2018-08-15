@@ -1,10 +1,10 @@
-#include "cci/lex/literal_parser.hpp"
-#include "./lex_diagnostics.hpp"
-#include "cci/basic/diagnostics.hpp"
-#include "cci/basic/source_manager.hpp"
+#include "cci/syntax/literal_parser.hpp"
 #include "cci/langopts.hpp"
-#include "cci/lex/char_info.hpp"
-#include "cci/lex/lexer.hpp"
+#include "cci/syntax/char_info.hpp"
+#include "cci/syntax/diagnostics.hpp"
+#include "cci/syntax/lexer.hpp"
+#include "cci/syntax/source_map.hpp"
+#include "cci/util/small_vector.hpp"
 #include "cci/util/span.hpp"
 #include "cci/util/unicode.hpp"
 #include <algorithm>
@@ -17,25 +17,23 @@ using namespace cci;
 // Returns the correct selector (i.e. if it's a decimal, octal, or hexadecimal)
 // for a given radix. This is used only for diagnostics to select the
 // appropriate message for a given number base.
-static auto select_radix(uint32_t radix) -> selector
+static auto select_radix(uint32_t radix) -> diag::select
 {
-  return selector{
-    radix == 10 ? 0 : radix == 8 ? 1 : radix == 16 ? 2 : cci_unreachable()};
+  return diag::select(
+    radix == 10 ? 0 : radix == 8 ? 1 : radix == 16 ? 2 : cci_unreachable());
 }
 
-template <typename... Args>
-static void report(Lexer &lex, const char *char_ptr, SourceLocation tok_loc,
-                   const char *tok_begin, diag::Lex err_code, Args &&... args)
+static void report(Lexer &lex, const char *char_ptr, srcmap::ByteLoc tok_loc,
+                   const char *tok_begin, std::string message)
 {
   auto &diag = lex.diagnostics();
-  diag.report(lex.character_location(tok_loc, tok_begin, char_ptr), err_code,
-              std::forward<Args>(args)...);
+  diag.report(lex.character_location(tok_loc, tok_begin, char_ptr),
+              std::move(message));
 }
 
 // Returns the respective character type width for a given string literal or
 // character constant token.
-static auto map_char_width(TokenKind kind, const TargetInfo &target)
-  -> size_t
+static auto map_char_width(TokenKind kind, const TargetInfo &target) -> size_t
 {
   cci_expects(is_char_constant(kind) || is_string_literal(kind));
   switch (kind)
@@ -55,12 +53,12 @@ static auto map_char_width(TokenKind kind, const TargetInfo &target)
 }
 
 NumericConstantParser::NumericConstantParser(Lexer &lexer,
-                                             std::string_view tok_spelling,
-                                             SourceLocation tok_loc)
+                                             std::string_view tok_lexeme,
+                                             srcmap::ByteLoc tok_loc)
 {
-  cci_expects(tok_spelling.end()[0] == '\0');
-  const char *const tok_begin = tok_spelling.begin();
-  const char *const tok_end = tok_spelling.end();
+  cci_expects(tok_lexeme.end()[0] == '\0');
+  const char *const tok_begin = tok_lexeme.begin();
+  const char *const tok_end = tok_lexeme.end();
   const char *s = tok_begin;
   digit_begin = tok_begin;
 
@@ -69,8 +67,10 @@ NumericConstantParser::NumericConstantParser(Lexer &lexer,
 
     if (is_hexdigit(s[0]) && *s != 'e' && *s != 'E')
     {
-      report(lexer, s, tok_loc, tok_begin, diag::err_invalid_digit, *s,
-             select_radix(radix), selector{1});
+      report(lexer, s, tok_loc, tok_begin,
+             fmt::format("invalid digit '{0}' for "
+                         "{1:decimal|octal|hexadecimal} integer constant",
+                         *s, select_radix(radix)));
       has_error = true;
       return;
     }
@@ -94,7 +94,8 @@ NumericConstantParser::NumericConstantParser(Lexer &lexer,
       s = std::find_if_not(s, tok_end, is_digit);
       if (digs_start == s)
       {
-        report(lexer, exponent, tok_loc, tok_begin, diag::err_empty_exponent);
+        report(lexer, exponent, tok_loc, tok_begin,
+               "exponent needs a sequence of digits");
         has_error = true;
         return;
       }
@@ -134,14 +135,15 @@ NumericConstantParser::NumericConstantParser(Lexer &lexer,
         s = std::find_if_not(s, tok_end, is_digit);
         if (digs_start == s)
         {
-          report(lexer, exponent, tok_loc, tok_begin, diag::err_empty_exponent);
+          report(lexer, exponent, tok_loc, tok_begin,
+                 "exponent needs a sequence of digits");
           has_error = true;
         }
       }
       else if (has_period)
       {
         report(lexer, tok_begin, tok_loc, tok_begin,
-               diag::err_missing_exponent);
+               "hexadecimal floating constant is missing the binary exponent");
         has_error = true;
       }
     }
@@ -217,13 +219,14 @@ NumericConstantParser::NumericConstantParser(Lexer &lexer,
   // If it hasn't maximal-munched, then the suffix is invalid.
   if (s != tok_end)
   {
-    report(lexer, s, tok_loc, tok_begin, diag::err_invalid_suffix,
-           std::string_view(digit_end, tok_end - digit_end),
-           select_radix(radix), selector{is_fp ? 0 : 1});
+    report(lexer, s, tok_loc, tok_begin,
+           fmt::format("invalid suffix '{0}' for {1:decimal|octal|hexadecimal} "
+                       "{2:floating point|integer} constant",
+                       std::string_view(digit_end, tok_end - digit_end),
+                       select_radix(radix), diag::select(is_fp ? 0 : 1)));
     has_error = true;
   }
 }
-
 
 // In order to know how many digits are enough to guarantee that overflow won't
 // happen to an integer literal, we need to know the number base and bits of
@@ -259,8 +262,7 @@ static auto integer_fits_into_64bits(int32_t num_of_digits, int32_t radix)
   }
 }
 
-auto NumericConstantParser::to_integer() const
-  -> std::pair<uint64_t, bool>
+auto NumericConstantParser::to_integer() const -> std::pair<uint64_t, bool>
 {
   cci_expects(is_integer_literal());
   cci_expects(radix == 8 || radix == 10 || radix == 16);
@@ -298,7 +300,7 @@ auto NumericConstantParser::to_integer() const
 // This function reads similar to the one used in the main lexing phase. So
 // here's some homework:
 // TODO: Merge this function with lexer's, and put it in a dedicated API.
-static auto parse_ucn_escape(Lexer &lex, SourceLocation tok_loc,
+static auto parse_ucn_escape(Lexer &lex, srcmap::ByteLoc tok_loc,
                              const char *tok_begin, const char *&tok_ptr,
                              const char *tok_end, uint32_t *code_point) -> bool
 {
@@ -310,7 +312,8 @@ static auto parse_ucn_escape(Lexer &lex, SourceLocation tok_loc,
 
   if (tok_ptr == tok_end || !is_hexdigit(*tok_ptr))
   {
-    report(lex, escape_begin, tok_loc, tok_begin, diag::err_ucn_no_hexdigits);
+    report(lex, escape_begin, tok_loc, tok_begin,
+           "universal character name escape has no hexadecimal digits");
     return false;
   }
 
@@ -329,7 +332,8 @@ static auto parse_ucn_escape(Lexer &lex, SourceLocation tok_loc,
   // is missing digits, therefore is invalid.
   if (num_countdown)
   {
-    report(lex, escape_begin, tok_loc, tok_begin, diag::err_ucn_invalid);
+    report(lex, escape_begin, tok_loc, tok_begin,
+           "invalid universal character name");
     return false;
   }
 
@@ -337,7 +341,8 @@ static auto parse_ucn_escape(Lexer &lex, SourceLocation tok_loc,
             *code_point <= 0xDFFF) || // high and low surrogates
            *code_point > 0x10FFFF) // maximum UTF-32 code point
   {
-    report(lex, escape_begin, tok_loc, tok_begin, diag::err_ucn_invalid);
+    report(lex, escape_begin, tok_loc, tok_begin,
+           "invalid universal character name");
     return false;
   }
 
@@ -395,7 +400,7 @@ static void encode_ucn_to_buffer(uint32_t ucn_val, char **result_buf,
 }
 
 // Returns the value representation of an escape sequence.
-static auto parse_escape_sequence(Lexer &lex, SourceLocation tok_loc,
+static auto parse_escape_sequence(Lexer &lex, srcmap::ByteLoc tok_loc,
                                   const char *tok_begin, const char *&tok_ptr,
                                   const char *tok_end, size_t char_width,
                                   bool *has_error) -> uint32_t
@@ -435,8 +440,14 @@ static auto parse_escape_sequence(Lexer &lex, SourceLocation tok_loc,
     case 'v': // vertical tab
       result = 0x0b;
       break;
-    case '0': case '1': case '2': case '3':
-    case '4': case '5': case '6': case '7':
+    case '0':
+    case '1':
+    case '2':
+    case '3':
+    case '4':
+    case '5':
+    case '6':
+    case '7':
     {
       result -= '0';
       int num_digits = 1;
@@ -453,7 +464,7 @@ static auto parse_escape_sequence(Lexer &lex, SourceLocation tok_loc,
       if (char_width < 32 && (result >> char_width) != 0)
       {
         report(lex, escape_begin, tok_loc, tok_begin,
-               diag::err_escape_sequence_too_large, selector{0});
+               "octal escape sequence out of range");
         *has_error = true;
         // Truncate the result.
         result &= ~0U >> (32 - char_width);
@@ -467,7 +478,7 @@ static auto parse_escape_sequence(Lexer &lex, SourceLocation tok_loc,
       if (tok_ptr == tok_end || !is_hexdigit(*tok_ptr))
       {
         report(lex, escape_begin, tok_loc, tok_begin,
-               diag::err_hex_escape_is_empty);
+               "hexadecimal escape sequence has no digits");
         *has_error = true;
         break;
       }
@@ -499,15 +510,14 @@ static auto parse_escape_sequence(Lexer &lex, SourceLocation tok_loc,
       if (overflowed)
       {
         report(lex, escape_begin, tok_loc, tok_begin,
-               diag::err_escape_sequence_too_large, selector{1});
+               "hex escape sequence out of range");
         *has_error = true;
       }
 
       break;
     }
     default:
-      report(lex, escape_begin, tok_loc, tok_begin,
-             diag::err_unknown_escape_sequence);
+      report(lex, escape_begin, tok_loc, tok_begin, "unknown escape sequence");
       *has_error = true;
   }
 
@@ -515,16 +525,16 @@ static auto parse_escape_sequence(Lexer &lex, SourceLocation tok_loc,
 }
 
 CharConstantParser::CharConstantParser(Lexer &lexer,
-                                       std::string_view tok_spelling,
-                                       SourceLocation tok_loc,
+                                       std::string_view tok_lexeme,
+                                       srcmap::ByteLoc tok_loc,
                                        TokenKind char_kind,
                                        const TargetInfo &target)
   : value(0), kind(char_kind)
 {
   cci_expects(is_char_constant(char_kind));
-  cci_expects(tok_spelling.end()[0] == '\0');
-  const char *const tok_begin = tok_spelling.begin();
-  const char *tok_end = tok_spelling.end();
+  cci_expects(tok_lexeme.end()[0] == '\0');
+  const char *const tok_begin = tok_lexeme.begin();
+  const char *tok_end = tok_lexeme.end();
   const char *tok_ptr = tok_begin;
   auto &diag = lexer.diagnostics();
 
@@ -585,7 +595,9 @@ CharConstantParser::CharConstantParser(Lexer &lexer,
         {
           if (*save_buf_begin > largest_value_for_kind)
           {
-            diag.report(tok_loc, diag::err_unicode_character_too_large);
+            diag.report(tok_loc,
+                        "unicode character is too large, and can't be "
+                        "represented in a single code unit");
             has_error = true;
             break;
           }
@@ -608,7 +620,9 @@ CharConstantParser::CharConstantParser(Lexer &lexer,
         has_error = true;
       else if (*buf_begin > largest_value_for_kind)
       {
-        diag.report(tok_loc, diag::err_unicode_character_too_large);
+        diag.report(tok_loc,
+                    "unicode character is too large, and can't be represented "
+                    "in a single code unit");
         has_error = true;
       }
       ++buf_begin;
@@ -628,7 +642,7 @@ CharConstantParser::CharConstantParser(Lexer &lexer,
 
   if (codepoint_buffer.empty())
   {
-    diag.report(tok_loc, diag::err_empty_character);
+    diag.report(tok_loc, "character constant is empty");
     has_error = true;
     return;
   }
@@ -651,7 +665,7 @@ CharConstantParser::CharConstantParser(Lexer &lexer,
 
     if (overflowed)
     {
-      diag.report(tok_loc, diag::err_char_constant_too_large);
+      diag.report(tok_loc, "character constant is too large");
       has_error = true;
     }
   }
@@ -720,7 +734,8 @@ StringLiteralParser::StringLiteralParser(Lexer &lexer,
         // Which means wide string literals (ones prefixed with L, u or U)
         // could be concatenated.
         diag.report(string_toks[i].location(),
-                    diag::err_nonstd_string_concatenation);
+                    "concatenation of different kinds of strings is not "
+                    "standard compliant");
         has_error = true;
       }
     }
@@ -744,14 +759,15 @@ StringLiteralParser::StringLiteralParser(Lexer &lexer,
   // Token spellings are written to this buffer.
   small_string<256> token_buf;
 
-  result_buf.resize(size_bound);
+  this->result_buf.resize(size_bound);
   token_buf.resize(max_token_size);
 
   // In case we get an empty string literal, there's nothing left to be done.
   if (size_bound == 0)
     return;
 
-  this->result_ptr = result_buf.data();
+  this->result_ptr = this->result_buf.data();
+  [[maybe_unused]] const char *result_buf_start = this->result_buf.data();
 
   for (const auto &string_tok : string_toks)
   {
@@ -760,7 +776,7 @@ StringLiteralParser::StringLiteralParser(Lexer &lexer,
     // to the buffer, which is enough to form a range of iterators.
     const char *tokbuf_ptr = token_buf.data();
     const size_t tok_length = Lexer::get_spelling_to_buffer(
-      string_tok, token_buf.data(), lexer.source_manager());
+      string_tok, token_buf.data(), lexer.source_map());
 
     const char *tokbuf_begin = tokbuf_ptr;
     const char *tokbuf_end = tokbuf_begin + tok_length;
@@ -774,11 +790,9 @@ StringLiteralParser::StringLiteralParser(Lexer &lexer,
         ++tokbuf_ptr;
     }
 
-    // Removes the first quote.
     cci_expects(*tokbuf_ptr == '"');
     ++tokbuf_ptr;
 
-    // Removes the trailing quote.
     --tokbuf_end;
     cci_expects(*tokbuf_end == '"');
 
@@ -797,8 +811,9 @@ StringLiteralParser::StringLiteralParser(Lexer &lexer,
             return uni::convert_utf8_to_utf32(
               reinterpret_cast<const uni::UTF8 **>(&chunk_start),
               reinterpret_cast<const uni::UTF8 *>(chunk_end),
-              reinterpret_cast<uni::UTF32 **>(&result_ptr),
-              reinterpret_cast<uni::UTF32 *>(result_buf.end()),
+              reinterpret_cast<uni::UTF32 **>(&this->result_ptr),
+              reinterpret_cast<uni::UTF32 *>(this->result_buf.data() +
+                                             this->result_buf.size()),
               uni::strictConversion);
           }
           else if (char_byte_width == 2)
@@ -806,13 +821,15 @@ StringLiteralParser::StringLiteralParser(Lexer &lexer,
             return uni::convert_utf8_to_utf16(
               reinterpret_cast<const uni::UTF8 **>(&chunk_start),
               reinterpret_cast<const uni::UTF8 *>(chunk_end),
-              reinterpret_cast<uni::UTF16 **>(&result_ptr),
-              reinterpret_cast<uni::UTF16 *>(result_buf.end()),
+              reinterpret_cast<uni::UTF16 **>(&this->result_ptr),
+              reinterpret_cast<uni::UTF16 *>(this->result_buf.data() +
+                                             this->result_buf.size()),
               uni::strictConversion);
           }
 
           cci_expects(char_byte_width == 1);
-          result_ptr = std::copy(chunk_start, chunk_end, result_ptr);
+          this->result_ptr =
+            std::copy(chunk_start, chunk_end, this->result_ptr);
           chunk_start = chunk_end;
           return uni::conversionOK;
         }();
@@ -828,7 +845,8 @@ StringLiteralParser::StringLiteralParser(Lexer &lexer,
           // chunk regardless of bad encoding.
           if (string_tok.is(TokenKind::string_literal))
           {
-            result_ptr = std::copy(tokbuf_ptr, chunk_end, result_ptr);
+            this->result_ptr =
+              std::copy(tokbuf_ptr, chunk_end, this->result_ptr);
             tokbuf_ptr = chunk_start;
           }
           has_error = true;
@@ -839,7 +857,7 @@ StringLiteralParser::StringLiteralParser(Lexer &lexer,
         uint32_t code_point = 0;
         if (parse_ucn_escape(lexer, string_tok.location(), tokbuf_begin,
                              tokbuf_ptr, tokbuf_end, &code_point))
-          encode_ucn_to_buffer(code_point, &result_ptr, char_byte_width);
+          encode_ucn_to_buffer(code_point, &this->result_ptr, char_byte_width);
         else
           has_error = true;
       }
@@ -853,22 +871,27 @@ StringLiteralParser::StringLiteralParser(Lexer &lexer,
         if (char_byte_width == 4)
         {
           const auto result_wide = static_cast<uni::UTF32>(result_char);
-          std::memcpy(result_ptr, &result_wide, sizeof(result_wide));
-          result_ptr += sizeof(result_wide);
+          std::memcpy(this->result_ptr, &result_wide, sizeof(result_wide));
+          this->result_ptr += sizeof(result_wide);
         }
         else if (char_byte_width == 2)
         {
           const auto result_wide =
             static_cast<uni::UTF16>(result_char & 0xFFFF);
-          std::memcpy(result_ptr, &result_wide, sizeof(result_wide));
-          result_ptr += sizeof(result_wide);
+          std::memcpy(this->result_ptr, &result_wide, sizeof(result_wide));
+          this->result_ptr += sizeof(result_wide);
         }
         else
         {
           cci_expects(char_byte_width == 1);
-          *result_ptr++ = result_char & 0xFF;
+          *this->result_ptr++ = result_char & 0xFF;
         }
       }
     }
   }
+
+  cci_ensures(result_buf_start == this->result_buf.data());
+  cci_ensures(this->result_ptr >= this->result_buf.data() &&
+              this->result_ptr <=
+                this->result_buf.data() + this->result_buf.size());
 }

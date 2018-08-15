@@ -6,12 +6,8 @@
 
 #pragma once
 
-// This is not a complete implementation of <memory_resource>, it's just
-// temporary, so when standard library implementations finally implement it I
-// can just change the include as it's drop-in.
-
-#include "cci/util/contracts.hpp"
 #include <atomic>
+#include <cassert>
 #include <cstddef>
 #include <cstring>
 #include <memory>
@@ -72,6 +68,7 @@ inline bool operator!=(const memory_resource &a,
 }
 
 memory_resource *new_delete_resource() noexcept;
+memory_resource *null_memory_resource() noexcept;
 memory_resource *set_default_resource(memory_resource *r) noexcept;
 memory_resource *get_default_resource() noexcept;
 
@@ -86,7 +83,7 @@ public:
 
   // [mem.poly.allocator.ctor], constructors
   polymorphic_allocator() noexcept : res(get_default_resource()) {}
-  polymorphic_allocator(memory_resource *r) : res(r) { cci_expects(r); }
+  polymorphic_allocator(memory_resource *r) : res(r) { assert(r); }
 
   polymorphic_allocator(const polymorphic_allocator &) = default;
 
@@ -238,13 +235,14 @@ private:
   template <typename... Args>
   decltype(auto) _construct_p(uses_alloc1, std::tuple<Args...> &t)
   {
-    return std::tuple_cat(std::tuple(std::allocator_arg, *this), std::move(t));
+    return std::tuple_cat(std::make_tuple(std::allocator_arg, *this),
+                          std::move(t));
   }
 
   template <typename... Args>
   decltype(auto) _construct_p(uses_alloc2, std::tuple<Args...> &t)
   {
-    return std::tuple_cat(std::move(t), std::tuple(*this));
+    return std::tuple_cat(std::move(t), std::make_tuple(*this));
   }
 };
 
@@ -265,25 +263,23 @@ inline bool operator!=(const polymorphic_allocator<T1> &a,
 class monotonic_buffer_resource : public memory_resource
 {
 public:
-  explicit monotonic_buffer_resource(memory_resource *upstream)
-    : upstream(upstream)
-  {}
+  explicit monotonic_buffer_resource(memory_resource *mr) : upstream(mr) {}
 
-  monotonic_buffer_resource(std::size_t initial_size, memory_resource *upstream)
-    : upstream(upstream), next_region_size(initial_size)
+  monotonic_buffer_resource(std::size_t initial_size, memory_resource *mr)
+    : upstream(mr), next_region_size(initial_size)
   {
-    cci_expects(initial_size > 0);
+    assert(initial_size > 0);
   }
 
   monotonic_buffer_resource(void *buffer, std::size_t buffer_size,
-                            memory_resource *upstream)
-    : upstream(upstream)
+                            memory_resource *mr)
+    : upstream(mr)
     , region_base_ptr(reinterpret_cast<std::byte *>(buffer))
     , region_cur_ptr(reinterpret_cast<std::byte *>(buffer))
     , region_end_ptr(reinterpret_cast<std::byte *>(buffer) + buffer_size)
     , next_region_size(compute_next_grow(buffer_size))
   {
-    cci_expects(buffer_size > 0);
+    assert(buffer_size > 0);
   }
 
   monotonic_buffer_resource()
@@ -300,7 +296,7 @@ public:
 
   monotonic_buffer_resource(const monotonic_buffer_resource &) = delete;
 
-  virtual ~monotonic_buffer_resource() { release(); }
+  virtual ~monotonic_buffer_resource() override { release(); }
 
   monotonic_buffer_resource &
   operator=(const monotonic_buffer_resource &) = delete;
@@ -319,7 +315,7 @@ public:
       owns_region = header.owns_prev_region;
     }
 
-    cci_expects(!owns_region);
+    assert(!owns_region);
     region_cur_ptr = region_base_ptr;
   }
 
@@ -330,9 +326,9 @@ protected:
   {
     if (region_base_ptr)
     {
-      cci_expects(region_cur_ptr);
+      assert(region_cur_ptr);
 
-      std::size_t space = region_end_ptr - region_cur_ptr;
+      auto space = static_cast<std::size_t>(region_end_ptr - region_cur_ptr);
       void *aligned_cur_ptr = region_cur_ptr;
       if (std::align(alignment, bytes, aligned_cur_ptr, space))
       {
@@ -356,29 +352,30 @@ protected:
     if (next_region_size < required_size)
       next_region_size = required_size;
 
-    const auto next_region_base_ptr =
-      static_cast<std::byte *>(upstream->allocate(next_region_size));
-    if (next_region_base_ptr)
+    const auto next_region_storage = upstream->allocate(next_region_size);
+    if (next_region_storage)
     {
-      auto next_region_header = new (next_region_base_ptr) owned_region_header;
-      next_region_header->prev_region_base_ptr = region_base_ptr,
-      next_region_header->prev_region_end_ptr = region_end_ptr,
-      next_region_header->owns_prev_region = owns_region,
+      auto next_region_header = new (next_region_storage) owned_region_header;
+      next_region_header->prev_region_base_ptr = region_base_ptr;
+      next_region_header->prev_region_end_ptr = region_end_ptr;
+      next_region_header->owns_prev_region = owns_region;
 
+      const auto next_region_base_ptr =
+        static_cast<std::byte *>(next_region_storage);
       region_base_ptr = next_region_base_ptr;
       region_cur_ptr = next_region_base_ptr + sizeof(owned_region_header);
       region_end_ptr = next_region_base_ptr + next_region_size;
       [[maybe_unused]] const auto old_next_region_size = next_region_size;
       next_region_size = compute_next_grow(next_region_size);
-      cci_expects(next_region_size >= old_next_region_size);
+      assert(next_region_size >= old_next_region_size);
       owns_region = true;
 
       // We could just call do_allocate recursively here, but we need to assert
       // that the aligned address is good.
-      std::size_t space = region_end_ptr - region_cur_ptr;
+      auto space = static_cast<std::size_t>(region_end_ptr - region_cur_ptr);
       void *cur_ptr = region_cur_ptr;
       const auto aligned_cur_ptr = std::align(alignment, bytes, cur_ptr, space);
-      cci_expects(aligned_cur_ptr);
+      assert(aligned_cur_ptr);
       region_cur_ptr = static_cast<std::byte *>(aligned_cur_ptr) + bytes;
       return aligned_cur_ptr;
     }
@@ -400,10 +397,10 @@ private:
   // Upstream memory resource from which we allocate regions.
   memory_resource *upstream;
 
-  std::byte *region_base_ptr = nullptr; //< Current region.
-  std::byte *region_cur_ptr = nullptr; //< Current free space in the region.
-  std::byte *region_end_ptr = nullptr; //< End of the region.
-  std::size_t next_region_size = 4096; //< Size of the next allocated region.
+  std::byte *region_base_ptr = nullptr; ///< Current region.
+  std::byte *region_cur_ptr = nullptr; ///< Current free space in the region.
+  std::byte *region_end_ptr = nullptr; ///< End of the region.
+  std::size_t next_region_size = 4096; ///< Size of the next allocated region.
 
   // Whether we allocated the region ourselves. Only the first region may be
   // unowned.
@@ -434,7 +431,7 @@ private:
 
 inline memory_resource *new_delete_resource() noexcept
 {
-  struct : memory_resource
+  struct type : memory_resource
   {
     void *do_allocate(std::size_t bytes, std::size_t alignment) override
     {
@@ -461,12 +458,41 @@ inline memory_resource *new_delete_resource() noexcept
     {
       return this == &other;
     }
-  } static r;
-  return &r;
+  };
+
+  // Constructing the memory resource this way ensures that no exit-time
+  // destructors will be called.
+  alignas(type) static char buffer[sizeof(type)];
+  memory_resource *mr = new (buffer) type;
+  return mr;
+}
+
+inline memory_resource *null_memory_resource() noexcept
+{
+  struct type : memory_resource
+  {
+    void *do_allocate(std::size_t, std::size_t) override
+    {
+      throw std::bad_alloc();
+    }
+
+    void do_deallocate(void *, std::size_t, std::size_t) noexcept override {}
+
+    bool do_is_equal(const memory_resource &other) const noexcept override
+    {
+      return this == &other;
+    }
+  };
+
+  // Constructing the memory resource this way ensures that no exit-time
+  // destructors will be called.
+  alignas(type) static char buffer[sizeof(type)];
+  memory_resource *mr = new (buffer) type;
+  return mr;
 }
 
 namespace detail {
-std::atomic<memory_resource *> &get_default_resource_impl() noexcept
+inline std::atomic<memory_resource *> &get_default_resource_impl() noexcept
 {
   static std::atomic<memory_resource *> r(new_delete_resource());
   return r;
@@ -485,4 +511,4 @@ inline memory_resource *set_default_resource(memory_resource *r) noexcept
   return detail::get_default_resource_impl().exchange(r);
 }
 
-} // namespace cci::pmr
+} // namespace feroldi::pmr

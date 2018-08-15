@@ -1,8 +1,8 @@
-#include "cci/parser/parser.hpp"
+#include "cci/syntax/parser.hpp"
 #include "cci/ast/expr.hpp"
 #include "cci/ast/type.hpp"
-#include "cci/lex/lexer.hpp"
 #include "cci/semantics/sema.hpp"
+#include "cci/syntax/lexer.hpp"
 #include "cci/util/contracts.hpp"
 #include <string_view>
 
@@ -38,16 +38,16 @@ auto Parser::parse_expression() -> ASTResult<Expr>
       break;
     case TokenKind::l_paren:
     {
-      SourceLocation lparen_loc = consume_token();
+      auto lparen_loc = consume_token();
       res = parse_expression();
       if (tok.is_not(TokenKind::r_paren))
       {
-        diags.report(tok.location(), diag::err_expected, "')'");
-        diags.report(lparen_loc, diag::note_to_match_this, "'('");
+        diag.report(tok.location(), "expected ')'");
+        diag.report(lparen_loc, "to match this '('");
         // FIXME: Should break here?
         break;
       }
-      SourceLocation rparen_loc = consume_token();
+      auto rparen_loc = consume_token();
       res = sema.act_on_paren_expr(res.value(), lparen_loc, rparen_loc);
       break;
     }

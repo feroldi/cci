@@ -1,4 +1,3 @@
 find_package(GTest REQUIRED)
 include(GoogleTest)
-add_subdirectory(basic)
-add_subdirectory(lex)
+add_subdirectory(syntax)
