@@ -109,8 +109,8 @@ an executable, writing a back-end, and so on.
   diagnosing, analysing, IR, back-ends etc.
 + `lib/`: This is where most of CCI's code base is located at. All APIs
   are implemented here, following the same names as in `include/`. E.g.
-  if there's an `include/cci/lexer/lex.hpp`, then there's also a
-  `lib/lexer/lex.cpp` (but not the other way around sometimes).
+  if there's an `include/cci/scanner/scan.hpp`, then there's also a
+  `lib/scanner/scan.cpp` (but not the other way around sometimes).
 + `src/`: This is where some CCI tools are implemented, where each
   directory is a separate project. For example, the CCI compiler tool
   is implemented in `src/cci/`.

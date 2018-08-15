@@ -9,14 +9,14 @@
 
 namespace cci {
 
-// Lexer - The C11 lexer.
+// Scanner - The C11 scanner.
 //
-// The lexer works by imperatively tokenizing the input stream (the contents of
-// a SourceManager in this case), instead of parsing every token and producing
-// a vector all at once. This is preferable, as a Token isn't space efficient,
-// and the parser works with one token at a time, which makes this approach a
-// lot more appealing.
-struct Lexer
+// The scanner works by imperatively tokenizing the input stream (the contents
+// of a SourceManager in this case), instead of parsing every token and
+// producing a vector all at once. This is preferable, as a Token isn't space
+// efficient, and the parser works with one token at a time, which makes this
+// approach a lot more appealing.
+struct Scanner
 {
 private:
   const srcmap::SourceMap &src_map; //< Source of the file map being lexed.
@@ -28,9 +28,9 @@ private:
   const char *buffer_ptr; //< Current position into the buffer to be analyzed.
 
 public:
-  explicit Lexer(const srcmap::SourceMap &src, srcmap::ByteLoc file_loc,
-                 const char *buf_begin, const char *buf_end,
-                 diag::Handler &diag)
+  explicit Scanner(const srcmap::SourceMap &src, srcmap::ByteLoc file_loc,
+                   const char *buf_begin, const char *buf_end,
+                   diag::Handler &diag)
     : src_map(src)
     , file_loc(file_loc)
     , diag(diag)
@@ -38,7 +38,7 @@ public:
     , buffer_end(buf_end)
     , buffer_ptr(buf_begin)
   {
-    // Having a null character at the end of the input makes lexing a lot
+    // Having a null character at the end of the input makes scanning a lot
     // easier.
     cci_expects(buffer_end[0] == '\0');
   }
@@ -48,8 +48,8 @@ public:
 
   // Parses the next token in the input stream.
   //
-  // This is where the whole process of tokenization happens. The lexer tries to
-  // interpret whatever `buffer_ptr` is currently pointing to, and if it
+  // This is where the whole process of tokenization happens. The scanner tries
+  // to interpret whatever `buffer_ptr` is currently pointing to, and if it
   // recognizes something it knows about (such as an identifier's head, a
   // numeric constant etc), then it does the appropriate lexical analysis of
   // that token's grammar, and returns the parsed token. When end of input is
@@ -83,7 +83,7 @@ public:
   {
     out.resize(tok.size());
     size_t spell_length =
-      Lexer::get_spelling_to_buffer(tok, out.data(), this->source_map());
+      Scanner::get_spelling_to_buffer(tok, out.data(), this->source_map());
     return {out.data(), spell_length};
   }
 
@@ -100,18 +100,18 @@ private:
   auto lex_identifier(const char *cur_ptr, Token &result) -> bool;
   auto lex_numeric_constant(const char *cur_ptr, Token &result) -> bool;
   auto lex_character_constant(const char *cur_ptr, Token &result,
-                              TokenKind char_kind) -> bool;
-  auto lex_string_literal(const char *cur_ptr, Token &result,
-                          TokenKind str_kind) -> bool;
+                              Category char_kind) -> bool;
+  auto lex_string_literal(const char *cur_ptr, Token &result, Category str_kind)
+    -> bool;
   auto lex_unicode(const char *cur_ptr, uint32_t code_point, Token &result)
     -> bool;
   auto lex_token(const char *cur_ptr, Token &result) -> bool;
 
-  // Fitly finalizes the lexing of a token, advancing the buffer pointer past
+  // Fitly finalizes the scanning of a token, advancing the buffer pointer past
   // the new token. This is used only by the internals of the lexical analysis.
-  void form_token(Token &tok, const char *tok_end, TokenKind kind)
+  void form_token(Token &tok, const char *tok_end, Category category)
   {
-    tok.kind = kind;
+    tok.category_ = category;
     tok.range = {location_for_ptr(buffer_ptr), location_for_ptr(tok_end)};
     buffer_ptr = tok_end;
   }

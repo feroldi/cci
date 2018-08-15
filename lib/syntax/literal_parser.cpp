@@ -2,7 +2,7 @@
 #include "cci/langopts.hpp"
 #include "cci/syntax/char_info.hpp"
 #include "cci/syntax/diagnostics.hpp"
-#include "cci/syntax/lexer.hpp"
+#include "cci/syntax/scanner.hpp"
 #include "cci/syntax/source_map.hpp"
 #include "cci/util/small_vector.hpp"
 #include "cci/util/span.hpp"
@@ -23,36 +23,37 @@ static auto select_radix(uint32_t radix) -> diag::select
     radix == 10 ? 0 : radix == 8 ? 1 : radix == 16 ? 2 : cci_unreachable());
 }
 
-static void report(Lexer &lex, const char *char_ptr, srcmap::ByteLoc tok_loc,
+static void report(Scanner &scan, const char *char_ptr, srcmap::ByteLoc tok_loc,
                    const char *tok_begin, std::string message)
 {
-  auto &diag = lex.diagnostics();
-  diag.report(lex.character_location(tok_loc, tok_begin, char_ptr),
+  auto &diag = scan.diagnostics();
+  diag.report(scan.character_location(tok_loc, tok_begin, char_ptr),
               std::move(message));
 }
 
 // Returns the respective character type width for a given string literal or
 // character constant token.
-static auto map_char_width(TokenKind kind, const TargetInfo &target) -> size_t
+static auto map_char_width(Category category, const TargetInfo &target)
+  -> size_t
 {
-  cci_expects(is_char_constant(kind) || is_string_literal(kind));
-  switch (kind)
+  cci_expects(is_char_constant(category) || is_string_literal(category));
+  switch (category)
   {
-    case TokenKind::char_constant:
-    case TokenKind::string_literal:
-    case TokenKind::utf8_char_constant:
-    case TokenKind::utf8_string_literal: return target.char_width;
-    case TokenKind::wide_char_constant:
-    case TokenKind::wide_string_literal: return target.wchar_width;
-    case TokenKind::utf16_char_constant:
-    case TokenKind::utf16_string_literal: return target.char16_t_width;
-    case TokenKind::utf32_char_constant:
-    case TokenKind::utf32_string_literal: return target.char32_t_width;
+    case Category::char_constant:
+    case Category::string_literal:
+    case Category::utf8_char_constant:
+    case Category::utf8_string_literal: return target.char_width;
+    case Category::wide_char_constant:
+    case Category::wide_string_literal: return target.wchar_width;
+    case Category::utf16_char_constant:
+    case Category::utf16_string_literal: return target.char16_t_width;
+    case Category::utf32_char_constant:
+    case Category::utf32_string_literal: return target.char32_t_width;
     default: cci_unreachable();
   }
 }
 
-NumericConstantParser::NumericConstantParser(Lexer &lexer,
+NumericConstantParser::NumericConstantParser(Scanner &scanner,
                                              std::string_view tok_lexeme,
                                              srcmap::ByteLoc tok_loc)
 {
@@ -67,7 +68,7 @@ NumericConstantParser::NumericConstantParser(Lexer &lexer,
 
     if (is_hexdigit(s[0]) && *s != 'e' && *s != 'E')
     {
-      report(lexer, s, tok_loc, tok_begin,
+      report(scanner, s, tok_loc, tok_begin,
              fmt::format("invalid digit '{0}' for "
                          "{1:decimal|octal|hexadecimal} integer constant",
                          *s, select_radix(radix)));
@@ -94,7 +95,7 @@ NumericConstantParser::NumericConstantParser(Lexer &lexer,
       s = std::find_if_not(s, tok_end, is_digit);
       if (digs_start == s)
       {
-        report(lexer, exponent, tok_loc, tok_begin,
+        report(scanner, exponent, tok_loc, tok_begin,
                "exponent needs a sequence of digits");
         has_error = true;
         return;
@@ -135,14 +136,14 @@ NumericConstantParser::NumericConstantParser(Lexer &lexer,
         s = std::find_if_not(s, tok_end, is_digit);
         if (digs_start == s)
         {
-          report(lexer, exponent, tok_loc, tok_begin,
+          report(scanner, exponent, tok_loc, tok_begin,
                  "exponent needs a sequence of digits");
           has_error = true;
         }
       }
       else if (has_period)
       {
-        report(lexer, tok_begin, tok_loc, tok_begin,
+        report(scanner, tok_begin, tok_loc, tok_begin,
                "hexadecimal floating constant is missing the binary exponent");
         has_error = true;
       }
@@ -219,7 +220,7 @@ NumericConstantParser::NumericConstantParser(Lexer &lexer,
   // If it hasn't maximal-munched, then the suffix is invalid.
   if (s != tok_end)
   {
-    report(lexer, s, tok_loc, tok_begin,
+    report(scanner, s, tok_loc, tok_begin,
            fmt::format("invalid suffix '{0}' for {1:decimal|octal|hexadecimal} "
                        "{2:floating point|integer} constant",
                        std::string_view(digit_end, tok_end - digit_end),
@@ -297,10 +298,10 @@ auto NumericConstantParser::to_integer() const -> std::pair<uint64_t, bool>
 // Reads a UCN escape value and sets it to `*code_point`. Returns true
 // on success.
 //
-// This function reads similar to the one used in the main lexing phase. So
+// This function reads similar to the one used in the main scanning phase. So
 // here's some homework:
-// TODO: Merge this function with lexer's, and put it in a dedicated API.
-static auto parse_ucn_escape(Lexer &lex, srcmap::ByteLoc tok_loc,
+// TODO: Merge this function with scanner's, and put it in a dedicated API.
+static auto parse_ucn_escape(Scanner &scan, srcmap::ByteLoc tok_loc,
                              const char *tok_begin, const char *&tok_ptr,
                              const char *tok_end, uint32_t *code_point) -> bool
 {
@@ -312,7 +313,7 @@ static auto parse_ucn_escape(Lexer &lex, srcmap::ByteLoc tok_loc,
 
   if (tok_ptr == tok_end || !is_hexdigit(*tok_ptr))
   {
-    report(lex, escape_begin, tok_loc, tok_begin,
+    report(scan, escape_begin, tok_loc, tok_begin,
            "universal character name escape has no hexadecimal digits");
     return false;
   }
@@ -332,7 +333,7 @@ static auto parse_ucn_escape(Lexer &lex, srcmap::ByteLoc tok_loc,
   // is missing digits, therefore is invalid.
   if (num_countdown)
   {
-    report(lex, escape_begin, tok_loc, tok_begin,
+    report(scan, escape_begin, tok_loc, tok_begin,
            "invalid universal character name");
     return false;
   }
@@ -341,7 +342,7 @@ static auto parse_ucn_escape(Lexer &lex, srcmap::ByteLoc tok_loc,
             *code_point <= 0xDFFF) || // high and low surrogates
            *code_point > 0x10FFFF) // maximum UTF-32 code point
   {
-    report(lex, escape_begin, tok_loc, tok_begin,
+    report(scan, escape_begin, tok_loc, tok_begin,
            "invalid universal character name");
     return false;
   }
@@ -400,7 +401,7 @@ static void encode_ucn_to_buffer(uint32_t ucn_val, char **result_buf,
 }
 
 // Returns the value representation of an escape sequence.
-static auto parse_escape_sequence(Lexer &lex, srcmap::ByteLoc tok_loc,
+static auto parse_escape_sequence(Scanner &scan, srcmap::ByteLoc tok_loc,
                                   const char *tok_begin, const char *&tok_ptr,
                                   const char *tok_end, size_t char_width,
                                   bool *has_error) -> uint32_t
@@ -463,7 +464,7 @@ static auto parse_escape_sequence(Lexer &lex, srcmap::ByteLoc tok_loc,
       // not.
       if (char_width < 32 && (result >> char_width) != 0)
       {
-        report(lex, escape_begin, tok_loc, tok_begin,
+        report(scan, escape_begin, tok_loc, tok_begin,
                "octal escape sequence out of range");
         *has_error = true;
         // Truncate the result.
@@ -477,7 +478,7 @@ static auto parse_escape_sequence(Lexer &lex, srcmap::ByteLoc tok_loc,
       result = 0;
       if (tok_ptr == tok_end || !is_hexdigit(*tok_ptr))
       {
-        report(lex, escape_begin, tok_loc, tok_begin,
+        report(scan, escape_begin, tok_loc, tok_begin,
                "hexadecimal escape sequence has no digits");
         *has_error = true;
         break;
@@ -509,7 +510,7 @@ static auto parse_escape_sequence(Lexer &lex, srcmap::ByteLoc tok_loc,
 
       if (overflowed)
       {
-        report(lex, escape_begin, tok_loc, tok_begin,
+        report(scan, escape_begin, tok_loc, tok_begin,
                "hex escape sequence out of range");
         *has_error = true;
       }
@@ -517,29 +518,29 @@ static auto parse_escape_sequence(Lexer &lex, srcmap::ByteLoc tok_loc,
       break;
     }
     default:
-      report(lex, escape_begin, tok_loc, tok_begin, "unknown escape sequence");
+      report(scan, escape_begin, tok_loc, tok_begin, "unknown escape sequence");
       *has_error = true;
   }
 
   return result;
 }
 
-CharConstantParser::CharConstantParser(Lexer &lexer,
+CharConstantParser::CharConstantParser(Scanner &scanner,
                                        std::string_view tok_lexeme,
                                        srcmap::ByteLoc tok_loc,
-                                       TokenKind char_kind,
+                                       Category char_category,
                                        const TargetInfo &target)
-  : value(0), kind(char_kind)
+  : value(0), category(char_category)
 {
-  cci_expects(is_char_constant(char_kind));
+  cci_expects(is_char_constant(char_category));
   cci_expects(tok_lexeme.end()[0] == '\0');
   const char *const tok_begin = tok_lexeme.begin();
   const char *tok_end = tok_lexeme.end();
   const char *tok_ptr = tok_begin;
-  auto &diag = lexer.diagnostics();
+  auto &diag = scanner.diagnostics();
 
   // Skips either L, u or U.
-  if (char_kind != TokenKind::char_constant)
+  if (char_category != Category::char_constant)
   {
     cci_expects(*tok_ptr == 'L' || *tok_ptr == 'u' || *tok_ptr == 'U');
     ++tok_ptr;
@@ -551,22 +552,22 @@ CharConstantParser::CharConstantParser(Lexer &lexer,
   --tok_end; // Trims ending quote.
   cci_expects(*tok_end == '\'');
 
-  size_t char_byte_width = map_char_width(kind, target);
+  size_t char_byte_width = map_char_width(category, target);
   // Assumes that the char width for this target is a multiple of 8.
   cci_expects((target.char_width & 0b0111) == 0);
   char_byte_width /= 8;
 
   // Sometimes Unicode characters can't be represented in a single code unit, so
   // this constant represents the maximum code point a character constant may
-  // hold, depending on its kind. Code points bigger than
-  // `largest_value_for_kind` results in an error.
-  const uint32_t largest_value_for_kind = [&] {
-    if (char_kind == TokenKind::char_constant ||
-        char_kind == TokenKind::utf8_char_constant)
+  // hold, depending on its category. Code points bigger than
+  // `largest_value_for_category` results in an error.
+  const uint32_t largest_value_for_category = [&] {
+    if (char_category == Category::char_constant ||
+        char_category == Category::utf8_char_constant)
       return 0x7F;
-    if (char_kind == TokenKind::utf16_char_constant)
+    if (char_category == Category::utf16_char_constant)
       return 0xFFFF;
-    cci_expects(char_kind == TokenKind::utf32_char_constant);
+    cci_expects(char_category == Category::utf32_char_constant);
     return 0x10FFFFFF;
   }();
 
@@ -593,7 +594,7 @@ CharConstantParser::CharConstantParser(Lexer &lexer,
       {
         for (; save_buf_begin != buf_begin; ++save_buf_begin)
         {
-          if (*save_buf_begin > largest_value_for_kind)
+          if (*save_buf_begin > largest_value_for_category)
           {
             diag.report(tok_loc,
                         "unicode character is too large, and can't be "
@@ -615,10 +616,10 @@ CharConstantParser::CharConstantParser(Lexer &lexer,
     }
     else if (tok_ptr[1] == 'u' || tok_ptr[1] == 'U')
     {
-      if (!parse_ucn_escape(lexer, tok_loc, tok_begin, tok_ptr, tok_end,
+      if (!parse_ucn_escape(scanner, tok_loc, tok_begin, tok_ptr, tok_end,
                             buf_begin))
         has_error = true;
-      else if (*buf_begin > largest_value_for_kind)
+      else if (*buf_begin > largest_value_for_category)
       {
         diag.report(tok_loc,
                     "unicode character is too large, and can't be represented "
@@ -630,7 +631,7 @@ CharConstantParser::CharConstantParser(Lexer &lexer,
     else
     {
       *buf_begin++ =
-        parse_escape_sequence(lexer, tok_loc, tok_begin, tok_ptr, tok_end,
+        parse_escape_sequence(scanner, tok_loc, tok_begin, tok_ptr, tok_end,
                               char_byte_width * 8, &has_error);
     }
   }
@@ -651,7 +652,7 @@ CharConstantParser::CharConstantParser(Lexer &lexer,
   is_multibyte = num_of_chars > 1;
   uint32_t result_value = 0;
 
-  if (kind == TokenKind::char_constant && is_multibyte)
+  if (category == Category::char_constant && is_multibyte)
   {
     cci_expects(char_byte_width == 1);
     bool overflowed = false;
@@ -683,25 +684,25 @@ CharConstantParser::CharConstantParser(Lexer &lexer,
   // type char has the same range of values as unsigned char, the character
   // constant
   // '\xFF' has the value +255.
-  if (kind == TokenKind::char_constant && num_of_chars == 1 &&
+  if (category == Category::char_constant && num_of_chars == 1 &&
       target.is_char_signed)
     result_value = static_cast<signed char>(result_value);
 
   this->value = result_value;
 }
 
-StringLiteralParser::StringLiteralParser(Lexer &lexer,
+StringLiteralParser::StringLiteralParser(Scanner &scanner,
                                          span<const Token> string_toks,
                                          const TargetInfo &target)
 {
-  auto &diag = lexer.diagnostics();
+  auto &diag = scanner.diagnostics();
 
   // The following code calculates a size bound that is the sum of all strings'
   // size for the result buffer, which is a bit over enough, given that
   // trigraphs and escape sequences, after processed, shrink the string size.
 
   cci_expects(!string_toks.empty());
-  cci_expects(is_string_literal(string_toks[0].kind));
+  cci_expects(is_string_literal(string_toks[0].category()));
   cci_expects(string_toks[0].size() >= 2);
   size_t size_bound = string_toks[0].size() - 2; // removes ""
 
@@ -709,23 +710,23 @@ StringLiteralParser::StringLiteralParser(Lexer &lexer,
   // memory for a temporary buffer to hold the processed strings.
   size_t max_token_size = size_bound;
 
-  cci_expects(is_string_literal(string_toks[0].kind));
-  kind = string_toks[0].kind;
+  cci_expects(is_string_literal(string_toks[0].category()));
+  category = string_toks[0].category();
 
   // Performs [C11 5.1.1.2p6]: Adjacent string literal tokens are concatenated.
   for (ptrdiff_t i = 1; i != string_toks.size(); ++i)
   {
-    cci_expects(is_string_literal(string_toks[i].kind));
-    if (string_toks[i].is_not(kind) &&
-        string_toks[i].is_not(TokenKind::string_literal))
+    cci_expects(is_string_literal(string_toks[i].category()));
+    if (string_toks[i].is_not(category) &&
+        string_toks[i].is_not(Category::string_literal))
     {
-      if (kind == TokenKind::string_literal)
-        kind = string_toks[i].kind;
+      if (category == Category::string_literal)
+        category = string_toks[i].category();
       else
       {
-        // Concatenation of different kinds of strings could be supported, but
-        // that would not be standard compliant, except if we take into account
-        // [C11 6.4.5p5]:
+        // Concatenation of different categories of strings could be supported,
+        // but that would not be standard compliant, except if we take into
+        // account [C11 6.4.5p5]:
         //
         //    […] Whether differently-prefixed wide string literal tokens can
         //    be concatenated and, if so, the treatment of the resulting
@@ -734,7 +735,7 @@ StringLiteralParser::StringLiteralParser(Lexer &lexer,
         // Which means wide string literals (ones prefixed with L, u or U)
         // could be concatenated.
         diag.report(string_toks[i].location(),
-                    "concatenation of different kinds of strings is not "
+                    "concatenation of different categories of strings is not "
                     "standard compliant");
         has_error = true;
       }
@@ -748,7 +749,7 @@ StringLiteralParser::StringLiteralParser(Lexer &lexer,
   // Allows an space for the null terminator.
   ++size_bound;
 
-  char_byte_width = map_char_width(kind, target);
+  char_byte_width = map_char_width(category, target);
   // Assumes that the char width for this target is a multiple of 8.
   cci_expects((target.char_width & 0b0111) == 0);
   char_byte_width /= 8;
@@ -775,18 +776,18 @@ StringLiteralParser::StringLiteralParser(Lexer &lexer,
     // to clear the buffer, since we know the amount of bytes that is written
     // to the buffer, which is enough to form a range of iterators.
     const char *tokbuf_ptr = token_buf.data();
-    const size_t tok_length = Lexer::get_spelling_to_buffer(
-      string_tok, token_buf.data(), lexer.source_map());
+    const size_t tok_length = Scanner::get_spelling_to_buffer(
+      string_tok, token_buf.data(), scanner.source_map());
 
     const char *tokbuf_begin = tokbuf_ptr;
     const char *tokbuf_end = tokbuf_begin + tok_length;
 
     // Skips u, U, or L.
-    if (string_tok.is_not(TokenKind::string_literal))
+    if (string_tok.is_not(Category::string_literal))
     {
       ++tokbuf_ptr;
       // Skips 8 from u8.
-      if (string_tok.is(TokenKind::utf8_string_literal))
+      if (string_tok.is(Category::utf8_string_literal))
         ++tokbuf_ptr;
     }
 
@@ -843,7 +844,7 @@ StringLiteralParser::StringLiteralParser(Lexer &lexer,
         {
           // If we're parsing an ASCII string literal, then copy the string
           // chunk regardless of bad encoding.
-          if (string_tok.is(TokenKind::string_literal))
+          if (string_tok.is(Category::string_literal))
           {
             this->result_ptr =
               std::copy(tokbuf_ptr, chunk_end, this->result_ptr);
@@ -855,7 +856,7 @@ StringLiteralParser::StringLiteralParser(Lexer &lexer,
       else if (tokbuf_ptr[1] == 'u' || tokbuf_ptr[1] == 'U')
       {
         uint32_t code_point = 0;
-        if (parse_ucn_escape(lexer, string_tok.location(), tokbuf_begin,
+        if (parse_ucn_escape(scanner, string_tok.location(), tokbuf_begin,
                              tokbuf_ptr, tokbuf_end, &code_point))
           encode_ucn_to_buffer(code_point, &this->result_ptr, char_byte_width);
         else
@@ -865,7 +866,7 @@ StringLiteralParser::StringLiteralParser(Lexer &lexer,
       {
         // If it's not a UCN, then it's a normal escape sequence.
         uint32_t result_char = parse_escape_sequence(
-          lexer, string_tok.location(), tokbuf_begin, tokbuf_ptr, tokbuf_end,
+          scanner, string_tok.location(), tokbuf_begin, tokbuf_ptr, tokbuf_end,
           char_byte_width * 8, &has_error);
 
         if (char_byte_width == 4)

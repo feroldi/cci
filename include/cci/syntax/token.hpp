@@ -7,9 +7,11 @@
 
 namespace cci {
 
-// TokenKind - This represents the kind of a token, e.g. identifier,
+struct Scanner;
+
+// Category - This represents the category of a token, e.g. identifier,
 // keyword etc.
-enum class TokenKind
+enum class Category
 {
   // Keywords
   kw_auto,
@@ -134,37 +136,37 @@ enum class TokenKind
   eof,
 };
 
-// Returns a string representation of a TokenKind.
+// Returns a string representation of a Category.
 //
-// For instance, the name of TokenKind::kw_auto is "auto",
-// TokenKind::identifier's name is "identifier", TokenKind::plusplus's
+// For instance, the name of Category::kw_auto is "auto",
+// Category::identifier's name is "identifier", Category::plusplus's
 // name is "++" etc.
-auto to_string(TokenKind) -> std::string_view;
+auto to_string(Category) -> std::string_view;
 
 // Checks whether the parameter is a variant of a string literal.
-constexpr auto is_string_literal(TokenKind k) -> bool
+constexpr auto is_string_literal(Category k) -> bool
 {
   switch (k)
   {
-    case TokenKind::string_literal:
-    case TokenKind::utf8_string_literal:
-    case TokenKind::utf16_string_literal:
-    case TokenKind::utf32_string_literal:
-    case TokenKind::wide_string_literal: return true;
+    case Category::string_literal:
+    case Category::utf8_string_literal:
+    case Category::utf16_string_literal:
+    case Category::utf32_string_literal:
+    case Category::wide_string_literal: return true;
     default: return false;
   }
 }
 
 // Checks whether the parameter is a variant of a char constant.
-constexpr auto is_char_constant(TokenKind k) -> bool
+constexpr auto is_char_constant(Category k) -> bool
 {
   switch (k)
   {
-    case TokenKind::char_constant:
-    case TokenKind::utf8_char_constant:
-    case TokenKind::utf16_char_constant:
-    case TokenKind::utf32_char_constant:
-    case TokenKind::wide_char_constant: return true;
+    case Category::char_constant:
+    case Category::utf8_char_constant:
+    case Category::utf16_char_constant:
+    case Category::utf32_char_constant:
+    case Category::wide_char_constant: return true;
     default: return false;
   }
 }
@@ -180,28 +182,22 @@ struct Token
     IsLiteral = 1 << 2, //< Is a string/char literal, or numeric constant.
   };
 
-  // Token's syntactic category, e.g. kw_return, identifier etc.
-  TokenKind kind = TokenKind::unknown;
-
-  // Token's start and end locations on the source file.
-  srcmap::Range range;
-
-  uint8_t flags = TokenFlags::None;
-
   Token() = default;
-  Token(TokenKind k, srcmap::Range r) noexcept : kind(k), range(r) {}
+  Token(Category c, srcmap::Range r) noexcept : category_(c), range(r) {}
 
-  // Checks whether this token is of kind `k`.
-  bool is(TokenKind k) const { return kind == k; }
+  auto category() const -> Category { return category_; }
 
-  // Checks whether this token is not of kind `k`.
-  bool is_not(TokenKind k) const { return kind != k; }
+  // Checks whether this token is of category `k`.
+  bool is(Category k) const { return category_ == k; }
 
-  // Checks wether this token is of any kind in `ks`.
+  // Checks whether this token is not of category `k`.
+  bool is_not(Category k) const { return category_ != k; }
+
+  // Checks wether this token is of any category in `ks`.
   template <typename... Kinds>
   bool is_one_of(const Kinds... ks) const
   {
-    static_assert((std::is_same_v<TokenKind, Kinds> && ...));
+    static_assert((std::is_same_v<Category, Kinds> && ...));
     return (is(ks) || ...);
   }
 
@@ -220,13 +216,25 @@ struct Token
   bool has_UCN() const { return flags & TokenFlags::HasUCN; }
   bool is_dirty() const { return flags & TokenFlags::IsDirty; }
   bool is_literal() const { return flags & TokenFlags::IsLiteral; }
+
+private:
+  friend struct Scanner;
+
+  // Token's syntactic category, e.g. kw_return, identifier etc.
+  Category category_ = Category::unknown;
+
+  // Token's start and end locations on the source file (lexeme).
+  srcmap::Range range;
+
+  // Token's flags.
+  uint8_t flags = TokenFlags::None;
 };
 
 } // namespace cci
 
 namespace fmt {
 template <>
-struct formatter<cci::TokenKind>
+struct formatter<cci::Category>
 {
   auto parse(parse_context &ctx) -> parse_context::iterator
   {
@@ -234,9 +242,9 @@ struct formatter<cci::TokenKind>
   }
 
   template <typename FormatContext>
-  auto format(cci::TokenKind tok_kind, FormatContext &ctx)
+  auto format(cci::Category tok_category, FormatContext &ctx)
   {
-    return format_to(begin(ctx), cci::to_string(tok_kind));
+    return format_to(begin(ctx), cci::to_string(tok_category));
   }
 };
 } // namespace fmt

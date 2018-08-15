@@ -1,7 +1,7 @@
 #pragma once
 
 #include "cci/langopts.hpp"
-#include "cci/syntax/lexer.hpp"
+#include "cci/syntax/scanner.hpp"
 #include "cci/util/span.hpp"
 #include <vector>
 
@@ -24,7 +24,7 @@ public:
 
   int32_t radix = 0;
 
-  NumericConstantParser(Lexer &, std::string_view tok_spelling,
+  NumericConstantParser(Scanner &, std::string_view tok_spelling,
                         srcmap::ByteLoc tok_loc);
 
   // Evaluates and returns the numeric constant to an integer constant value, as
@@ -38,12 +38,12 @@ public:
 struct CharConstantParser
 {
   uint32_t value;
-  TokenKind kind;
+  Category category;
   bool is_multibyte;
   bool has_error = false;
 
-  CharConstantParser(Lexer &, std::string_view tok_spelling,
-                     srcmap::ByteLoc tok_loc, TokenKind char_kind,
+  CharConstantParser(Scanner &, std::string_view tok_spelling,
+                     srcmap::ByteLoc tok_loc, Category char_category,
                      const TargetInfo &);
 };
 
@@ -54,11 +54,11 @@ private:
   char *result_ptr;
 
 public:
-  TokenKind kind;
+  Category category;
   size_t char_byte_width;
   bool has_error = false;
 
-  StringLiteralParser(Lexer &, span<const Token> string_toks,
+  StringLiteralParser(Scanner &, span<const Token> string_toks,
                       const TargetInfo &);
 
   // Returns the size in bytes of the string, excluding the null character.

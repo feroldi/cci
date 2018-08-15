@@ -1,6 +1,6 @@
 add_library(cci_syntax
   char_info.cpp
-  lexer.cpp
+  scanner.cpp
   parser.cpp
   literal_parser.cpp
   source_map.cpp

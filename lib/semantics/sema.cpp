@@ -4,8 +4,8 @@
 #include "cci/ast/expr.hpp"
 #include "cci/ast/type.hpp"
 #include "cci/syntax/diagnostics.hpp"
-#include "cci/syntax/lexer.hpp"
 #include "cci/syntax/literal_parser.hpp"
+#include "cci/syntax/scanner.hpp"
 #include "cci/syntax/source_map.hpp"
 #include "cci/util/small_vector.hpp"
 #include <memory>
@@ -20,18 +20,19 @@ using namespace cci;
 
 auto Sema::act_on_numeric_constant(const Token &tok) -> ASTResult<Expr>
 {
-  cci_expects(tok.is(TokenKind::numeric_constant));
+  cci_expects(tok.is(Category::numeric_constant));
 
   if (tok.size() == 1)
   {
-    const char digit = lex.source_map().range_to_snippet(tok.source_range())[0];
+    const char digit =
+      scan.source_map().range_to_snippet(tok.source_range())[0];
     return new (context)
       IntegerLiteral(digit - '0', context.int_ty, tok.location());
   }
 
   small_string<64> spell_buffer;
-  std::string_view spelling = lex.get_spelling(tok, spell_buffer);
-  NumericConstantParser literal(lex, spelling, tok.location());
+  std::string_view spelling = scan.get_spelling(tok, spell_buffer);
+  NumericConstantParser literal(scan, spelling, tok.location());
 
   if (literal.has_error)
     return nullptr;
@@ -127,13 +128,13 @@ auto Sema::act_on_numeric_constant(const Token &tok) -> ASTResult<Expr>
 auto Sema::act_on_char_constant(const Token &tok)
   -> ASTResult<CharacterConstant>
 {
-  cci_expects(tok.is_one_of(
-    TokenKind::char_constant, TokenKind::utf16_char_constant,
-    TokenKind::utf32_char_constant, TokenKind::wide_char_constant));
+  cci_expects(
+    tok.is_one_of(Category::char_constant, Category::utf16_char_constant,
+                  Category::utf32_char_constant, Category::wide_char_constant));
 
   small_string<8> spell_buffer;
-  std::string_view spelling = lex.get_spelling(tok, spell_buffer);
-  CharConstantParser literal(lex, spelling, tok.location(), tok.kind,
+  std::string_view spelling = scan.get_spelling(tok, spell_buffer);
+  CharConstantParser literal(scan, spelling, tok.location(), tok.category(),
                              context.target_info());
 
   if (literal.has_error)
@@ -143,21 +144,21 @@ auto Sema::act_on_char_constant(const Token &tok)
   QualType char_type = context.int_ty;
   auto char_kind = CharacterConstantKind::Ascii;
 
-  switch (literal.kind)
+  switch (literal.category)
   {
-    case TokenKind::utf16_char_constant:
+    case Category::utf16_char_constant:
       char_type = context.char16_t_ty;
       char_kind = CharacterConstantKind::UTF16;
       break;
-    case TokenKind::utf32_char_constant:
+    case Category::utf32_char_constant:
       char_type = context.char32_t_ty;
       char_kind = CharacterConstantKind::UTF32;
       break;
-    case TokenKind::wide_char_constant:
+    case Category::wide_char_constant:
       char_type = context.wchar_ty;
       char_kind = CharacterConstantKind::Wide;
       break;
-    default: cci_expects(TokenKind::char_constant == literal.kind);
+    default: cci_expects(Category::char_constant == literal.category);
   }
 
   return new (context)
@@ -168,7 +169,7 @@ auto Sema::act_on_string_literal(span<const Token> string_toks)
   -> ASTResult<StringLiteral>
 {
   cci_expects(!string_toks.empty());
-  StringLiteralParser literal(lex, string_toks, context.target_info());
+  StringLiteralParser literal(scan, string_toks, context.target_info());
   if (literal.has_error)
     return nullptr;
 
@@ -178,24 +179,24 @@ auto Sema::act_on_string_literal(span<const Token> string_toks)
   QualType elem_type = context.char_ty;
   auto str_kind = StringLiteralKind::Ascii;
 
-  switch (literal.kind)
+  switch (literal.category)
   {
-    case TokenKind::utf8_string_literal:
+    case Category::utf8_string_literal:
       str_kind = StringLiteralKind::UTF8;
       break;
-    case TokenKind::utf16_string_literal:
+    case Category::utf16_string_literal:
       elem_type = context.char16_t_ty;
       str_kind = StringLiteralKind::UTF16;
       break;
-    case TokenKind::utf32_string_literal:
+    case Category::utf32_string_literal:
       elem_type = context.char32_t_ty;
       str_kind = StringLiteralKind::UTF32;
       break;
-    case TokenKind::wide_string_literal:
+    case Category::wide_string_literal:
       elem_type = context.wchar_ty;
       str_kind = StringLiteralKind::Wide;
       break;
-    default: cci_expects(TokenKind::string_literal == literal.kind);
+    default: cci_expects(Category::string_literal == literal.category);
   }
 
   // Length of string literal including null character.

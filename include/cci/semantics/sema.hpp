@@ -4,7 +4,7 @@
 #include "cci/ast/expr.hpp"
 #include "cci/ast/type.hpp"
 #include "cci/syntax/diagnostics.hpp"
-#include "cci/syntax/lexer.hpp"
+#include "cci/syntax/scanner.hpp"
 #include "cci/syntax/source_map.hpp"
 
 namespace cci {
@@ -13,13 +13,13 @@ namespace cci {
 struct Sema
 {
 private:
-  Lexer &lex;
+  Scanner &scan;
   diag::Handler &diag;
   ASTContext &context;
 
 public:
-  Sema(Lexer &lex, ASTContext &ctx)
-    : lex(lex), diag(lex.diagnostics()), context(ctx)
+  Sema(Scanner &scan, ASTContext &ctx)
+    : scan(scan), diag(scan.diagnostics()), context(ctx)
   {}
 
   auto act_on_numeric_constant(const Token &) -> ASTResult<Expr>;

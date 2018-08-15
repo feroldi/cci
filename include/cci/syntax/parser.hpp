@@ -5,7 +5,7 @@
 #include "cci/ast/type.hpp"
 #include "cci/semantics/sema.hpp"
 #include "cci/syntax/diagnostics.hpp"
-#include "cci/syntax/lexer.hpp"
+#include "cci/syntax/scanner.hpp"
 #include "cci/syntax/source_map.hpp"
 #include <optional>
 #include <string_view>
@@ -15,17 +15,17 @@ namespace cci {
 struct Parser
 {
 private:
-  Lexer &lex;
+  Scanner &scan;
   Sema &sema;
   Token tok;
   diag::Handler &diag;
 
 public:
-  Parser(Lexer &lex, Sema &sema)
-    : lex(lex), sema(sema), diag(lex.diagnostics())
+  Parser(Scanner &scan, Sema &sema)
+    : scan(scan), sema(sema), diag(scan.diagnostics())
   {
     // Sets up the peek token.
-    tok = lex.next_token();
+    tok = scan.next_token();
   }
 
   // Consumes the current token and peeks the next one. Returns a SourceLocation
@@ -33,7 +33,7 @@ public:
   auto consume_token() -> srcmap::ByteLoc
   {
     auto old_loc = tok.location();
-    tok = lex.next_token();
+    tok = scan.next_token();
     return old_loc;
   }
 

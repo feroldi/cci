@@ -1,6 +1,6 @@
-#include "cci/syntax/literal_parser.hpp"
 #include "cci/syntax/diagnostics.hpp"
-#include "cci/syntax/lexer.hpp"
+#include "cci/syntax/literal_parser.hpp"
+#include "cci/syntax/scanner.hpp"
 #include "cci/syntax/source_map.hpp"
 #include "cci/util/contracts.hpp"
 #include "cci/util/memory_resource.hpp"
@@ -19,31 +19,31 @@ struct LiteralParserTest : ::testing::Test
 protected:
   srcmap::SourceMap source_map;
   diag::Handler diag_handler;
-  std::unique_ptr<Lexer> lexer;
+  std::unique_ptr<Scanner> scanner;
   TargetInfo target;
   pmr::monotonic_buffer_resource arena;
 
   LiteralParserTest()
     : source_map()
     , diag_handler(diag::ignoring_emitter(), source_map)
-    , lexer()
+    , scanner()
     , target()
     , arena()
   {}
 
-  auto lex(std::string source) -> std::vector<Token>
+  auto scan(std::string source) -> std::vector<Token>
   {
     const auto &file =
       this->source_map.create_owned_filemap("main.c", std::move(source));
-    lexer =
-      std::make_unique<Lexer>(source_map, file.start_loc, file.src_begin(),
-                              file.src_end(), diag_handler);
+    scanner =
+      std::make_unique<Scanner>(source_map, file.start_loc, file.src_begin(),
+                                file.src_end(), diag_handler);
     std::vector<Token> toks;
 
     while (true)
     {
-      auto tok = lexer->next_token();
-      if (tok.is(TokenKind::eof))
+      auto tok = scanner->next_token();
+      if (tok.is(Category::eof))
         break;
       toks.push_back(tok);
     }
@@ -56,7 +56,7 @@ protected:
     char *lexeme_buffer = new (
       this->arena.allocate(tok.size(), alignof(char))) char[tok.size() + 1];
     const size_t lexeme_len =
-      Lexer::get_spelling_to_buffer(tok, lexeme_buffer, this->source_map);
+      Scanner::get_spelling_to_buffer(tok, lexeme_buffer, this->source_map);
     lexeme_buffer[lexeme_len] = '\0';
     return {lexeme_buffer, lexeme_len};
   }
@@ -64,28 +64,28 @@ protected:
   auto parse_numeric_constants(std::string source)
     -> std::vector<NumericConstantParser>
   {
-    auto lexed_toks = lex(std::move(source));
+    auto lexed_toks = scan(std::move(source));
     std::vector<NumericConstantParser> parsers;
     for (const Token &tok : lexed_toks)
-      parsers.emplace_back(*this->lexer, get_lexeme(tok), tok.location());
+      parsers.emplace_back(*this->scanner, get_lexeme(tok), tok.location());
     return parsers;
   }
 
   auto parse_char_constants(std::string source)
     -> std::vector<CharConstantParser>
   {
-    auto lexed_toks = lex(std::move(source));
+    auto lexed_toks = scan(std::move(source));
     std::vector<CharConstantParser> parsers;
     for (const Token &tok : lexed_toks)
-      parsers.emplace_back(*this->lexer, get_lexeme(tok), tok.location(),
-                           tok.kind, target);
+      parsers.emplace_back(*this->scanner, get_lexeme(tok), tok.location(),
+                           tok.category(), target);
     return parsers;
   }
 
   auto parse_string_literal(std::string source) -> StringLiteralParser
   {
-    auto string_toks = lex(std::move(source));
-    StringLiteralParser parser(*this->lexer, string_toks, target);
+    auto string_toks = scan(std::move(source));
+    StringLiteralParser parser(*this->scanner, string_toks, target);
     return parser;
   }
 };
@@ -260,7 +260,7 @@ TEST_F(LiteralParserTest, charConstants)
   // 'A'
   EXPECT_FALSE(chars[0].has_error);
   EXPECT_FALSE(chars[0].is_multibyte);
-  EXPECT_EQ(TokenKind::char_constant, chars[0].kind);
+  EXPECT_EQ(Category::char_constant, chars[0].category);
   EXPECT_EQ(65, chars[0].value);
 
   // '\x'
@@ -269,7 +269,7 @@ TEST_F(LiteralParserTest, charConstants)
   // u'\u00A8'
   EXPECT_FALSE(chars[2].has_error);
   EXPECT_FALSE(chars[2].is_multibyte);
-  EXPECT_EQ(TokenKind::utf16_char_constant, chars[2].kind);
+  EXPECT_EQ(Category::utf16_char_constant, chars[2].category);
   EXPECT_EQ(168, chars[2].value);
 
   // u'\u00A'
@@ -278,7 +278,7 @@ TEST_F(LiteralParserTest, charConstants)
   // 'abcd'
   EXPECT_FALSE(chars[4].has_error);
   EXPECT_TRUE(chars[4].is_multibyte);
-  EXPECT_EQ(TokenKind::char_constant, chars[4].kind);
+  EXPECT_EQ(Category::char_constant, chars[4].category);
   EXPECT_EQ(1633837924u, chars[4].value);
 
   // '\u0080'
@@ -288,7 +288,7 @@ TEST_F(LiteralParserTest, charConstants)
   // '\123'
   EXPECT_FALSE(chars[6].has_error);
   EXPECT_FALSE(chars[6].is_multibyte);
-  EXPECT_EQ(TokenKind::char_constant, chars[6].kind);
+  EXPECT_EQ(Category::char_constant, chars[6].category);
   EXPECT_EQ(83, chars[6].value);
 
   // '\777'
@@ -300,7 +300,7 @@ TEST_F(LiteralParserTest, stringLiteral)
   auto str = parse_string_literal("\"foo bar\"");
 
   EXPECT_FALSE(str.has_error);
-  EXPECT_EQ(TokenKind::string_literal, str.kind);
+  EXPECT_EQ(Category::string_literal, str.category);
   EXPECT_EQ(1, str.char_byte_width);
   EXPECT_EQ(7, str.byte_length());
   EXPECT_EQ(7, str.num_string_chars());
@@ -311,7 +311,7 @@ TEST_F(LiteralParserTest, stringLiteralUTF8)
 {
   auto str = parse_string_literal("u8\"foo\"");
   EXPECT_FALSE(str.has_error);
-  EXPECT_EQ(TokenKind::utf8_string_literal, str.kind);
+  EXPECT_EQ(Category::utf8_string_literal, str.category);
   EXPECT_EQ(1, str.char_byte_width);
   EXPECT_EQ(3, str.byte_length());
   EXPECT_EQ(3, str.num_string_chars());
@@ -322,9 +322,9 @@ TEST_F(LiteralParserTest, stringLiteralUTF16)
 {
   auto str = parse_string_literal("u\"foo\"");
   EXPECT_FALSE(str.has_error);
-  EXPECT_EQ(TokenKind::utf16_string_literal, str.kind);
+  EXPECT_EQ(Category::utf16_string_literal, str.category);
   EXPECT_EQ(2, str.char_byte_width);
-  EXPECT_EQ(2*3, str.byte_length());
+  EXPECT_EQ(2 * 3, str.byte_length());
   EXPECT_EQ(3, str.num_string_chars());
 
   auto as_utf16 = reinterpret_cast<const uint16_t *>(str.string().data());
@@ -337,9 +337,9 @@ TEST_F(LiteralParserTest, stringLiteralUTF32)
 {
   auto str = parse_string_literal("U\"foo\"");
   EXPECT_FALSE(str.has_error);
-  EXPECT_EQ(TokenKind::utf32_string_literal, str.kind);
+  EXPECT_EQ(Category::utf32_string_literal, str.category);
   EXPECT_EQ(4, str.char_byte_width);
-  EXPECT_EQ(4*3, str.byte_length());
+  EXPECT_EQ(4 * 3, str.byte_length());
   EXPECT_EQ(3, str.num_string_chars());
 
   auto as_utf32 = reinterpret_cast<const uint32_t *>(str.string().data());
@@ -353,7 +353,7 @@ TEST_F(LiteralParserTest, stringLiteralContatenation)
   auto str = parse_string_literal("\"foo\" \"bar\"");
 
   EXPECT_FALSE(str.has_error);
-  EXPECT_EQ(TokenKind::string_literal, str.kind);
+  EXPECT_EQ(Category::string_literal, str.category);
   EXPECT_EQ(1, str.char_byte_width);
   EXPECT_EQ(6, str.byte_length());
   EXPECT_EQ(6, str.num_string_chars());
@@ -365,7 +365,7 @@ TEST_F(LiteralParserTest, stringLiteralEmpty)
   auto str = parse_string_literal("\"\"");
 
   EXPECT_FALSE(str.has_error);
-  EXPECT_EQ(TokenKind::string_literal, str.kind);
+  EXPECT_EQ(Category::string_literal, str.category);
   EXPECT_EQ(1, str.char_byte_width);
   EXPECT_EQ(0, str.byte_length());
   EXPECT_EQ(0, str.num_string_chars());
@@ -377,7 +377,7 @@ TEST_F(LiteralParserTest, stringLiteralConcatAsciiAndOtherKind)
   auto str = parse_string_literal("\"good\" u8\" foo\"");
 
   EXPECT_FALSE(str.has_error);
-  EXPECT_EQ(TokenKind::utf8_string_literal, str.kind);
+  EXPECT_EQ(Category::utf8_string_literal, str.category);
   EXPECT_EQ(1, str.char_byte_width);
   EXPECT_EQ(8, str.byte_length());
   EXPECT_EQ(8, str.num_string_chars());
@@ -386,8 +386,7 @@ TEST_F(LiteralParserTest, stringLiteralConcatAsciiAndOtherKind)
 
 TEST_F(LiteralParserTest, stringLiteralConcatDifferentKinds)
 {
-  auto str =
-    parse_string_literal("u8\"bad\" \" string\" L\" concat\" L\"!\"");
+  auto str = parse_string_literal("u8\"bad\" \" string\" L\" concat\" L\"!\"");
   EXPECT_TRUE(str.has_error);
 }
 
@@ -396,7 +395,7 @@ TEST_F(LiteralParserTest, stringLiteralUCNs)
   auto utf32_str = parse_string_literal("U\"\U00010437\"");
 
   EXPECT_FALSE(utf32_str.has_error);
-  EXPECT_EQ(TokenKind::utf32_string_literal, utf32_str.kind);
+  EXPECT_EQ(Category::utf32_string_literal, utf32_str.category);
   EXPECT_EQ(4, utf32_str.char_byte_width);
   EXPECT_EQ(4, utf32_str.byte_length());
   EXPECT_EQ(1, utf32_str.num_string_chars());
@@ -412,7 +411,7 @@ TEST_F(LiteralParserTest, stringLiteralWithUnicodeChars)
   auto str = parse_string_literal("u8\"𐐷\"");
 
   EXPECT_FALSE(str.has_error);
-  EXPECT_EQ(TokenKind::utf8_string_literal, str.kind);
+  EXPECT_EQ(Category::utf8_string_literal, str.category);
   EXPECT_EQ(1, str.char_byte_width);
   EXPECT_EQ(4, str.byte_length());
   EXPECT_EQ(4, str.num_string_chars());
