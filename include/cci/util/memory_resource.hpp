@@ -3,9 +3,9 @@
 // Distributed under the Boost Software License, Version 1.0.
 // See accompanying file LICENSE or copy at
 // http://www.boost.org/LICENSE_1_0.txt
-
 #pragma once
 
+#include "cci/util/contracts.hpp"
 #include <atomic>
 #include <cassert>
 #include <cstddef>
@@ -83,7 +83,7 @@ public:
 
   // [mem.poly.allocator.ctor], constructors
   polymorphic_allocator() noexcept : res(get_default_resource()) {}
-  polymorphic_allocator(memory_resource *r) : res(r) { assert(r); }
+  polymorphic_allocator(memory_resource *r) : res(r) { cci_expects(r); }
 
   polymorphic_allocator(const polymorphic_allocator &) = default;
 
@@ -129,7 +129,8 @@ public:
   template <class T1, class T2>
   void construct(std::pair<T1, T2> *p)
   {
-    return construct(p, std::piecewise_construct, std::tuple(), std::tuple());
+    return construct(p, std::piecewise_construct, std::make_tuple(),
+                     std::make_tuple());
   }
 
   template <class T1, class T2, class U, class V>
@@ -268,7 +269,7 @@ public:
   monotonic_buffer_resource(std::size_t initial_size, memory_resource *mr)
     : upstream(mr), next_region_size(initial_size)
   {
-    assert(initial_size > 0);
+    cci_expects(initial_size > 0);
   }
 
   monotonic_buffer_resource(void *buffer, std::size_t buffer_size,
@@ -279,7 +280,7 @@ public:
     , region_end_ptr(reinterpret_cast<std::byte *>(buffer) + buffer_size)
     , next_region_size(compute_next_grow(buffer_size))
   {
-    assert(buffer_size > 0);
+    cci_expects(buffer_size > 0);
   }
 
   monotonic_buffer_resource()
@@ -315,7 +316,7 @@ public:
       owns_region = header.owns_prev_region;
     }
 
-    assert(!owns_region);
+    cci_expects(!owns_region);
     region_cur_ptr = region_base_ptr;
   }
 
@@ -326,7 +327,7 @@ protected:
   {
     if (region_base_ptr)
     {
-      assert(region_cur_ptr);
+      cci_expects(region_cur_ptr);
 
       auto space = static_cast<std::size_t>(region_end_ptr - region_cur_ptr);
       void *aligned_cur_ptr = region_cur_ptr;
@@ -367,7 +368,7 @@ protected:
       region_end_ptr = next_region_base_ptr + next_region_size;
       [[maybe_unused]] const auto old_next_region_size = next_region_size;
       next_region_size = compute_next_grow(next_region_size);
-      assert(next_region_size >= old_next_region_size);
+      cci_expects(next_region_size >= old_next_region_size);
       owns_region = true;
 
       // We could just call do_allocate recursively here, but we need to assert
@@ -375,7 +376,7 @@ protected:
       auto space = static_cast<std::size_t>(region_end_ptr - region_cur_ptr);
       void *cur_ptr = region_cur_ptr;
       const auto aligned_cur_ptr = std::align(alignment, bytes, cur_ptr, space);
-      assert(aligned_cur_ptr);
+      cci_expects(aligned_cur_ptr);
       region_cur_ptr = static_cast<std::byte *>(aligned_cur_ptr) + bytes;
       return aligned_cur_ptr;
     }
@@ -463,7 +464,7 @@ inline memory_resource *new_delete_resource() noexcept
   // Constructing the memory resource this way ensures that no exit-time
   // destructors will be called.
   alignas(type) static char buffer[sizeof(type)];
-  memory_resource *mr = new (buffer) type;
+  static memory_resource *mr = new (buffer) type;
   return mr;
 }
 
@@ -487,7 +488,7 @@ inline memory_resource *null_memory_resource() noexcept
   // Constructing the memory resource this way ensures that no exit-time
   // destructors will be called.
   alignas(type) static char buffer[sizeof(type)];
-  memory_resource *mr = new (buffer) type;
+  static memory_resource *mr = new (buffer) type;
   return mr;
 }
 
@@ -511,4 +512,4 @@ inline memory_resource *set_default_resource(memory_resource *r) noexcept
   return detail::get_default_resource_impl().exchange(r);
 }
 
-} // namespace feroldi::pmr
+} // namespace cci::pmr
