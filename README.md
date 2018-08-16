@@ -2,15 +2,15 @@
 
 [![Build Status](https://travis-ci.org/feroldi/cci.svg?branch=master)](https://travis-ci.org/feroldi/cci)
 
-This is an experimental project, using C++17 to write a C11 compiler.
-It doesn't provide an implementation of the Standard Library.
-The main purpose of this project is to teach me compiler data structures,
-language design and optimization techniques, as well as unlock an
-achievement: wrote a C compiler.
+This is an experimental project, using C++17 to write a C11 compiler. It
+doesn't provide an implementation of the Standard Library, though. The main
+purpose of this project is to teach me compiler data structures, language
+design and optimization techniques (also to unlock an achievement: wrote a C
+compiler).
 
 ## Building
 
-Use `cmake` to build and run the project:
+Use `cmake` to build the project:
 
 ```
 mkdir build && cd build
@@ -18,58 +18,29 @@ cmake -DCMAKE_BUILD_TYPE=Release ..
 cmake --build . --target cci
 ```
 
-It's recommended to export `CC` and `CXX` to a preferable compiler before you
-continue with the build process. This project is tested with Clang, and GCC. If
-you're going with Clang, you can make use of the CMake's toolchain file that
-comes with this project. For example:
-
-```
-cmake -DCMAKE_TOOLCHAIN_FILE=../cmake/toolchains/clang.cmake ..
-cmake --build . --target cci
-```
-
-**Note**: When compiling with Clang, if fmtlib or GTest are not compiled
-with libc++, the above commands might vomit lots of linker errors.
+This project is tested with Clang and GCC.
 
 ## Usage
 
-**Note**: This is still a work in progress project, so don't except the following
-to just work.
-
-```
-cci [OPTIONS] files …
-```
-
-For example, assuming a `main.c` source file, you can compile it like so:
-
-```
-$ cat main.c
-int main() { return 42; }
-
-$ cci -o a.out main.c
-$ ./a.out; echo $?
-42
-```
-
-## Legacy branch
-
-Initially, this project had a complete parser for C11 (found at `legacy`
-branch), but due to maintainance issues, it was decided to rewrite that part.
+This is still a work in progress project. Usage is to be done.
 
 ## Running tests
 
-This project depends on [GoogleTest](https://github.com/google/googletest)
-in order to run unit tests. There's no need to install it in order to
-compile the project, it's only required if you want to run the tests.
+Unit tests are written with the help of
+[GoogleTest](https://github.com/google/googletest). There isn't any need to
+install it in order to compile the project, it's only required if you actually
+want to run the unit tests.
 
-**Note**: When generating CMake configuration files, make sure to disable
-the CMake option `BUILD_TESTING` **if** you don't want to compile and run tests.
+**Note**: When generating the CMake configuration files, make sure to disable
+the CMake option `BUILD_TESTING` **if** you don't want to compile and run unit
+tests.
 
-To run unit tests, type:
+The following command runs the unit tests:
 
     GTEST_COLOR=yes ctest --output-on-failure
 
-Use `cci --help` to get a list of useful parameters and options.
+This will run all unit tests and show a compact status summary. In case
+anything goes wrong, it will output a detailed message for the failed tests.
 
 ## License
 
@@ -86,35 +57,30 @@ Summary:
 + General
   + Why infrastructure
   + Directory skeleton
-  + Why C11 only
   + TODO: API design
 
 # General
 
-There are a few non-obvious choices and terminologies used in this
+There are a few non obvious choices and terminologies used in this
 project, so this section is intended to explain them.
 
 ## Why infrastructure
 
-CCI stands for *C11 Compiler Infrastructure*. That means this is not
-just a tool you can use to compile C code. CCI has an API, which you
-can use to manipulate C code, such as tokenizing it, generating a parse
-tree, doing static and semantic analyses, generating an IR, producing
-an executable, writing a back-end, and so on.
+CCI stands for *C11 Compiler Infrastructure*. That means this is not just a
+tool you can use to compile C code. CCI has an API, which you can use to
+manipulate C code. It allows you to scan it, generate and traverse a parse
+tree, generate an IR, produce an executable, write a back-end, and so on.
 
 ## Directory skeleton
 
 + `include/`: This directory exposes the CCI's API you can use to write
-  your own applications. There are functions for tokenizing, parsing,
-  diagnosing, analysing, IR, back-ends etc.
+  your own applications. There are functions for scanning, parsing,
+  diagnosing, analysing, IR etc.
 + `lib/`: This is where most of CCI's code base is located at. All APIs
-  are implemented here, following the same names as in `include/`. E.g.
-  if there's an `include/cci/scanner/scan.hpp`, then there's also a
-  `lib/scanner/scan.cpp` (but not the other way around sometimes).
+  are implemented here.
 + `src/`: This is where some CCI tools are implemented, where each
   directory is a separate project. For example, the CCI compiler tool
   is implemented in `src/cci/`.
-+ `deps/`: All third party dependencies go here.
 + `unittest/`: This directory contains unit tests for the API. Regression
   tests are in another directory.
 + `doc/`:  All documentation or manuals go here.
@@ -129,10 +95,9 @@ to make your application's build version.
 
 ## Why C11 only
 
-Writing a C90 compiler is easy, there are plenty of those out there.
-But a conforming C11 compiler? I only know a few. Besides, such a project
-is a journey for myself, one can learn so much by writing a compiler, and
-C11 seems perfect for that.
+C11 is a challenging language to write a compiler for. Such a project is a
+journey for myself. One can learn so much by writing a compiler, and C11 seems
+(to me) perfect for that.
 
 ## API design
 
