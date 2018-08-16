@@ -8,7 +8,7 @@ namespace cci {
 // D.1.
 auto is_allowed_id_char(uint32_t code_point) -> bool;
 
-// Checks whether a code point is an sallowed initially identifier character as
+// Checks whether a code point is an allowed initially identifier character as
 // per C11 D.2.
 auto is_allowed_initially_id_char(uint32_t code_point) -> bool;
 

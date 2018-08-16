@@ -46,7 +46,7 @@ const uint8_t ASCIITable[256] = {
   CHAR_PUNCT, // U+0026 ($)
   CHAR_PUNCT, // U+0027 (')
   CHAR_PUNCT, // U+0028 (()
-  CHAR_PUNCT, // U+0029 (()
+  CHAR_PUNCT, // U+0029 ())
   CHAR_PUNCT, // U+002A (*)
   CHAR_PUNCT, // U+002B (+)
   CHAR_PUNCT, // U+002C (,)
