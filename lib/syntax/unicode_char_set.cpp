@@ -23,6 +23,7 @@ constexpr auto operator==(uint32_t code_point, UnicodeCharRange range) -> bool
 
 // C11 D.1: Universal character names for identifiers.
 static constexpr UnicodeCharRange ALLOWED_IDENT_CHARS_SET[]{
+  // clang-format off
   // C11 D.1/1
   {0x00A8, 0x00A8}, {0x00AA, 0x00AA}, {0x00AD, 0x00AD}, {0x00AF, 0x00AF},
   {0x00B2, 0x00B5}, {0x00B7, 0x00BA}, {0x00BC, 0x00BE}, {0x00C0, 0x00D6},
@@ -54,13 +55,15 @@ static constexpr UnicodeCharRange ALLOWED_IDENT_CHARS_SET[]{
   {0x70000, 0x7FFFD}, {0x80000, 0x8FFFD}, {0x90000, 0x9FFFD},
   {0xA0000, 0xAFFFD}, {0xB0000, 0xBFFFD}, {0xC0000, 0xCFFFD},
   {0xD0000, 0xDFFFD}, {0xE0000, 0xEFFFD},
+  // clang-format on
 };
 
-
 // C11 D.2: Ranges of characters disallowed initially.
-static constexpr UnicodeCharRange DISALLOWED_INITIALLY_IDENT_CHARS_SET[] {
+static constexpr UnicodeCharRange DISALLOWED_INITIALLY_IDENT_CHARS_SET[]{
+  // clang-format off
   // C11 D.2/1
   {0x0300, 0x036F}, {0x1DC0, 0x1DFF}, {0x20D0, 0x20FF}, {0xFE20, 0xFE2F},
+  // clang-format on
 };
 
 namespace cci {

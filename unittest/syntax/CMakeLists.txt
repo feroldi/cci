@@ -1,5 +1,6 @@
 add_executable(cci_syntax_test
   char_info_test.cpp
+  unicode_char_set_test.cpp
   source_map_test.cpp
   scanner_test.cpp
   literal_parser_test.cpp)
