@@ -4,13 +4,14 @@
 #include "cci/semantics/sema.hpp"
 #include "cci/syntax/scanner.hpp"
 #include "cci/util/contracts.hpp"
+#include "cci/util/small_vector.hpp"
 #include <string_view>
 
 using namespace cci;
 
-auto Parser::parse_expression() -> ASTResult<Expr>
+auto Parser::parse_expression() -> std::optional<arena_ptr<Expr>>
 {
-  ASTResult<Expr> res;
+  std::optional<arena_ptr<Expr>> res;
 
   switch (tok.category())
   {
@@ -56,7 +57,8 @@ auto Parser::parse_expression() -> ASTResult<Expr>
   return res;
 }
 
-auto Parser::parse_string_literal_expression() -> ASTResult<StringLiteral>
+auto Parser::parse_string_literal_expression()
+  -> std::optional<arena_ptr<StringLiteral>>
 {
   cci_expects(is_string_literal(tok.category()));
 

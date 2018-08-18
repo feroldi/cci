@@ -11,15 +11,6 @@
 
 namespace cci {
 
-// Resulting AST object from a production rule.
-//
-// Objects encapsulated in such a span do not need a destructor call, and
-// may be disposed of by simply deallocating their storage. Its purpose is to
-// provide a nice interface for valid/invalid production rules generated result,
-// applying the same guarantee/requirements of `arena_ptr`.
-template <typename T>
-using ASTResult = std::optional<arena_ptr<T>>;
-
 // Side-table and resource manager of the AST.
 struct ASTContext
 {

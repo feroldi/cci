@@ -8,38 +8,29 @@
 #include "cci/syntax/scanner.hpp"
 #include "cci/syntax/source_map.hpp"
 #include <optional>
-#include <string_view>
 
 namespace cci {
 
 struct Parser
 {
 private:
-  Scanner &scan;
-  Sema &sema;
-  Token tok;
+  Scanner scanner;
+  Sema sema;
   diag::Handler &diag;
 
 public:
-  Parser(Scanner &scan, Sema &sema)
-    : scan(scan), sema(sema), diag(scan.diagnostics())
-  {
-    // Sets up the peek token.
-    tok = scan.next_token();
-  }
+  Parser(Scanner scanner, Sema &sema)
+    : scanner(std::move(scanner)), sema(sema), diag(scan.diagnostics())
+  {}
 
-  // Consumes the current token and peeks the next one. Returns a SourceLocation
-  // to the consumed token.
-  auto consume_token() -> srcmap::ByteLoc
-  {
-    auto old_loc = tok.location();
-    tok = scan.next_token();
-    return old_loc;
-  }
+  auto peek(size_t lookahead) -> Token;
+
+  auto consume() -> Token;
 
 private:
-  auto parse_expression() -> ASTResult<Expr>;
-  auto parse_string_literal_expression() -> ASTResult<StringLiteral>;
+  auto parse_expression() -> std::optional<arena_ptr<Expr>>;
+  auto parse_string_literal_expression()
+    -> std::optional<arena_ptr<StringLiteral>>;
 };
 
 } // namespace cci

@@ -9,13 +9,7 @@
 
 namespace cci {
 
-// Scanner - The C11 scanner.
-//
-// The scanner works by imperatively tokenizing the input stream (the contents
-// of a SourceManager in this case), instead of parsing every token and
-// producing a vector all at once. This is preferable, as a Token isn't space
-// efficient, and the parser works with one token at a time, which makes this
-// approach a lot more appealing.
+// The scanner transforms a character input stream into a token stream.
 struct Scanner
 {
 private:
@@ -28,9 +22,8 @@ private:
   const char *buffer_ptr; //< Current position into the buffer to be analyzed.
 
 public:
-  explicit Scanner(const srcmap::SourceMap &src, srcmap::ByteLoc file_loc,
-                   const char *buf_begin, const char *buf_end,
-                   diag::Handler &diag)
+  Scanner(const srcmap::SourceMap &src, srcmap::ByteLoc file_loc,
+          const char *buf_begin, const char *buf_end, diag::Handler &diag)
     : src_map(src)
     , file_loc(file_loc)
     , diag(diag)
@@ -42,9 +35,6 @@ public:
     // easier.
     cci_expects(buffer_end[0] == '\0');
   }
-
-  auto source_map() const -> const srcmap::SourceMap & { return this->src_map; }
-  auto diagnostics() const -> diag::Handler & { return this->diag; }
 
   // Parses the next token in the input stream.
   //
@@ -58,13 +48,16 @@ public:
   // \return The parsed token on success.
   auto next_token() -> Token;
 
+  auto source_map() const -> const srcmap::SourceMap & { return this->src_map; }
+  auto diagnostics() const -> diag::Handler & { return this->diag; }
+
   // Translates a buffer pointer into a global ByteLoc.
   auto location_for_ptr(const char *ptr) const -> srcmap::ByteLoc
   {
     return this->source_map().ptr_to_byteloc(this->file_loc, ptr);
   }
 
-  // Tranlates a position in the spelling of a token into the buffer pointer
+  // Translates a position in the spelling of a token into the buffer pointer
   // that corresponds to the actual position.
   //
   // This is useful when the resulting spelling of a token doesn't equal the

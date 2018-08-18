@@ -6,6 +6,7 @@
 #include "cci/syntax/diagnostics.hpp"
 #include "cci/syntax/scanner.hpp"
 #include "cci/syntax/source_map.hpp"
+#include <optional>
 
 namespace cci {
 
@@ -22,12 +23,14 @@ public:
     : scan(scan), diag(scan.diagnostics()), context(ctx)
   {}
 
-  auto act_on_numeric_constant(const Token &) -> ASTResult<Expr>;
-  auto act_on_char_constant(const Token &) -> ASTResult<CharacterConstant>;
+  auto act_on_numeric_constant(const Token &) -> std::optional<arena_ptr<Expr>>;
+  auto act_on_char_constant(const Token &)
+    -> std::optional<arena_ptr<CharacterConstant>>;
   auto act_on_string_literal(span<const Token> string_toks)
-    -> ASTResult<StringLiteral>;
+    -> std::optional<arena_ptr<StringLiteral>>;
   auto act_on_paren_expr(arena_ptr<Expr> expr, srcmap::ByteLoc left,
-                         srcmap::ByteLoc right) -> ASTResult<ParenExpr>;
+                         srcmap::ByteLoc right)
+    -> std::optional<arena_ptr<ParenExpr>>;
 };
 
 } // namespace cci

@@ -18,7 +18,8 @@ static_assert(4 == sizeof(char32_t),
 
 using namespace cci;
 
-auto Sema::act_on_numeric_constant(const Token &tok) -> ASTResult<Expr>
+auto Sema::act_on_numeric_constant(const Token &tok)
+  -> std::optional<arena_ptr<Expr>>
 {
   cci_expects(tok.is(Category::numeric_constant));
 
@@ -126,7 +127,7 @@ auto Sema::act_on_numeric_constant(const Token &tok) -> ASTResult<Expr>
 }
 
 auto Sema::act_on_char_constant(const Token &tok)
-  -> ASTResult<CharacterConstant>
+  -> std::optional<arena_ptr<CharacterConstant>>
 {
   cci_expects(
     tok.is_one_of(Category::char_constant, Category::utf16_char_constant,
@@ -166,7 +167,7 @@ auto Sema::act_on_char_constant(const Token &tok)
 }
 
 auto Sema::act_on_string_literal(span<const Token> string_toks)
-  -> ASTResult<StringLiteral>
+  -> std::optional<arena_ptr<StringLiteral>>
 {
   cci_expects(!string_toks.empty());
   StringLiteralParser literal(scan, string_toks, context.target_info());
@@ -236,7 +237,8 @@ auto Sema::act_on_string_literal(span<const Token> string_toks)
 }
 
 auto Sema::act_on_paren_expr(arena_ptr<Expr> expr, srcmap::ByteLoc left,
-                             srcmap::ByteLoc right) -> ASTResult<ParenExpr>
+                             srcmap::ByteLoc right)
+  -> std::optional<arena_ptr<ParenExpr>>
 {
   return new (context) ParenExpr(expr, left, right);
 }
