@@ -177,9 +177,9 @@ struct Token
   enum TokenFlags
   {
     None = 0,
-    HasUCN = 1 << 0, //< Contains universal character names.
-    IsDirty = 1 << 1, //< Contains escaped new lines or trigraphs.
-    IsLiteral = 1 << 2, //< Is a string/char literal, or numeric constant.
+    HasUCN = 1 << 0, ///< Contains universal character names.
+    IsDirty = 1 << 1, ///< Contains escaped new lines or trigraphs.
+    IsLiteral = 1 << 2, ///< Is a string/char literal, or numeric constant.
   };
 
   Token() = default;

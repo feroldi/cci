@@ -15,22 +15,26 @@ struct Parser
 {
 private:
   Scanner scanner;
-  Sema sema;
+  Sema &sema;
   diag::Handler &diag;
 
 public:
   Parser(Scanner scanner, Sema &sema)
-    : scanner(std::move(scanner)), sema(sema), diag(scan.diagnostics())
+    : scanner(std::move(scanner))
+    , sema(sema)
+    , diag(scanner.diagnostics())
   {}
 
-  auto peek(size_t lookahead) -> Token;
-
+private:
+  auto peek(size_t lookahead = 0) -> Token;
   auto consume() -> Token;
 
-private:
   auto parse_expression() -> std::optional<arena_ptr<Expr>>;
   auto parse_string_literal_expression()
     -> std::optional<arena_ptr<StringLiteral>>;
+
+private:
+  small_vector<Token, 8> peeked_toks;
 };
 
 } // namespace cci

@@ -12,23 +12,20 @@
 namespace cci::diag {
 struct Handler;
 
-// This is used to select between cases in a fmt::format string. For example,
-// `fmt::format("this is {good|bad}", select(0))` will output `"this is good"`.
-enum class select : size_t
-{
-};
-
+/// Information about a diagnostic.
 struct Diagnostic
 {
-  srcmap::SourceLoc loc;
-  std::string message;
-  std::vector<srcmap::Range> ranges;
+  srcmap::SourceLoc loc; ///< Location from where the diagnostic was reported.
+  std::string message; ///< The diagnostic message.
+  std::vector<srcmap::Range> ranges; ///< Location ranges that are related to
+                                     ///< this diagnostic.
 
   Diagnostic(srcmap::SourceLoc loc, std::string message)
     : loc(loc), message(std::move(message))
   {}
 };
 
+/// Helper class to construct a `Diagnostic`.
 struct DiagnosticBuilder
 {
   DiagnosticBuilder(srcmap::SourceLoc loc, std::string message,
@@ -40,24 +37,35 @@ struct DiagnosticBuilder
   DiagnosticBuilder(DiagnosticBuilder &&) = default;
   DiagnosticBuilder &operator=(DiagnosticBuilder &&) = default;
 
+  /// Adds a source range to give more context to the diagnostic.
   auto range(srcmap::Range range) -> DiagnosticBuilder &
   {
     this->diag->ranges.push_back(range);
     return *this;
   }
 
+  /// Hands the diagnostic to the handler.
   ~DiagnosticBuilder() noexcept(!CCI_ENABLE_CONTRACTS);
 
 private:
-  Handler &handler;
-  std::unique_ptr<Diagnostic> diag;
+  Handler &handler; ///< The handler that will be handed the diagnostic.
+  std::unique_ptr<Diagnostic> diag; ///< Diagnostic being constructed.
 };
 
+/// A diagnostic handler.
+//
+/// Diagnostics are reported and treated through this handler. Once reported, a
+/// diagnostic is passed to an emitter (a function callback) responsible to
+/// treat it. It may do anything like aborting compilation process, or just
+/// completely ignore diagnostics.
 struct Handler
 {
+  /// The emitter type.
   using Emitter = std::function<void(const Diagnostic &)>;
 
-  explicit Handler(Emitter emitter, const srcmap::SourceMap &map)
+  /// Constructs a handler with a given `Emitter` and the `SourceMap` associated
+  /// with it.
+  Handler(Emitter emitter, const srcmap::SourceMap &map)
     : emitter(std::move(emitter)), map(map)
   {}
 
@@ -72,6 +80,7 @@ struct Handler
     return *this;
   }
 
+  /// Helper function to facilitate the construction of a `DiagnosticBuilder`.
   auto report(srcmap::ByteLoc loc, std::string message) -> DiagnosticBuilder
   {
     DiagnosticBuilder builder(this->map.lookup_source_location(loc),
@@ -79,16 +88,24 @@ struct Handler
     return builder;
   }
 
+  /// Checks whether there has been any errors reported.
   auto has_errors() const -> bool { return this->err_count_ > 0; }
+
+  /// Returns how many errors have been reported.
   auto err_count() const -> size_t { return this->err_count_.load(); }
+
+  /// Returns the source map associated with it.
   auto source_map() const -> const srcmap::SourceMap & { return this->map; }
 
+  /// Sets a new emitter to be called at diagnostic emission, overriding the old
+  /// one.
   void set_emitter(Emitter emitter) { this->emitter = std::move(emitter); }
 
 protected:
   Emitter emitter;
   friend struct DiagnosticBuilder;
 
+  /// Emits a diagnostic.
   void emit(std::unique_ptr<Diagnostic> diag)
   {
     cci_expects(diag);
@@ -100,10 +117,23 @@ private:
   std::atomic<size_t> err_count_ = 0;
   const srcmap::SourceMap &map;
 
+  /// Increases the error count by one.
   void bump_err_count() { this->err_count_.fetch_add(1); }
 };
 
+/// Returns a diagnostic emitter that just ignores diagnostics.
 auto ignoring_emitter() -> Handler::Emitter;
+
+/// Selection type for `fmt::format`.
+//
+/// This is used to select between cases in a format string. For example,
+///
+///     fmt::format("this is {good|bad}", select(0))
+///
+/// will output `"this is good"`.
+enum class select : size_t
+{
+};
 
 } // namespace cci::diag
 

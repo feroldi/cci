@@ -35,9 +35,7 @@ protected:
   {
     const auto &file =
       this->source_map.create_owned_filemap("main.c", std::move(source));
-    scanner =
-      std::make_unique<Scanner>(source_map, file.start_loc, file.src_begin(),
-                                file.src_end(), diag_handler);
+    scanner = std::make_unique<Scanner>(file, diag_handler);
     std::vector<Token> toks;
 
     while (true)

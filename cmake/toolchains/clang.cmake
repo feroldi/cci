@@ -30,6 +30,7 @@ set(CMAKE_CXX_FLAGS
   "-Werror \
    -Wall \
    -Wextra \
+   -Wdocumentation \
    -Wundef \
    -pedantic-errors \
    -stdlib=libc++ \

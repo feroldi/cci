@@ -1,5 +1,5 @@
-#include "cci/syntax/scanner.hpp"
 #include "cci/syntax/diagnostics.hpp"
+#include "cci/syntax/scanner.hpp"
 #include "cci/syntax/source_map.hpp"
 #include "cci/util/contracts.hpp"
 #include "cci/util/span.hpp"
@@ -25,16 +25,16 @@ protected:
   srcmap::SourceMap source_map;
   diag::Handler diag_handler;
 
-  ScannerTest() : source_map(), diag_handler(diag::ignoring_emitter(), source_map)
+  ScannerTest()
+    : source_map(), diag_handler(diag::ignoring_emitter(), source_map)
   {}
 
   auto create_lex(std::string_view source) -> Scanner
   {
     const auto &file =
       source_map.create_owned_filemap("main.c", std::string(source));
-    Scanner scan(source_map, file.start_loc, file.src_begin(), file.src_end(),
-              diag_handler);
-    return scan;
+    Scanner scanner(file, diag_handler);
+    return scanner;
   }
 
   auto scan(std::string_view source) -> std::vector<Token>

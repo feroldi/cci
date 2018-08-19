@@ -3,8 +3,8 @@
 #include "cci/langopts.hpp"
 #include "cci/syntax/source_map.hpp"
 #include "cci/util/span.hpp"
-#include <cstdint>
 #include <cstddef>
+#include <cstdint>
 
 namespace cci {
 
@@ -100,10 +100,10 @@ enum class StringLiteralKind
 struct StringLiteral : Expr
 {
 private:
-  span<std::byte> str_data; //< String content.
+  span<std::byte> str_data; ///< String content.
   StringLiteralKind kind_;
-  size_t char_byte_width_; //< Character's size in bytes.
-  span<srcmap::ByteLoc> tok_locs; //< Sequence of each string location
+  size_t char_byte_width_; ///< Character's size in bytes.
+  span<srcmap::ByteLoc> tok_locs; ///< Sequence of each string location
 
 public:
   StringLiteral(QualType ty, span<std::byte> str_data, StringLiteralKind kind,

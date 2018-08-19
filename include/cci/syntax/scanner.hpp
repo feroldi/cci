@@ -9,22 +9,33 @@
 
 namespace cci {
 
-// The scanner transforms a character input stream into a token stream.
+/// The scanner transforms a character input stream into a token stream.
 struct Scanner
 {
 private:
-  const srcmap::SourceMap &src_map; //< Source of the file map being lexed.
-  srcmap::ByteLoc file_loc; //< Start location of the file map being lexed.
+  const srcmap::SourceMap &src_map; ///< Source map containing the file map
+                                    ///< being scanned.
+  srcmap::ByteLoc file_loc; ///< Start location of the file map being scanned.
   diag::Handler &diag;
 
-  const char *buffer_begin; //< Iterator into the start of the buffer.
-  const char *buffer_end; //< Iterator into the end of the buffer.
-  const char *buffer_ptr; //< Current position into the buffer to be analyzed.
+  const char *buffer_begin; ///< Iterator into the start of the buffer.
+  const char *buffer_end; ///< Iterator into the end of the buffer.
+  const char *buffer_ptr; ///< Current position into the buffer to be analyzed.
 
 public:
-  Scanner(const srcmap::SourceMap &src, srcmap::ByteLoc file_loc,
-          const char *buf_begin, const char *buf_end, diag::Handler &diag)
-    : src_map(src)
+  /// Constructs a scanner for a `FileMap` given by `file_loc`, which will scan
+  /// only the area delimited by `buf_begin` and `buf_end` iterators.
+  //
+  /// This is useful in cases you need to start scanning from a specific
+  /// location in the file map.
+  ///
+  /// \param file_loc Starting byte location of the file map.
+  /// \param buf_begin Iterator to the start of the area to be scanned.
+  /// \param buf_end Iterator to the end of the are to be scanned.
+  /// \param diag The diagnostics handler that will be used to report any errors.
+  Scanner(srcmap::ByteLoc file_loc, const char *buf_begin, const char *buf_end,
+          diag::Handler &diag)
+    : src_map(diag.source_map())
     , file_loc(file_loc)
     , diag(diag)
     , buffer_begin(buf_begin)
@@ -36,41 +47,91 @@ public:
     cci_expects(buffer_end[0] == '\0');
   }
 
-  // Parses the next token in the input stream.
+  /// Constructs a scanner for a `FileMap`.
   //
-  // This is where the whole process of tokenization happens. The scanner tries
-  // to interpret whatever `buffer_ptr` is currently pointing to, and if it
-  // recognizes something it knows about (such as an identifier's head, a
-  // numeric constant etc), then it does the appropriate lexical analysis of
-  // that token's grammar, and returns the parsed token. When end of input is
-  // reached, this simply returns an eof token.
+  /// \param file The file map to be scanned.
+  /// \param diag The diagnostics handler that will be used to report any errors.
+  Scanner(const srcmap::FileMap &file, diag::Handler &diag)
+    : Scanner(file.start_loc, file.src_begin(), file.src_end(), diag)
+  {}
+
+  /// Scans the next token from the character stream.
   //
-  // \return The parsed token on success.
+  /// Tokens are recognized by applying lexical analysis to the first incoming
+  /// characters from the stream. Once a token is fully formed, it is returned
+  /// to the caller. The next call to this function will do the same from where
+  /// it stopped last time it was called. Thus, the scanner is a stream of
+  /// tokens, and can be used concurrently.
+  ///
+  /// When character stream's end of input is reached, this returns a token
+  /// whose category is `Category::eof`, and range is empty.
+  ///
+  /// Lexical errors aren't fatal, and when they occur, this returns a token
+  // whose category is `Category::invalid`. The next call to this function will
+  /// continue after the lexically invalid area.
+  ///
+  /// \return The next token in the stream.
   auto next_token() -> Token;
 
+  /// Gets the source map associated with this scanner.
   auto source_map() const -> const srcmap::SourceMap & { return this->src_map; }
+
+  /// Gets the diagnostics handler associated with this scanner.
   auto diagnostics() const -> diag::Handler & { return this->diag; }
 
-  // Translates a buffer pointer into a global ByteLoc.
+  /// Translates a file map's source content iterator into an absolute ByteLoc.
   auto location_for_ptr(const char *ptr) const -> srcmap::ByteLoc
   {
     return this->source_map().ptr_to_byteloc(this->file_loc, ptr);
   }
 
-  // Translates a position in the spelling of a token into the buffer pointer
-  // that corresponds to the actual position.
+  /// Translates an absolute byte location in the middle of a token's
+  /// lexeme/spelling into the source content iterator that corresponds to that
+  /// location.
   //
-  // This is useful when the resulting spelling of a token doesn't equal the
-  // canonical representation in source code, and one needs to know the actual
-  // ByteLoc of some given character in the spelling.
-  auto character_location(srcmap::ByteLoc tok_loc, const char *spelling_begin,
+  /// This is useful when the lexeme of a token doesn't match the canonical
+  /// representation in source code, and one needs to know the actual ByteLoc of
+  /// some given character in the lexeme.
+  ///
+  /// For instance, trigraphs and escaped new-lines are converted in the
+  /// scanning process, therefore their source representation doesn't match the
+  /// lexeme. To get the correct byte location of a character in the lexeme, you
+  /// need to know the inverse process of this conversion in order to find the
+  /// matching position before conversion. This function helps with that.
+  ///
+  /// \param tok_loc The absolute byte location of a token.
+  /// \param lexeme_begin The beginning of the token's parsed lexeme.
+  /// \param char_pos The character position in the lexeme to be translated.
+  ///
+  /// \return An abosulte ByteLoc corresponding to the source representation of
+  ///         that character position in the lexeme.
+  auto character_location(srcmap::ByteLoc tok_loc, const char *lexeme_begin,
                           const char *char_pos) const -> srcmap::ByteLoc;
 
-  // Computes the spelling of a token, and writes it to the caller's buffer
-  // `spelling_buf`. Returns the size in bytes of written data.
-  static auto get_spelling_to_buffer(const Token &, char *spelling_buf,
-                                     const srcmap::SourceMap &) -> size_t;
+  /// Converts the source range of a token to its correspoding lexeme.
+  //
+  /// This process removes any trigraphs or escaped new-lines that may appear in
+  /// the token's source range. UCNs are kept unchanged.
+  ///
+  /// \param tok The token from which to get the lexeme.
+  /// \param[out] spelling_buf A pointer to a buffer in which the lexeme will be
+  ///             stored.
+  /// \param map The source map that contains the source representation
+  ///            of `tok`.
+  ///
+  /// \return The length of the converted lexeme.
+  static auto get_spelling_to_buffer(const Token &tok, char *spelling_buf,
+                                     const srcmap::SourceMap &map) -> size_t;
 
+  /// Converts the source range of a token to its correspoding lexeme.
+  //
+  /// This is similar to `get_spelling_to_buffer`, with the only addition that
+  /// the output buffer is a small vector.
+  ///
+  /// \param tok The token from which to get the lexeme.
+  /// \param[out] out The output buffer.
+  ///
+  /// \return A string view into the lexeme stored in the output buffer.
   auto get_spelling(const Token &tok, small_vector_impl<char> &out) const
     -> std::string_view
   {
@@ -100,8 +161,8 @@ private:
     -> bool;
   auto lex_token(const char *cur_ptr, Token &result) -> bool;
 
-  // Fitly finalizes the scanning of a token, advancing the buffer pointer past
-  // the new token. This is used only by the internals of the lexical analysis.
+  /// Fitly finalizes the scanning of a token, advancing the buffer pointer past
+  /// it. This is used only by the internals of the lexical analysis.
   void form_token(Token &tok, const char *tok_end, Category category)
   {
     tok.category_ = category;

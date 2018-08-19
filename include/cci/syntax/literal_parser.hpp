@@ -10,8 +10,8 @@ namespace cci {
 struct NumericConstantParser
 {
 private:
-  const char *digit_begin; //< First meaningful digit.
-  const char *digit_end; //< Past the last meaningful digit.
+  const char *digit_begin; ///< First meaningful digit.
+  const char *digit_end; ///< Past the last meaningful digit.
 
 public:
   bool has_error = false;

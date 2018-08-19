@@ -9,16 +9,37 @@
 
 using namespace cci;
 
+auto Parser::peek(size_t lookahead) -> Token
+{
+  cci_expects(peeked_toks.size() <= lookahead);
+
+  if (lookahead < peeked_toks.size())
+    return peeked_toks[lookahead];
+
+  Token peeking = scanner.next_token();
+  peeked_toks.push_back(peeking);
+  cci_ensures(lookahead + 1 == peeked_toks.size());
+  return peeking;
+}
+
+auto Parser::consume() -> Token
+{
+  Token consumed = peek();
+  std::move(std::next(peeked_toks.begin()), peeked_toks.end(),
+            peeked_toks.begin());
+  peeked_toks.pop_back();
+  return consumed;
+}
+
 auto Parser::parse_expression() -> std::optional<arena_ptr<Expr>>
 {
   std::optional<arena_ptr<Expr>> res;
 
-  switch (tok.category())
+  switch (peek().category())
   {
     default: cci_unreachable();
     case Category::numeric_constant:
-      res = sema.act_on_numeric_constant(tok);
-      consume_token();
+      res = sema.act_on_numeric_constant(consume());
       break;
 
     case Category::char_constant:
@@ -26,8 +47,7 @@ auto Parser::parse_expression() -> std::optional<arena_ptr<Expr>>
     case Category::utf16_char_constant:
     case Category::utf32_char_constant:
     case Category::wide_char_constant:
-      res = sema.act_on_char_constant(tok);
-      consume_token();
+      res = sema.act_on_char_constant(consume());
       break;
 
     case Category::string_literal:
@@ -39,17 +59,21 @@ auto Parser::parse_expression() -> std::optional<arena_ptr<Expr>>
       break;
     case Category::l_paren:
     {
-      auto lparen_loc = consume_token();
+      Token lparen_tok = consume();
       res = parse_expression();
-      if (tok.is_not(Category::r_paren))
+
+      if (peek().is(Category::r_paren))
       {
-        diag.report(tok.location(), "expected ')'");
-        diag.report(lparen_loc, "to match this '('");
-        // FIXME: Should break here?
-        break;
+        Token rparen_tok = consume();
+        res = sema.act_on_paren_expr(res.value(), lparen_tok.location(),
+                                     rparen_tok.location());
       }
-      auto rparen_loc = consume_token();
-      res = sema.act_on_paren_expr(res.value(), lparen_loc, rparen_loc);
+      else
+      {
+        diag.report(peek().location(), "expected ')'");
+        diag.report(lparen_tok.location(), "to match this '('");
+      }
+
       break;
     }
   }
@@ -60,18 +84,11 @@ auto Parser::parse_expression() -> std::optional<arena_ptr<Expr>>
 auto Parser::parse_string_literal_expression()
   -> std::optional<arena_ptr<StringLiteral>>
 {
-  cci_expects(is_string_literal(tok.category()));
+  cci_expects(is_string_literal(peek().category()));
 
-  small_vector<Token, 4> string_toks;
-
-  string_toks.push_back(tok);
-  consume_token();
-
-  while (is_string_literal(tok.category()))
-  {
-    string_toks.push_back(tok);
-    consume_token();
-  }
+  small_vector<Token, 4> string_toks{consume()};
+  while (is_string_literal(peek().category()))
+    string_toks.push_back(consume());
 
   return sema.act_on_string_literal(string_toks);
 }

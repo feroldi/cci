@@ -12,14 +12,6 @@
 #include <utility>
 
 namespace cci {
-
-// token:
-//   keyword
-//   identifier
-//   constant
-//   string-literal
-//   punctuator
-
 namespace {
 
 constexpr Category KEYWORD_KINDS[]{
@@ -80,35 +72,36 @@ constexpr auto is_whitespace(char C) -> bool
 // depending on whether there is a carriage return). This goes on and on until
 // a trivial character is found, which finally terminates the peeking process.
 
-// Calculates the size of an escaped newline. Assumes that the slash character
-// is already consumed. Whitespaces between the slash and the newline are
-// considered as ill-formed.
+/// Calculates the size of an escaped newline. Assumes that the slash character
+/// is already consumed. Whitespaces between the slash and the newline are
+/// considered ill-formed.
 //
-// \param ptr The position past the backslash ('\') character.
+/// \param after_backslash The position past the backslash ('\') character.
 //
-// \return The distance between `ptr` and the first character after the escaped
-//         newline.
-auto size_for_escaped_newline(const char *ptr) -> int64_t
+/// \return The distance between `ptr` and the first character after the escaped
+///         newline.
+auto size_for_escaped_newline(const char *after_backslash) -> int64_t
 {
-  int64_t nl_size = 0;
-  if (is_newline(ptr[nl_size]))
+  const char *ptr = after_backslash;
+  if (is_newline(*ptr))
   {
-    ++nl_size;
+    ++ptr;
     // Consumes a pair of \r\n or \n\r if there is any.
-    if (is_newline(ptr[nl_size]) && ptr[nl_size - 1] != ptr[nl_size])
-      ++nl_size;
+    if (is_newline(*ptr) && *(ptr - 1) != *ptr)
+      ++ptr;
   }
-  return nl_size;
+  return ptr - after_backslash;
 }
 
-// Checks whether a character needs any special care.
+/// Checks whether a character needs any special care.
 //
-// Things like trigraphs and escaped newlines are examples of such special
-// characters. They need to be properly consumed, therefore you can't just
-// advance the buffer pointer by 1.
-//
-// \param c The character to be checked.
-// \return true if character doesn't need special care.
+/// Things like trigraphs and escaped newlines are examples of such special
+/// characters. They need to be properly consumed, therefore you can't just
+/// advance the buffer pointer by 1.
+///
+/// \param c The character to be checked.
+///
+/// \return true if the character doesn't need special care.
 constexpr bool is_trivial_character(char c) { return c != '?' && c != '\\'; }
 
 // C11 5.2.1.1 Trigraph sequences.
@@ -129,16 +122,16 @@ constexpr auto decode_trigraph_letter(char letter)
   }
 }
 
-// Peeks a character from the input stream and returns it, setting the size to
-// how many characters are to be skipped over. This handles special cases like
-// escaped newlines and trigraphs*.
+/// Peeks a character from the input stream and returns it, returning the size
+/// to how many characters are to be skipped over. This handles special cases
+/// like escaped newlines and trigraphs.
 //
-// \param ptr Buffer pointer from which to peek a character.
-// \param size Size accumulator. For normal use, set it to 0.
-// \param tok Token being formed, if any.
-//
-// \return The character pointed by `ptr`, or a character after escaped
-// new-line, or a decoded trigraph, all along with the character's size.
+/// \param ptr Buffer pointer from which to peek a character.
+/// \param size Size accumulator. For normal use, set it to 0.
+/// \param tok Token being formed, if any.
+///
+/// \return The character pointed by `ptr`, or a character after escaped
+///         new-line, or a decoded trigraph, all along with the character's size.
 auto peek_char_and_size_nontrivial(const char *ptr, int64_t size,
                                    Token *tok = nullptr)
   -> std::pair<char, int64_t>
@@ -185,15 +178,15 @@ auto peek_char_and_size_nontrivial(const char *ptr, int64_t size,
   return {*ptr, size + 1};
 }
 
-// Peeks a character from `ptr` and advances it.
+/// Peeks a character from `ptr` and advances it.
 //
-// This is the same as peek_char_and_size, except that the buffer pointer is
-// properly advanced to the next simple character in the buffer.
-//
-// \param ptr Buffer pointer from which to peek and advance.
-// \param tok Token being formed.
-//
-// \return The character pointed by ptr before advancing.
+/// This is the same as peek_char_and_size, except that the buffer pointer is
+/// properly advanced to the next simple character in the buffer.
+///
+/// \param ptr Buffer pointer from which to peek and advance.
+/// \param tok Token being formed.
+///
+/// \return The character pointed by `ptr` before advancing.
 auto peek_char_advance(const char *&ptr, Token &tok) -> char
 {
   if (is_trivial_character(*ptr))
@@ -203,16 +196,16 @@ auto peek_char_advance(const char *&ptr, Token &tok) -> char
   return c;
 }
 
-// Peeks a character and its size from the buffer pointer.
+/// Peeks a character and its size from the buffer pointer.
 //
-// If the character pointed by `ptr` is simple, then this is the fast path: it
-// returns `*ptr` and a size of 1. Otherwise, this function falls back to
-// `peek_char_and_size_nontrivial`.
-//
-// \param ptr Buffer pointer from which to peek a character.
-//
-// \return The character pointed by `ptr`, and the size to get to the next
-//         consumable character.
+/// If the character pointed by `ptr` is simple, then this is the fast path: it
+/// returns `*ptr` and a size of 1. Otherwise, this function falls back to
+/// `peek_char_and_size_nontrivial`.
+///
+/// \param ptr Buffer pointer from which to peek a character.
+///
+/// \return The character pointed by `ptr`, and the size to get to the next
+///         consumable character.
 auto peek_char_and_size(const char *ptr) -> std::pair<char, int64_t>
 {
   if (is_trivial_character(*ptr))
@@ -220,18 +213,18 @@ auto peek_char_and_size(const char *ptr) -> std::pair<char, int64_t>
   return peek_char_and_size_nontrivial(ptr, 0, nullptr);
 }
 
-// Consumes the buffer pointer.
+/// Consumes the buffer pointer.
 //
-// This is meant to be used along with `peek_char_and_size`, as it returns a
-// buffer pointer by repeeking the same character if `size` doesn't correspond
-// to the size of a simple character.  This reiteration is needed in order to
-// set any special flags to the token `tok` being formed.
-//
-// \param ptr Buffer pointer from which to consume a peeked character.
-// \param size The size of the character to be consumed.
-// \param tok Token being formed.
-//
-// \return A buffer pointer past the peeked (non-)trivial character.
+/// This is meant to be used along with `peek_char_and_size`, as it returns a
+/// buffer pointer by repeeking the same character if `size` doesn't correspond
+/// to the size of a simple character.  This reiteration is needed in order to
+/// set any special flags to the token `tok` being formed.
+///
+/// \param ptr Buffer pointer from which to consume a peeked character.
+/// \param size The size of the character to be consumed.
+/// \param tok Token being formed.
+///
+/// \return A buffer pointer past the peeked (non-)trivial character.
 auto consume_char(const char *ptr, int64_t size, Token &tok) -> const char *
 {
   // Consumes a simple character.
@@ -252,18 +245,18 @@ auto consume_char(const char *ptr, int64_t size, Token &tok) -> const char *
 //   hexadecimal-digit hexadecimal-digit
 //       hexadecimal-digit hexadecimal-digit
 //
-// Reads a universal character name.
+/// Reads a universal character name.
 //
-// Parses a \u or \U UCN and calculates the code point represented by it. If
-// such code point isn't in a valid range as defined by [C11 6.4.3], reports
-// diagnostics and returns 0, but still consumes the buffer pointer.  Ill-formed
-// UCNs prevent the buffer pointer from being consumed, however.
-//
-// \param start_ptr Buffer pointer to the UCN kind ('u' or 'U').
-// \param slash_ptr Buffer pointer to the UCN slash ('\') before its kind.
-// \param tok The token being formed, if any.
-//
-// \return The code point represented by the UCN.
+/// Parses a \u or \U UCN and calculates the code point represented by it. If
+/// such code point isn't in a valid range as defined by [C11 6.4.3], reports
+/// diagnostics and returns 0, but still consumes the buffer pointer. Ill-formed
+/// UCNs prevent the buffer pointer from being consumed, however.
+///
+/// \param start_ptr Buffer pointer to the UCN kind ('u' or 'U').
+/// \param slash_ptr Buffer pointer to the UCN slash ('\') before its kind.
+/// \param tok The token being formed, if any.
+///
+/// \return The code point represented by the UCN.
 auto Scanner::try_read_ucn(const char *&start_ptr, const char *slash_ptr,
                            Token *tok) -> uint32_t
 {
@@ -328,17 +321,17 @@ auto Scanner::try_read_ucn(const char *&start_ptr, const char *slash_ptr,
   return code_point;
 }
 
-// Scans a UCN that is part of an identifier.
+/// Scans a UCN that is part of an identifier.
 //
-// This makes sure that the lexed UCN is a valid character for an identifier.
-//
-// \param cur_ptr Buffer pointer that points to the slash ('\'). This pointer
-//                is updated to point past the end of the UCN only if the UCN
-//                is well-formed in an identifier.
-// \param size Size of the peeked slash character ('\').
-// \param result Token being formed.
-//
-// \return true if UCN is well-formed for an identifier.
+/// This makes sure that the lexed UCN is a valid character for an identifier.
+///
+/// \param cur_ptr Buffer pointer that points to the slash ('\'). This pointer
+///                is updated to point past the end of the UCN only if the UCN
+///                is well-formed in an identifier.
+/// \param size Size of the peeked slash character ('\').
+/// \param result Token being formed.
+///
+/// \return true if UCN is well-formed for an identifier.
 auto Scanner::try_advance_identifier_ucn(const char *&cur_ptr, int64_t size,
                                          Token &result) -> bool
 {
@@ -356,11 +349,11 @@ auto Scanner::try_advance_identifier_ucn(const char *&cur_ptr, int64_t size,
   return true;
 }
 
-// Scans a UTF-8 character that is part of an identifier.
+/// Scans a UTF-8 character that is part of an identifier.
 //
-// \param cur_ptr Buffer pointer at the start of the UTF-8 sequence.
-//
-// \return true if a UTF-8 sequence is parsed, false otherwise.
+/// \param cur_ptr Buffer pointer at the start of the UTF-8 sequence.
+///
+/// \return true if a UTF-8 sequence is parsed, false otherwise.
 auto Scanner::try_advance_identifier_utf8(const char *&cur_ptr) -> bool
 {
   cci_expects(!is_ascii(cur_ptr[0]));
@@ -399,13 +392,13 @@ auto Scanner::try_advance_identifier_utf8(const char *&cur_ptr) -> bool
 // digit: one of
 //   0123456789
 //
-// Scans an identifier. Assumes that the identifier's head is already consumed.
+/// Scans an identifier. Assumes that the identifier's head is already consumed.
 //
-// \param cur_ptr A pointer into the buffer that is past the first identifier's
-//                character.
-// \param result Token being formed.
-//
-// \return true if identifier was successfully formed.
+/// \param cur_ptr A pointer into the buffer that is past the first identifier's
+///                character.
+/// \param result Token being formed.
+///
+/// \return true if identifier was successfully formed.
 auto Scanner::lex_identifier(const char *cur_ptr, Token &result) -> bool
 {
   auto is_ident = [](char c) { return is_alphanum(c) || c == '_' || c == '$'; };
@@ -466,16 +459,16 @@ auto Scanner::lex_identifier(const char *cur_ptr, Token &result) -> bool
   return true;
 }
 
-// Scans a numeric literal constant, i.e. integer-constant and
-// floating-constant. Assumes that the first digit is already consumed.
+/// Scans a numeric literal constant (integer-constant or floating-constant).
+/// Assumes that the first digit is already consumed.
 //
-// This just matches a regex that validates such constants. Syntax checking is
-// delayed to semantic analysis.
-//
-// \param cur_ptr Pointer past the first digit of the numeric constant.
-// \param result Token being formed.
-//
-// \return true if numeric constant was successfully formed.
+/// This just matches a regex that validates such constants. Some syntax
+/// checking is delayed until semantic analysis.
+///
+/// \param cur_ptr Pointer past the first digit of the numeric constant.
+/// \param result Token being formed.
+///
+/// \return true if numeric constant was successfully formed.
 auto Scanner::lex_numeric_constant(const char *cur_ptr, Token &result) -> bool
 {
   auto [c, digit_size] = peek_char_and_size(cur_ptr);
@@ -509,13 +502,13 @@ auto Scanner::lex_numeric_constant(const char *cur_ptr, Token &result) -> bool
   return true;
 }
 
-// Skips a line comment, returning a pointer past the end of the comment.
-// Assumes that the // part is already lexed.
+/// Skips a line comment, returning a pointer past the end of the comment.
+/// Assumes that the // part is already lexed.
 //
-// \param cur_ptr Buffer pointer which points past the second '/' comment
-//                character.
-//
-// \return A pointer past the end of the comment, i.e. the newline.
+/// \param cur_ptr Buffer pointer which points past the second '/' comment
+///                character.
+///
+/// \return A pointer past the end of the comment, i.e. the newline.
 auto Scanner::skip_line_comment(const char *cur_ptr) -> const char *
 {
   auto [c, c_size] = peek_char_and_size(cur_ptr);
@@ -548,13 +541,13 @@ auto Scanner::skip_line_comment(const char *cur_ptr) -> const char *
   return cur_ptr;
 }
 
-// Skips a block comment, returning a pointer past the end of the comment, i.e.
-// after the */ part. Assumes that the // part is already lexed.
+/// Skips a block comment, returning a pointer past the end of the comment, i.e.
+/// after the '*/' part. Assumes that the // part is already lexed.
 //
-// \param cur_ptr Buffer pointer which points past the '*' from /*
-//                string.
-//
-// \return A pointer past the end of the comment.
+/// \param cur_ptr Buffer pointer which points past the '*' from /*
+///                string.
+///
+/// \return A pointer past the end of the comment.
 auto Scanner::skip_block_comment(const char *cur_ptr) -> const char *
 {
   auto [c, c_size] = peek_char_and_size(cur_ptr);
@@ -625,15 +618,15 @@ auto Scanner::skip_block_comment(const char *cur_ptr) -> const char *
 //    \x hexadecimal-digit
 //    hexadecimal-escape-sequence hexadecimal-digit
 //
-// Scans a character constant literal. Assumes that the prefix and ' are already
-// lexed.
+/// Scans a character constant literal. Assumes that the prefix and ' are already
+/// lexed.
 //
-// \param cur_ptr Buffer pointer that points past the ' character.
-// \param result Token being formed.
-// \param char_category Token category of this character constant. This is given
-//        by the character constant's prefix (or the lack thereof).
-//
-// \return true if character constant is successfully lexed.
+/// \param cur_ptr Buffer pointer that points past the ' character.
+/// \param result Token being formed.
+/// \param char_category Token category of this character constant. This is given
+///        by the character constant's prefix (or the lack thereof).
+///
+/// \return true if character constant is successfully lexed.
 auto Scanner::lex_character_constant(const char *cur_ptr, Token &result,
                                      const Category char_category) -> bool
 {
@@ -693,14 +686,14 @@ auto Scanner::lex_character_constant(const char *cur_ptr, Token &result,
 //      the double-quote ", backslash \, or new-line character.
 //    escape-sequence
 //
-// Scans a string literal. Assumes that the prefix and " are already lexed.
+/// Scans a string literal. Assumes that the prefix and " are already scanned.
 //
-// \param cur_ptr Buffer pointer that points pat the " character.
-// \param result Token being formed.
-// \param str_category Token category of this string literal. This is given by
-//        the string literals's prefix (or the lack thereof).
-//
-// \return true if string literal is successfully lexed.
+/// \param cur_ptr Buffer pointer that points pat the " character.
+/// \param result Token being formed.
+/// \param str_category Token category of this string literal. This is given by
+///        the string literals's prefix (or the lack thereof).
+///
+/// \return true if string literal is successfully lexed.
 auto Scanner::lex_string_literal(const char *cur_ptr, Token &result,
                                  const Category str_category) -> bool
 {
@@ -735,13 +728,13 @@ auto Scanner::lex_string_literal(const char *cur_ptr, Token &result,
   return true;
 }
 
-// Scans an identifier that starts with a UCN or a UTF-8 character.
+/// Scans an identifier that starts with a UCN or a UTF-8 character.
 //
-// \param cur_ptr Buffer pointer past the lexed code point.
-// \param code_point Identifier's UTF-8 code point head.
-// \param result Token being formed.
-//
-// \return true if identifier is lexed.
+/// \param cur_ptr Buffer pointer past the lexed code point.
+/// \param code_point Identifier's UTF-8 code point head.
+/// \param result Token being formed.
+///
+/// \return true if identifier is lexed.
 auto Scanner::lex_unicode(const char *cur_ptr, uint32_t code_point,
                           Token &result) -> bool
 {
@@ -755,12 +748,12 @@ auto Scanner::lex_unicode(const char *cur_ptr, uint32_t code_point,
   return true;
 }
 
-// Scans the next token in the source buffer.
+/// Scans the next token in the source buffer.
 //
-// \param cur_ptr Pointer into the source buffer from which to scan a token.
-// \param result Output parameter to which a lexed token is set on success.
-//
-// \return true if a token was lexed, and false if end of input is reached.
+/// \param cur_ptr Pointer into the source buffer from which to scan a token.
+/// \param result Output parameter to which a lexed token is set on success.
+///
+/// \return true if a token was lexed, and false if end of input is reached.
 auto Scanner::lex_token(const char *cur_ptr, Token &result) -> bool
 {
 scan:
@@ -1183,7 +1176,6 @@ scan:
   return true;
 }
 
-// Scans a token in the position `buffer_ptr`.
 auto Scanner::next_token() -> Token
 {
   if (Token result; lex_token(buffer_ptr, result))
