@@ -62,16 +62,10 @@ auto Parser::parse_expression() -> std::optional<arena_ptr<Expr>>
       Token lparen_tok = consume();
       res = parse_expression();
 
-      if (peek().is(Category::r_paren))
+      if (auto rparen_tok = expect_and_consume(Category::r_paren))
       {
-        Token rparen_tok = consume();
         res = sema.act_on_paren_expr(res.value(), lparen_tok.location(),
-                                     rparen_tok.location());
-      }
-      else
-      {
-        diag.report(peek().location(), "expected ')'");
-        diag.report(lparen_tok.location(), "to match this '('");
+                                     rparen_tok->location());
       }
 
       break;

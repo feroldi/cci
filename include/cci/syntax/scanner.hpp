@@ -67,7 +67,7 @@ public:
   /// whose category is `Category::eof`, and range is empty.
   ///
   /// Lexical errors aren't fatal, and when they occur, this returns a token
-  // whose category is `Category::invalid`. The next call to this function will
+  /// whose category is `Category::invalid`. The next call to this function will
   /// continue after the lexically invalid area.
   ///
   /// \return The next token in the stream.

@@ -1,11 +1,11 @@
-#pragma once
-
 #include "cci/ast/ast_context.hpp"
+
+namespace cci {
 
 void ASTContext::init_builtin_types()
 {
-  auto make_builtin = [this] (BuiltinTypeKind kind) {
-    return QualifiedType(new (*this) BuiltinType(kind), Qualifiers::None);
+  auto make_builtin = [this](BuiltinTypeKind kind) {
+    return QualType(new (*this) BuiltinType(kind), Qualifiers::None);
   };
 
   void_ty = make_builtin(BuiltinTypeKind::Void);
@@ -28,3 +28,5 @@ void ASTContext::init_builtin_types()
   double_ty = make_builtin(BuiltinTypeKind::Double);
   long_double_ty = make_builtin(BuiltinTypeKind::LongDouble);
 }
+
+} // namespace cci

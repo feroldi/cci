@@ -1,6 +1,7 @@
 #pragma once
 
 #include "cci/syntax/source_map.hpp"
+#include "cci/syntax/token.hpp"
 #include "cci/util/contracts.hpp"
 #include "cci/util/small_vector.hpp"
 #include "fmt/format.h"
@@ -8,6 +9,7 @@
 #include <functional>
 #include <optional>
 #include <string>
+#include <variant>
 
 namespace cci::diag {
 struct Handler;
@@ -15,10 +17,13 @@ struct Handler;
 /// Information about a diagnostic.
 struct Diagnostic
 {
+  using Arg = std::variant<Category, srcmap::Range>;
+
   srcmap::SourceLoc loc; ///< Location from where the diagnostic was reported.
   std::string message; ///< The diagnostic message.
   std::vector<srcmap::Range> ranges; ///< Location ranges that are related to
                                      ///< this diagnostic.
+  std::vector<Arg> args; ///< Arguments for the format message.
 
   Diagnostic(srcmap::SourceLoc loc, std::string message)
     : loc(loc), message(std::move(message))
@@ -41,6 +46,13 @@ struct DiagnosticBuilder
   auto range(srcmap::Range range) -> DiagnosticBuilder &
   {
     this->diag->ranges.push_back(range);
+    return *this;
+  }
+
+  /// Adds an argument to the diagnostic.
+  auto arg(Diagnostic::Arg arg) -> DiagnosticBuilder &
+  {
+    this->diag->args.push_back(std::move(arg));
     return *this;
   }
 
