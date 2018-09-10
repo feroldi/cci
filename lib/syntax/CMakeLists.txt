@@ -11,6 +11,3 @@ target_include_directories(cci_syntax
   PUBLIC $<INSTALL_INTERFACE:include>)
 target_link_libraries(cci_syntax PUBLIC cci_util cci_sema fmt::fmt)
 target_compile_features(cci_syntax PUBLIC cxx_std_17)
-install(TARGETS cci_syntax
-        EXPORT ${PROJECT_NAME}-targets
-        DESTINATION ${CMAKE_INSTALL_LIBDIR})

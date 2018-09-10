@@ -10,7 +10,7 @@
 #define __has_builtin(x) 0
 #endif
 
-#if CCI_ENABLE_CONTRACTS
+#if CCI_CONTRACTS
 #include <cassert>
 #include <stdexcept>
 
@@ -63,6 +63,6 @@ struct unreachable_exception : std::runtime_error
 #define cci_unreachable() std::terminate()
 #endif
 
-#endif // if CCI_ENABLE_CONTRACTS
+#endif // if CCI_CONTRACTS
 
 } // namespace cci

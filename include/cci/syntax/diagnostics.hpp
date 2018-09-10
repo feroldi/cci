@@ -57,7 +57,7 @@ struct DiagnosticBuilder
   }
 
   /// Hands the diagnostic to the handler.
-  ~DiagnosticBuilder() noexcept(!CCI_ENABLE_CONTRACTS);
+  ~DiagnosticBuilder() noexcept(!CCI_CONTRACTS);
 
 private:
   Handler &handler; ///< The handler that will be handed the diagnostic.

@@ -2,7 +2,7 @@
 
 namespace cci::diag {
 
-DiagnosticBuilder::~DiagnosticBuilder() noexcept(!CCI_ENABLE_CONTRACTS)
+DiagnosticBuilder::~DiagnosticBuilder() noexcept(!CCI_CONTRACTS)
 {
   this->handler.emit(std::move(diag));
 }
