@@ -9,8 +9,6 @@ include(CTest)
 
 option(CCI_CONTRACTS "Enable contracts (assertions). This makes the binary slow." ON)
 
-find_package(FMT 5 REQUIRED)
-
 add_subdirectory(lib)
 if (BUILD_TESTING)
   add_subdirectory(unittest)

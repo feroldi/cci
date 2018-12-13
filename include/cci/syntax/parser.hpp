@@ -29,10 +29,12 @@ private:
 
     auto expect_and_consume(Category category) -> std::optional<Token>
     {
-        if (peek().category() == category)
+        using diag::Diag;
+        if (peek().is(category))
             return consume();
 
-        diag.report(peek().location(), "expected '{}'").arg(category);
+        diag.report(peek().location(), Diag::expected_but_got)
+            .args(category, peek().category());
         return std::nullopt;
     }
 

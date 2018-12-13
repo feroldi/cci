@@ -4,7 +4,6 @@
 #include "cci/syntax/token.hpp"
 #include "cci/util/contracts.hpp"
 #include "cci/util/small_vector.hpp"
-#include "fmt/format.h"
 #include <atomic>
 #include <functional>
 #include <optional>
@@ -12,31 +11,54 @@
 #include <variant>
 
 namespace cci::diag {
+
 struct Handler;
+
+enum class Diag
+{
+    expected_but_got,
+    integer_literal_overflow,
+    integer_literal_too_large,
+    invalid_digit,
+    invalid_suffix,
+    missing_exponent_digits,
+    missing_binary_exponent,
+    missing_ucn_escape_hex_digits,
+    invalid_ucn,
+    escape_out_of_range,
+    missing_escape_digits,
+    unknown_escape_sequence,
+    unicode_too_large_for_unit,
+    char_const_empty,
+    char_const_overflow,
+    nonstandard_string_concat,
+    incomplete_ucn,
+    unterminated_comment,
+    unterminated_char_const,
+    unterminated_string_literal,
+    unknown_character,
+    invalid_unicode_char,
+};
 
 /// Information about a diagnostic.
 struct Diagnostic
 {
-    using Arg = std::variant<Category, srcmap::Range>;
+    using Arg = std::variant<Category, char>;
 
     srcmap::SourceLoc loc; ///< Location from where the diagnostic was reported.
-    std::string message; ///< The diagnostic message.
+    Diag msg; ///< The diagnostic message.
     std::vector<srcmap::Range> ranges; ///< Location ranges that are related to
                                        ///< this diagnostic.
     std::vector<Arg> args; ///< Arguments for the format message.
 
-    Diagnostic(srcmap::SourceLoc loc, std::string message)
-        : loc(loc), message(std::move(message))
-    {}
+    Diagnostic(srcmap::SourceLoc loc, Diag msg) : loc(loc), msg(msg) {}
 };
 
 /// Helper class to construct a `Diagnostic`.
 struct DiagnosticBuilder
 {
-    DiagnosticBuilder(srcmap::SourceLoc loc, std::string message,
-                      Handler &handler)
-        : handler(handler)
-        , diag(std::make_unique<Diagnostic>(loc, std::move(message)))
+    DiagnosticBuilder(srcmap::SourceLoc loc, Diag msg, Handler &handler)
+        : handler(handler), diag(std::make_unique<Diagnostic>(loc, msg))
     {}
 
     DiagnosticBuilder(DiagnosticBuilder &&) = default;
@@ -50,9 +72,10 @@ struct DiagnosticBuilder
     }
 
     /// Adds an argument to the diagnostic.
-    auto arg(Diagnostic::Arg arg) -> DiagnosticBuilder &
+    template <typename... Args>
+    auto args(Args &&... args) -> DiagnosticBuilder &
     {
-        this->diag->args.push_back(std::move(arg));
+        ((void)this->diag->args.push_back(std::forward<Args>(args)), ...);
         return *this;
     }
 
@@ -93,10 +116,10 @@ struct Handler
     }
 
     /// Helper function to facilitate the construction of a `DiagnosticBuilder`.
-    auto report(srcmap::ByteLoc loc, std::string message) -> DiagnosticBuilder
+    auto report(srcmap::ByteLoc loc, Diag msg) -> DiagnosticBuilder
     {
-        DiagnosticBuilder builder(this->map.lookup_source_location(loc),
-                                  std::move(message), *this);
+        DiagnosticBuilder builder(this->map.lookup_source_location(loc), msg,
+                                  *this);
         return builder;
     }
 
@@ -136,54 +159,4 @@ private:
 /// Returns a diagnostic emitter that just ignores diagnostics.
 auto ignoring_emitter() -> Handler::Emitter;
 
-/// Selection type for `fmt::format`.
-//
-/// This is used to select between cases in a format string. For example,
-///
-///     fmt::format("this is {good|bad}", select(0))
-///
-/// will output `"this is good"`.
-enum class select : size_t
-{
-};
-
 } // namespace cci::diag
-
-namespace fmt {
-template <>
-struct formatter<cci::diag::select>
-{
-    small_vector<std::string, 4> cases;
-
-    auto parse(parse_context &ctx) -> parse_context::iterator
-    {
-        auto it = begin(ctx); // "good|bad|ugly"
-        auto prev = it;
-        while (it != end(ctx))
-        {
-            if (*it == '}')
-                break;
-            if (*it == '|')
-            {
-                cases.emplace_back(prev, it);
-                prev = std::next(it);
-            }
-            ++it;
-        }
-        cases.emplace_back(prev, it);
-        return it;
-    }
-
-    template <typename FormatContext>
-    auto format(cci::diag::select opt, FormatContext &ctx)
-    {
-        if (empty(cases))
-            throw format_error("selector format is empty");
-        if (opt >= cci::diag::select(cases.size()))
-            throw format_error(
-                ::fmt::format("selector({}) doesn't exist, max is {}",
-                              static_cast<size_t>(opt), cases.size()));
-        return format_to(begin(ctx), "{}", cases[static_cast<size_t>(opt)]);
-    }
-};
-} // namespace fmt

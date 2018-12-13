@@ -14,21 +14,11 @@
 
 using namespace cci;
 
-// Returns the correct selector (i.e. if it's a decimal, octal, or hexadecimal)
-// for a given radix. This is used only for diagnostics to select the
-// appropriate message for a given number base.
-static auto select_radix(uint32_t radix) -> diag::select
-{
-    return diag::select(
-        radix == 10 ? 0 : radix == 8 ? 1 : radix == 16 ? 2 : cci_unreachable());
-}
-
 static void report(Scanner &scan, const char *char_ptr, srcmap::ByteLoc tok_loc,
-                   const char *tok_begin, std::string message)
+                   const char *tok_begin, diag::Diag msg)
 {
     auto &diag = scan.diagnostics();
-    diag.report(scan.character_location(tok_loc, tok_begin, char_ptr),
-                std::move(message));
+    diag.report(scan.character_location(tok_loc, tok_begin, char_ptr), msg);
 }
 
 // Returns the respective character type width for a given string literal or
@@ -68,10 +58,7 @@ NumericConstantParser::NumericConstantParser(Scanner &scanner,
 
         if (is_hexdigit(s[0]) && *s != 'e' && *s != 'E')
         {
-            report(scanner, s, tok_loc, tok_begin,
-                   fmt::format("invalid digit '{0}' for "
-                               "{1:decimal|octal|hexadecimal} integer constant",
-                               *s, select_radix(radix)));
+            report(scanner, s, tok_loc, tok_begin, diag::Diag::invalid_digit);
             has_error = true;
             return;
         }
@@ -96,7 +83,7 @@ NumericConstantParser::NumericConstantParser(Scanner &scanner,
             if (digs_start == s)
             {
                 report(scanner, exponent, tok_loc, tok_begin,
-                       "exponent needs a sequence of digits");
+                       diag::Diag::missing_exponent_digits);
                 has_error = true;
                 return;
             }
@@ -137,15 +124,14 @@ NumericConstantParser::NumericConstantParser(Scanner &scanner,
                 if (digs_start == s)
                 {
                     report(scanner, exponent, tok_loc, tok_begin,
-                           "exponent needs a sequence of digits");
+                           diag::Diag::missing_exponent_digits);
                     has_error = true;
                 }
             }
             else if (has_period)
             {
                 report(scanner, tok_begin, tok_loc, tok_begin,
-                       "hexadecimal floating constant is missing the binary "
-                       "exponent");
+                       diag::Diag::missing_binary_exponent);
                 has_error = true;
             }
         }
@@ -222,12 +208,7 @@ NumericConstantParser::NumericConstantParser(Scanner &scanner,
     // If it hasn't maximal-munched, then the suffix is invalid.
     if (s != tok_end)
     {
-        report(scanner, s, tok_loc, tok_begin,
-               fmt::format("invalid suffix '{0}' for "
-                           "{1:decimal|octal|hexadecimal} "
-                           "{2:floating point|integer} constant",
-                           std::string_view(digit_end, tok_end - digit_end),
-                           select_radix(radix), diag::select(is_fp ? 0 : 1)));
+        report(scanner, s, tok_loc, tok_begin, diag::Diag::invalid_suffix);
         has_error = true;
     }
 }
@@ -317,7 +298,7 @@ static auto parse_ucn_escape(Scanner &scan, srcmap::ByteLoc tok_loc,
     if (tok_ptr == tok_end || !is_hexdigit(*tok_ptr))
     {
         report(scan, escape_begin, tok_loc, tok_begin,
-               "universal character name escape has no hexadecimal digits");
+               diag::Diag::missing_ucn_escape_hex_digits);
         return false;
     }
 
@@ -336,8 +317,7 @@ static auto parse_ucn_escape(Scanner &scan, srcmap::ByteLoc tok_loc,
     // is missing digits, therefore is invalid.
     if (num_countdown)
     {
-        report(scan, escape_begin, tok_loc, tok_begin,
-               "invalid universal character name");
+        report(scan, escape_begin, tok_loc, tok_begin, diag::Diag::invalid_ucn);
         return false;
     }
 
@@ -345,8 +325,7 @@ static auto parse_ucn_escape(Scanner &scan, srcmap::ByteLoc tok_loc,
               *code_point <= 0xDFFF) || // high and low surrogates
              *code_point > 0x10FFFF) // maximum UTF-32 code point
     {
-        report(scan, escape_begin, tok_loc, tok_begin,
-               "invalid universal character name");
+        report(scan, escape_begin, tok_loc, tok_begin, diag::Diag::invalid_ucn);
         return false;
     }
 
@@ -469,7 +448,7 @@ static auto parse_escape_sequence(Scanner &scan, srcmap::ByteLoc tok_loc,
             if (char_width < 32 && (result >> char_width) != 0)
             {
                 report(scan, escape_begin, tok_loc, tok_begin,
-                       "octal escape sequence out of range");
+                       diag::Diag::escape_out_of_range);
                 *has_error = true;
                 // Truncate the result.
                 result &= ~0U >> (32 - char_width);
@@ -483,7 +462,7 @@ static auto parse_escape_sequence(Scanner &scan, srcmap::ByteLoc tok_loc,
             if (tok_ptr == tok_end || !is_hexdigit(*tok_ptr))
             {
                 report(scan, escape_begin, tok_loc, tok_begin,
-                       "hexadecimal escape sequence has no digits");
+                       diag::Diag::missing_escape_digits);
                 *has_error = true;
                 break;
             }
@@ -516,7 +495,7 @@ static auto parse_escape_sequence(Scanner &scan, srcmap::ByteLoc tok_loc,
             if (overflowed)
             {
                 report(scan, escape_begin, tok_loc, tok_begin,
-                       "hex escape sequence out of range");
+                       diag::Diag::escape_out_of_range);
                 *has_error = true;
             }
 
@@ -524,7 +503,7 @@ static auto parse_escape_sequence(Scanner &scan, srcmap::ByteLoc tok_loc,
         }
         default:
             report(scan, escape_begin, tok_loc, tok_begin,
-                   "unknown escape sequence");
+                   diag::Diag::unknown_escape_sequence);
             *has_error = true;
     }
 
@@ -602,10 +581,8 @@ CharConstantParser::CharConstantParser(Scanner &scanner,
                 {
                     if (*save_buf_begin > largest_value_for_category)
                     {
-                        diag.report(
-                            tok_loc,
-                            "unicode character is too large, and can't be "
-                            "represented in a single code unit");
+                        diag.report(tok_loc,
+                                    diag::Diag::unicode_too_large_for_unit);
                         has_error = true;
                         break;
                     }
@@ -629,10 +606,7 @@ CharConstantParser::CharConstantParser(Scanner &scanner,
                 has_error = true;
             else if (*buf_begin > largest_value_for_category)
             {
-                diag.report(
-                    tok_loc,
-                    "unicode character is too large, and can't be represented "
-                    "in a single code unit");
+                diag.report(tok_loc, diag::Diag::unicode_too_large_for_unit);
                 has_error = true;
             }
             ++buf_begin;
@@ -652,7 +626,7 @@ CharConstantParser::CharConstantParser(Scanner &scanner,
 
     if (codepoint_buffer.empty())
     {
-        diag.report(tok_loc, "character constant is empty");
+        diag.report(tok_loc, diag::Diag::char_const_empty);
         has_error = true;
         return;
     }
@@ -675,7 +649,7 @@ CharConstantParser::CharConstantParser(Scanner &scanner,
 
         if (overflowed)
         {
-            diag.report(tok_loc, "character constant is too large");
+            diag.report(tok_loc, diag::Diag::char_const_overflow);
             has_error = true;
         }
     }
@@ -745,10 +719,8 @@ StringLiteralParser::StringLiteralParser(Scanner &scanner,
                 //
                 // Which means wide string literals (ones prefixed with L, u or
                 // U) could be concatenated.
-                diag.report(
-                    string_toks[i].location(),
-                    "concatenation of different categories of strings is not "
-                    "standard compliant");
+                diag.report(string_toks[i].location(),
+                            diag::Diag::nonstandard_string_concat);
                 has_error = true;
             }
         }

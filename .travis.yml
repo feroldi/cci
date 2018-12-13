@@ -34,15 +34,6 @@ install:
   - CMAKE_URL="https://cmake.org/files/v${CMAKE_VERSION%.[0-9]}/cmake-$CMAKE_VERSION-Linux-x86_64.tar.gz"
   - mkdir $CMAKE_BIN_PATH && wget --no-check-certificate -O - ${CMAKE_URL} | tar --strip-components=1 -xz -C $CMAKE_BIN_PATH
   - export PATH=$CMAKE_BIN_PATH/bin:$PATH
-
-  # Install fmtlib 5.0.0.
-  - FMT_VERSION=5386f1df20392a08844f5034e8436c6ec7ce0b03
-  - FMT_ARCHIVE_PATH=$HOME/fmt.tar.gz
-  - FMT_BIN_PATH=$HOME/fmt
-  - wget https://github.com/fmtlib/fmt/archive/$FMT_VERSION.tar.gz -O $FMT_ARCHIVE_PATH
-  - mkdir $FMT_BIN_PATH
-  - tar xf $FMT_ARCHIVE_PATH --strip-components=1 -C $FMT_BIN_PATH
-  - (cd $FMT_BIN_PATH; cmake -DFMT_TEST=OFF -DBUILD_SHARED_LIBS=ON . && cmake --build . && sudo make install)
 script:
   - $CXX --version
   - cmake --version

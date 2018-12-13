@@ -1,7 +1,6 @@
 #pragma once
 
 #include "cci/syntax/source_map.hpp"
-#include "fmt/format.h"
 #include <string>
 #include <string_view>
 
@@ -231,20 +230,3 @@ private:
 };
 
 } // namespace cci
-
-namespace fmt {
-template <>
-struct formatter<cci::Category>
-{
-    auto parse(parse_context &ctx) -> parse_context::iterator
-    {
-        return begin(ctx);
-    }
-
-    template <typename FormatContext>
-    auto format(cci::Category tok_category, FormatContext &ctx)
-    {
-        return format_to(begin(ctx), cci::to_string(tok_category));
-    }
-};
-} // namespace fmt

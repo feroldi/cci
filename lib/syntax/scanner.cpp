@@ -276,7 +276,7 @@ auto Scanner::try_read_ucn(const char *&start_ptr, const char *slash_ptr,
         const uint32_t value = hexdigit_value(c);
         if (value == -1U)
         {
-            report(slash_ptr, "incomplete universal character name");
+            report(slash_ptr, diag::Diag::incomplete_ucn);
             return 0;
         }
         code_point <<= 4;
@@ -307,14 +307,14 @@ auto Scanner::try_read_ucn(const char *&start_ptr, const char *slash_ptr,
     {
         if (code_point != 0x24 && code_point != 0x40 && code_point != 0x60)
         {
-            report(slash_ptr, "invalid universal character name");
+            report(slash_ptr, diag::Diag::invalid_ucn);
             return 0;
         }
     }
     // high and low surrogates
     else if (code_point >= 0xD800 && code_point <= 0xDFFF)
     {
-        report(slash_ptr, "invalid universal character name");
+        report(slash_ptr, diag::Diag::invalid_ucn);
         return 0;
     }
 
@@ -532,7 +532,7 @@ auto Scanner::skip_line_comment(const char *cur_ptr) -> const char *
         // never happen, we still let this check here.
         if (c == '\0')
         {
-            report(cur_ptr, "unterminated line comment");
+            report(cur_ptr, diag::Diag::unterminated_comment);
             break;
         }
 
@@ -575,7 +575,7 @@ auto Scanner::skip_block_comment(const char *cur_ptr) -> const char *
         // Missing the terminating */ block comment.
         if (c == '\0')
         {
-            report(cur_ptr, "unterminated block comment");
+            report(cur_ptr, diag::Diag::unterminated_comment);
             break;
         }
 
@@ -643,7 +643,7 @@ auto Scanner::lex_character_constant(const char *cur_ptr, Token &result,
 
     if (c == '\'')
     {
-        report(buffer_ptr, "character constant is empty");
+        report(buffer_ptr, diag::Diag::char_const_empty);
         form_token(result, cur_ptr, Category::unknown);
         return true;
     }
@@ -657,8 +657,7 @@ auto Scanner::lex_character_constant(const char *cur_ptr, Token &result,
 
         else if (is_newline(c) || c == '\0')
         {
-            report(buffer_ptr, fmt::format("missing terminating ' for this {}",
-                                           char_category));
+            report(buffer_ptr, diag::Diag::unterminated_char_const);
             form_token(result, std::prev(cur_ptr), Category::unknown);
             return true;
         }
@@ -717,8 +716,7 @@ auto Scanner::lex_string_literal(const char *cur_ptr, Token &result,
 
         else if (is_newline(c) || c == '\0')
         {
-            report(buffer_ptr, fmt::format("missing terminating \" for this {}",
-                                           str_category));
+            report(buffer_ptr, diag::Diag::unterminated_string_literal);
             form_token(result, std::prev(cur_ptr), Category::unknown);
             return true;
         }
@@ -1180,17 +1178,9 @@ scan:
     if (category == Category::unknown)
     {
         if (is_ascii(ch))
-        {
-            if (is_printable(ch))
-                report(buffer_ptr, fmt::format("unknown character '{}'", ch));
-            else
-                report(buffer_ptr, fmt::format("unknown character '0x{0:0>4X}'",
-                                               static_cast<uint32_t>(ch)));
-        }
+            report(buffer_ptr, diag::Diag::unknown_character).args(ch);
         else
-            report(buffer_ptr,
-                   fmt::format("invalid unicode character <U+{0:0>4X}>",
-                               static_cast<uint8_t>(ch)));
+            report(buffer_ptr, diag::Diag::invalid_unicode_char);
     }
 
     form_token(result, cur_ptr, category);

@@ -178,12 +178,11 @@ private:
         buffer_ptr = tok_end;
     }
 
-    auto report(const char *loc_ptr, std::string message) const
+    auto report(const char *loc_ptr, diag::Diag msg) const
         -> diag::DiagnosticBuilder
     {
         return this->diag.report(
-            this->source_map().ptr_to_byteloc(this->file_loc, loc_ptr),
-            std::move(message));
+            this->source_map().ptr_to_byteloc(this->file_loc, loc_ptr), msg);
     }
 };
 

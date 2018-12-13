@@ -46,7 +46,7 @@ auto Sema::act_on_numeric_constant(const Token &tok)
         {
             // We could just stop here, but let's be friends with the user and
             // try to parse and diagnose the source code as much as possible.
-            diag.report(tok.location(), "integer literal is too large");
+            diag.report(tok.location(), diag::Diag::integer_literal_overflow);
         }
 
         bool allow_unsigned = literal.is_unsigned || literal.radix != 10;
@@ -106,10 +106,7 @@ auto Sema::act_on_numeric_constant(const Token &tok)
             // suggests doing), and Clang settles down to unsigned long long.
             // Given we don't support any extended types, unsigned long long
             // will be the chosen one.
-            diag.report(
-                tok.location(),
-                "integer literal is too large to fit in any standard type; "
-                "leaving it as unsigned long long");
+            diag.report(tok.location(), diag::Diag::integer_literal_too_large);
             integer_ty = context.ulong_long_ty;
             width = context.target_info().long_long_width;
         }
