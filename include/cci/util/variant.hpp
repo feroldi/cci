@@ -7,16 +7,16 @@ namespace cci {
 template <typename T, typename Variant>
 inline constexpr auto is(const Variant &v) -> bool
 {
-  return std::holds_alternative<T>(v);
+    return std::holds_alternative<T>(v);
 }
 
 template <typename... Ts>
 struct overloaded : Ts...
 {
-  using Ts::operator()...;
+    using Ts::operator()...;
 };
 
 template <typename... T>
-overloaded(T...) -> overloaded<T...>;
+overloaded(T...)->overloaded<T...>;
 
 } // namespace cci

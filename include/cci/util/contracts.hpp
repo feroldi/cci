@@ -24,34 +24,34 @@ namespace cci {
 
 struct broken_contract : std::runtime_error
 {
-  broken_contract(const char *msg) : std::runtime_error(msg) {}
+    broken_contract(const char *msg) : std::runtime_error(msg) {}
 };
 
 struct unreachable_exception : std::runtime_error
 {
-  unreachable_exception(const char *msg) : std::runtime_error(msg) {}
+    unreachable_exception(const char *msg) : std::runtime_error(msg) {}
 };
 
 /// I.6: Prefer Expects() for expressing preconditions.
 /// See
 /// https://github.com/isocpp/CppCoreGuidelines/blob/master/CppCoreGuidelines.md#Ri-expects
 #define cci_expects(cond)                                                      \
-  ((cond) ? void(0)                                                            \
-          : throw broken_contract("precondition failure at  " __FILE__         \
-                                  ":" STRINGIFY(__LINE__) ": " #cond))
+    ((cond) ? void(0)                                                          \
+            : throw broken_contract("precondition failure at  " __FILE__       \
+                                    ":" STRINGIFY(__LINE__) ": " #cond))
 
 /// I.8: Prefer Ensures() for expressing postconditions.
 /// See
 /// https://github.com/isocpp/CppCoreGuidelines/blob/master/CppCoreGuidelines.md#Ri-ensures
 #define cci_ensures(cond)                                                      \
-  ((cond) ? void(0)                                                            \
-          : throw broken_contract("postcondition failure at  " __FILE__        \
-                                  ":" STRINGIFY(__LINE__) ": " #cond))
+    ((cond) ? void(0)                                                          \
+            : throw broken_contract("postcondition failure at  " __FILE__      \
+                                    ":" STRINGIFY(__LINE__) ": " #cond))
 
 /// Unreachable code must be marked with this.
 #define cci_unreachable()                                                      \
-  (throw unreachable_exception("unreachable code reached at " __FILE__         \
-                               ":" STRINGIFY(__LINE__)))
+    (throw unreachable_exception("unreachable code reached at " __FILE__       \
+                                 ":" STRINGIFY(__LINE__)))
 
 #else
 

@@ -1,7 +1,7 @@
 #pragma once
 
-#include <type_traits>
 #include <optional>
+#include <type_traits>
 
 namespace cci {
 

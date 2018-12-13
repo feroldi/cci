@@ -1,6 +1,5 @@
 Language: Cpp
-# BasedOnStyle: LLVM
-AccessModifierOffset: -2
+AccessModifierOffset: -4
 AlignAfterOpenBracket: Align
 AlignConsecutiveAssignments: false
 AlignConsecutiveDeclarations: false
@@ -29,7 +28,7 @@ BraceWrapping:
   AfterObjCDeclaration: true
   AfterStruct: true
   AfterUnion: true
-  #AfterExternBlock: true
+  AfterExternBlock: false
   BeforeCatch: true
   BeforeElse: true
   IndentBraces: false
@@ -41,15 +40,15 @@ BreakConstructorInitializersBeforeComma: true
 ColumnLimit: 80
 CommentPragmas: '^ IWYU pragma:'
 ConstructorInitializerAllOnOneLineOrOnePerLine: true
-ConstructorInitializerIndentWidth: 2
-ContinuationIndentWidth: 2
+ConstructorInitializerIndentWidth: 4
+ContinuationIndentWidth: 4
 Cpp11BracedListStyle: true
 DisableFormat: false
 ExperimentalAutoDetectBinPacking: false
 FixNamespaceComments: true
 #ForEachMacros: []
 IndentCaseLabels: true
-IndentWidth: 2
+IndentWidth: 4
 IndentWrappedFunctionNames: false
 KeepEmptyLinesAtTheStartOfBlocks: true
 MacroBlockBegin: ''
@@ -77,6 +76,6 @@ SpacesInCStyleCastParentheses: false
 SpacesInParentheses: false
 SpacesInSquareBrackets: false
 Standard: Cpp11
-TabWidth: 2
+TabWidth: 4
 DerivePointerAlignment: false
 UseTab: Never

@@ -11,78 +11,78 @@ using namespace cci;
 
 auto Parser::peek(size_t lookahead) -> Token
 {
-  cci_expects(peeked_toks.size() <= lookahead);
+    cci_expects(peeked_toks.size() <= lookahead);
 
-  if (lookahead < peeked_toks.size())
-    return peeked_toks[lookahead];
+    if (lookahead < peeked_toks.size())
+        return peeked_toks[lookahead];
 
-  Token peeking = scanner.next_token();
-  peeked_toks.push_back(peeking);
-  cci_ensures(lookahead + 1 == peeked_toks.size());
-  return peeking;
+    Token peeking = scanner.next_token();
+    peeked_toks.push_back(peeking);
+    cci_ensures(lookahead + 1 == peeked_toks.size());
+    return peeking;
 }
 
 auto Parser::consume() -> Token
 {
-  Token consumed = peek();
-  std::move(std::next(peeked_toks.begin()), peeked_toks.end(),
-            peeked_toks.begin());
-  peeked_toks.pop_back();
-  return consumed;
+    Token consumed = peek();
+    std::move(std::next(peeked_toks.begin()), peeked_toks.end(),
+              peeked_toks.begin());
+    peeked_toks.pop_back();
+    return consumed;
 }
 
 auto Parser::parse_expression() -> std::optional<arena_ptr<Expr>>
 {
-  std::optional<arena_ptr<Expr>> res;
+    std::optional<arena_ptr<Expr>> res;
 
-  switch (peek().category())
-  {
-    default: cci_unreachable();
-    case Category::numeric_constant:
-      res = sema.act_on_numeric_constant(consume());
-      break;
-
-    case Category::char_constant:
-    case Category::utf8_char_constant:
-    case Category::utf16_char_constant:
-    case Category::utf32_char_constant:
-    case Category::wide_char_constant:
-      res = sema.act_on_char_constant(consume());
-      break;
-
-    case Category::string_literal:
-    case Category::utf8_string_literal:
-    case Category::utf16_string_literal:
-    case Category::utf32_string_literal:
-    case Category::wide_string_literal:
-      res = parse_string_literal_expression();
-      break;
-    case Category::l_paren:
+    switch (peek().category())
     {
-      Token lparen_tok = consume();
-      res = parse_expression();
+        default: cci_unreachable();
+        case Category::numeric_constant:
+            res = sema.act_on_numeric_constant(consume());
+            break;
 
-      if (auto rparen_tok = expect_and_consume(Category::r_paren))
-      {
-        res = sema.act_on_paren_expr(res.value(), lparen_tok.location(),
-                                     rparen_tok->location());
-      }
+        case Category::char_constant:
+        case Category::utf8_char_constant:
+        case Category::utf16_char_constant:
+        case Category::utf32_char_constant:
+        case Category::wide_char_constant:
+            res = sema.act_on_char_constant(consume());
+            break;
 
-      break;
+        case Category::string_literal:
+        case Category::utf8_string_literal:
+        case Category::utf16_string_literal:
+        case Category::utf32_string_literal:
+        case Category::wide_string_literal:
+            res = parse_string_literal_expression();
+            break;
+        case Category::l_paren:
+        {
+            Token lparen_tok = consume();
+            res = parse_expression();
+
+            if (auto rparen_tok = expect_and_consume(Category::r_paren))
+            {
+                res = sema.act_on_paren_expr(res.value(), lparen_tok.location(),
+                                             rparen_tok->location());
+            }
+
+            break;
+        }
     }
-  }
 
-  return res;
+    return res;
 }
 
 auto Parser::parse_string_literal_expression()
-  -> std::optional<arena_ptr<StringLiteral>>
+    -> std::optional<arena_ptr<StringLiteral>>
 {
-  cci_expects(is_string_literal(peek().category()));
+    cci_expects(is_string_literal(peek().category()));
 
-  small_vector<Token, 4> string_toks{consume()};
-  while (is_string_literal(peek().category()))
-    string_toks.push_back(consume());
+    small_vector<Token, 4> string_toks{consume()};
+    while (is_string_literal(peek().category()))
+        string_toks.push_back(consume());
 
-  return sema.act_on_string_literal(string_toks);
+    return sema.act_on_string_literal(string_toks);
 }

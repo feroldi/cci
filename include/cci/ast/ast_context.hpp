@@ -14,70 +14,71 @@ namespace cci {
 // Side-table and resource manager of the AST.
 struct ASTContext
 {
-  ASTContext(const srcmap::SourceMap &src_map, diag::Handler &diag,
-             const TargetInfo &target)
-    : src_map(src_map), diag(diag), target(target)
-  {
-    init_builtin_types();
-  }
+    ASTContext(const srcmap::SourceMap &src_map, diag::Handler &diag,
+               const TargetInfo &target)
+        : src_map(src_map), diag(diag), target(target)
+    {
+        init_builtin_types();
+    }
 
-  auto source_map() const -> const srcmap::SourceMap & { return src_map; }
-  auto diagnostics() const -> diag::Handler & { return diag; }
-  auto target_info() const -> const TargetInfo & { return target; }
+    auto source_map() const -> const srcmap::SourceMap & { return src_map; }
+    auto diagnostics() const -> diag::Handler & { return diag; }
+    auto target_info() const -> const TargetInfo & { return target; }
 
-  [[nodiscard]] auto
-  allocate(size_t bytes, size_t alignment = alignof(std::max_align_t)) const
-    -> void *
-  {
-    return arena_resource.allocate(bytes, alignment);
-  }
+    [[nodiscard]] auto
+    allocate(size_t bytes, size_t alignment = alignof(std::max_align_t)) const
+        -> void *
+    {
+        return arena_resource.allocate(bytes, alignment);
+    }
 
-  template <typename T>
-  [[nodiscard]] auto allocate(size_t num = 1u) const -> T *
-  {
-    return static_cast<T *>(
-      arena_resource.allocate(num * sizeof(T), alignof(T)));
-  }
+    template <typename T>
+    [[nodiscard]] auto allocate(size_t num = 1u) const -> T *
+    {
+        return static_cast<T *>(
+            arena_resource.allocate(num * sizeof(T), alignof(T)));
+    }
 
 public:
-  // Builtin C types. These are all canonical forms of the primitive/builtin
-  // types. They are allocated in the arena memory resource when ASTContext is
-  // constructed.
-  QualType void_ty;
-  QualType bool_ty;
-  QualType char_ty;
-  QualType schar_ty;
-  QualType uchar_ty;
-  QualType wchar_ty;
-  QualType char16_t_ty;
-  QualType char32_t_ty;
-  QualType short_ty;
-  QualType ushort_ty;
-  QualType int_ty;
-  QualType uint_ty;
-  QualType long_ty;
-  QualType ulong_ty;
-  QualType long_long_ty;
-  QualType ulong_long_ty;
-  QualType float_ty;
-  QualType double_ty;
-  QualType long_double_ty;
+    // Builtin C types. These are all canonical forms of the primitive/builtin
+    // types. They are allocated in the arena memory resource when ASTContext is
+    // constructed.
+    QualType void_ty;
+    QualType bool_ty;
+    QualType char_ty;
+    QualType schar_ty;
+    QualType uchar_ty;
+    QualType wchar_ty;
+    QualType char16_t_ty;
+    QualType char32_t_ty;
+    QualType short_ty;
+    QualType ushort_ty;
+    QualType int_ty;
+    QualType uint_ty;
+    QualType long_ty;
+    QualType ulong_ty;
+    QualType long_long_ty;
+    QualType ulong_long_ty;
+    QualType float_ty;
+    QualType double_ty;
+    QualType long_double_ty;
 
 private:
-  const srcmap::SourceMap &src_map;
-  diag::Handler &diag;
-  const TargetInfo &target;
+    const srcmap::SourceMap &src_map;
+    diag::Handler &diag;
+    const TargetInfo &target;
 
-  // Arena memory resource used to create AST objects.
-  //
-  // AST objects are constructed here, but never destructed. All memory
-  // associated with these AST objects will be released when the ASTContext
-  // instance is itself destructed.
-  //
-  // This is mutable because ASTContext is passed around as a constant reference.
-  mutable pmr::monotonic_buffer_resource arena_resource;
+    // Arena memory resource used to create AST objects.
+    //
+    // AST objects are constructed here, but never destructed. All memory
+    // associated with these AST objects will be released when the ASTContext
+    // instance is itself destructed.
+    //
+    // This is mutable because ASTContext is passed around as a constant
+    // reference.
+    mutable pmr::monotonic_buffer_resource arena_resource;
 
-  void init_builtin_types();
+    void init_builtin_types();
 };
 
 } // namespace cci
@@ -107,7 +108,7 @@ private:
 operator new(std::size_t bytes, const cci::ASTContext &c,
              std::size_t alignment = alignof(std::max_align_t))
 {
-  return c.allocate(bytes, alignment);
+    return c.allocate(bytes, alignment);
 }
 
 // Placement new[] for construction of AST objects using the ASTContext's arena
@@ -127,5 +128,5 @@ operator new(std::size_t bytes, const cci::ASTContext &c,
 operator new[](std::size_t bytes, const cci::ASTContext &c,
                std::size_t alignment = alignof(std::max_align_t))
 {
-  return c.allocate(bytes, alignment);
+    return c.allocate(bytes, alignment);
 }

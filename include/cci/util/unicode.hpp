@@ -22,8 +22,8 @@
 
 #pragma once
 
-#include <cstdint>
 #include <cstddef>
+#include <cstdint>
 
 namespace cci::uni {
 
@@ -40,16 +40,16 @@ constexpr inline UTF32 UNI_MAX_LEGAL_UTF32 = 0x0010FFFFUL;
 
 enum ConversionResult
 {
-  conversionOK, /* conversion successful */
-  sourceExhausted, /* partial character in source, but hit end */
-  targetExhausted, /* insuff. room in target for conversion */
-  sourceIllegal, /* source sequence is illegal/malformed */
+    conversionOK, /* conversion successful */
+    sourceExhausted, /* partial character in source, but hit end */
+    targetExhausted, /* insuff. room in target for conversion */
+    sourceIllegal, /* source sequence is illegal/malformed */
 };
 
 enum ConversionFlags
 {
-  strictConversion,
-  lenientConversion,
+    strictConversion,
+    lenientConversion,
 };
 
 ConversionResult convert_utf8_sequence(const UTF8 **sourceStart,
