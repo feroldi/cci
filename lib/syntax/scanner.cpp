@@ -14,31 +14,6 @@
 namespace cci {
 namespace {
 
-constexpr Category KEYWORD_KINDS[]{
-    Category::kw_auto,           Category::kw_break,
-    Category::kw_case,           Category::kw_char,
-    Category::kw_const,          Category::kw_continue,
-    Category::kw_default,        Category::kw_do,
-    Category::kw_double,         Category::kw_else,
-    Category::kw_enum,           Category::kw_extern,
-    Category::kw_float,          Category::kw_for,
-    Category::kw_goto,           Category::kw_if,
-    Category::kw_inline,         Category::kw_int,
-    Category::kw_long,           Category::kw_register,
-    Category::kw_restrict,       Category::kw_return,
-    Category::kw_short,          Category::kw_signed,
-    Category::kw_sizeof,         Category::kw_static,
-    Category::kw_struct,         Category::kw_switch,
-    Category::kw_typedef,        Category::kw_union,
-    Category::kw_unsigned,       Category::kw_void,
-    Category::kw_volatile,       Category::kw_while,
-    Category::kw__Alignas,       Category::kw__Alignof,
-    Category::kw__Atomic,        Category::kw__Bool,
-    Category::kw__Complex,       Category::kw__Generic,
-    Category::kw__Imaginary,     Category::kw__Noreturn,
-    Category::kw__Static_assert, Category::kw__Thread_local,
-};
-
 constexpr auto is_newline(char C) -> bool { return C == '\n' || C == '\r'; }
 
 constexpr auto is_whitespace(char C) -> bool
@@ -447,12 +422,37 @@ auto Scanner::lex_identifier(const char *cur_ptr, Token &result) -> bool
         small_string<16> ident_buf;
         const auto spelling = this->get_spelling(result, ident_buf);
 
+        static constexpr Category keyword_kinds[]{
+            Category::kw_auto,           Category::kw_break,
+            Category::kw_case,           Category::kw_char,
+            Category::kw_const,          Category::kw_continue,
+            Category::kw_default,        Category::kw_do,
+            Category::kw_double,         Category::kw_else,
+            Category::kw_enum,           Category::kw_extern,
+            Category::kw_float,          Category::kw_for,
+            Category::kw_goto,           Category::kw_if,
+            Category::kw_inline,         Category::kw_int,
+            Category::kw_long,           Category::kw_register,
+            Category::kw_restrict,       Category::kw_return,
+            Category::kw_short,          Category::kw_signed,
+            Category::kw_sizeof,         Category::kw_static,
+            Category::kw_struct,         Category::kw_switch,
+            Category::kw_typedef,        Category::kw_union,
+            Category::kw_unsigned,       Category::kw_void,
+            Category::kw_volatile,       Category::kw_while,
+            Category::kw__Alignas,       Category::kw__Alignof,
+            Category::kw__Atomic,        Category::kw__Bool,
+            Category::kw__Complex,       Category::kw__Generic,
+            Category::kw__Imaginary,     Category::kw__Noreturn,
+            Category::kw__Static_assert, Category::kw__Thread_local,
+        };
+
         // FIXME: This is rather slow.
-        for (const Category cat : KEYWORD_KINDS)
+        for (const Category cat : keyword_kinds)
         {
             if (spelling == to_string(cat))
             {
-                result.category_ = cat;
+                result.category = cat;
                 break;
             }
         }
@@ -1213,7 +1213,7 @@ auto Scanner::character_location(srcmap::ByteLoc tok_loc,
 auto Scanner::get_spelling_to_buffer(const Token &tok, char *spelling_buf,
                                      const srcmap::SourceMap &map) -> size_t
 {
-    std::string_view spelling = map.range_to_snippet(tok.source_range());
+    std::string_view spelling = map.range_to_snippet(tok.source_range);
     const auto spell_start = spelling.begin();
     const auto spell_end = spelling.end();
 

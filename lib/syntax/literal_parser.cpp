@@ -686,7 +686,7 @@ StringLiteralParser::StringLiteralParser(Scanner &scanner,
     // size.
 
     cci_expects(!string_toks.empty());
-    cci_expects(is_string_literal(string_toks[0].category()));
+    cci_expects(is_string_literal(string_toks[0].category));
     cci_expects(string_toks[0].size() >= 2);
     size_t size_bound = string_toks[0].size() - 2; // removes ""
 
@@ -694,18 +694,18 @@ StringLiteralParser::StringLiteralParser(Scanner &scanner,
     // memory for a temporary buffer to hold the processed strings.
     size_t max_token_size = size_bound;
 
-    cci_expects(is_string_literal(string_toks[0].category()));
-    category = string_toks[0].category();
+    cci_expects(is_string_literal(string_toks[0].category));
+    category = string_toks[0].category;
 
     // Performs [C11 5.1.1.2p6]: Adjacent string literal tokens are concatenated.
     for (ptrdiff_t i = 1; i != string_toks.size(); ++i)
     {
-        cci_expects(is_string_literal(string_toks[i].category()));
+        cci_expects(is_string_literal(string_toks[i].category));
         if (string_toks[i].is_not(category) &&
             string_toks[i].is_not(Category::string_literal))
         {
             if (category == Category::string_literal)
-                category = string_toks[i].category();
+                category = string_toks[i].category;
             else
             {
                 // Concatenation of different categories of strings could be

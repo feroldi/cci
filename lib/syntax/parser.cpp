@@ -2,9 +2,11 @@
 #include "cci/ast/expr.hpp"
 #include "cci/ast/type.hpp"
 #include "cci/semantics/sema.hpp"
+#include "cci/syntax/diagnostics.hpp"
 #include "cci/syntax/scanner.hpp"
 #include "cci/util/contracts.hpp"
 #include "cci/util/small_vector.hpp"
+#include <algorithm>
 #include <string_view>
 
 using namespace cci;
@@ -31,11 +33,21 @@ auto Parser::consume() -> Token
     return consumed;
 }
 
+auto Parser::expect_and_consume(Category category) -> std::optional<Token>
+{
+    if (peek().is(category))
+        return consume();
+
+    diag.report(peek().location(), diag::Diag::expected_but_got)
+        .args(category, peek().category);
+    return std::nullopt;
+}
+
 auto Parser::parse_expression() -> std::optional<arena_ptr<Expr>>
 {
     std::optional<arena_ptr<Expr>> res;
 
-    switch (peek().category())
+    switch (peek().category)
     {
         default: cci_unreachable();
         case Category::numeric_constant:
@@ -78,10 +90,10 @@ auto Parser::parse_expression() -> std::optional<arena_ptr<Expr>>
 auto Parser::parse_string_literal_expression()
     -> std::optional<arena_ptr<StringLiteral>>
 {
-    cci_expects(is_string_literal(peek().category()));
+    cci_expects(is_string_literal(peek().category));
 
     small_vector<Token, 4> string_toks{consume()};
-    while (is_string_literal(peek().category()))
+    while (is_string_literal(peek().category))
         string_toks.push_back(consume());
 
     return sema.act_on_string_literal(string_toks);

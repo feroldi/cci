@@ -4,7 +4,6 @@
 #include "cci/ast/expr.hpp"
 #include "cci/ast/type.hpp"
 #include "cci/semantics/sema.hpp"
-#include "cci/syntax/diagnostics.hpp"
 #include "cci/syntax/scanner.hpp"
 #include "cci/syntax/source_map.hpp"
 #include <optional>
@@ -23,22 +22,13 @@ public:
         : scanner(std::move(scanner)), sema(sema), diag(scanner.diagnostics())
     {}
 
+    auto parse_expression() -> std::optional<arena_ptr<Expr>>;
+
 private:
     auto peek(size_t lookahead = 0) -> Token;
     auto consume() -> Token;
+    auto expect_and_consume(Category category) -> std::optional<Token>;
 
-    auto expect_and_consume(Category category) -> std::optional<Token>
-    {
-        using diag::Diag;
-        if (peek().is(category))
-            return consume();
-
-        diag.report(peek().location(), Diag::expected_but_got)
-            .args(category, peek().category());
-        return std::nullopt;
-    }
-
-    auto parse_expression() -> std::optional<arena_ptr<Expr>>;
     auto parse_string_literal_expression()
         -> std::optional<arena_ptr<StringLiteral>>;
 

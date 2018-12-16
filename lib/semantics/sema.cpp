@@ -26,7 +26,7 @@ auto Sema::act_on_numeric_constant(const Token &tok)
     if (tok.size() == 1)
     {
         const char digit =
-            scan.source_map().range_to_snippet(tok.source_range())[0];
+            scan.source_map().range_to_snippet(tok.source_range)[0];
         return new (context)
             IntegerLiteral(digit - '0', context.int_ty, tok.location());
     }
@@ -135,7 +135,7 @@ auto Sema::act_on_char_constant(const Token &tok)
 
     small_string<8> spell_buffer;
     std::string_view spelling = scan.get_spelling(tok, spell_buffer);
-    CharConstantParser literal(scan, spelling, tok.location(), tok.category(),
+    CharConstantParser literal(scan, spelling, tok.location(), tok.category,
                                context.target_info());
 
     if (literal.has_error)

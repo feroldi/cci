@@ -173,8 +173,9 @@ private:
     /// past it. This is used only by the internals of the lexical analysis.
     void form_token(Token &tok, const char *tok_end, Category category)
     {
-        tok.category_ = category;
-        tok.range = {location_for_ptr(buffer_ptr), location_for_ptr(tok_end)};
+        tok.category = category;
+        tok.source_range = {location_for_ptr(buffer_ptr),
+                            location_for_ptr(tok_end)};
         buffer_ptr = tok_end;
     }
 

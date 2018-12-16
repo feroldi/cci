@@ -26,37 +26,26 @@ enum class ExprClass
 // Expression.
 struct Expr
 {
-private:
-    ExprClass expr_class_;
-    ExprCategory category_;
-    QualType type_;
+    ExprClass expr_class;
+    ExprCategory value_category;
+    QualType type;
 
-public:
-    Expr(ExprClass k, ExprCategory c, QualType ty)
-        : expr_class_(k), category_(c), type_(ty)
+    Expr(ExprClass ec, ExprCategory c, QualType ty)
+        : expr_class(ec), value_category(c), type(ty)
     {}
-
-    auto expr_class() const -> ExprClass { return expr_class_; }
-    auto category() const -> ExprCategory { return category_; }
-    auto type() const -> const QualType & { return type_; }
 };
 
 // Numeric constant that is an integer literal.
 struct IntegerLiteral : Expr
 {
-private:
-    uint64_t value_;
+    uint64_t value;
     srcmap::ByteLoc loc;
 
-public:
     IntegerLiteral(uint64_t val, QualType ty, srcmap::ByteLoc l)
         : Expr(ExprClass::IntegerLiteral, ExprCategory::RValue, ty)
-        , value_(val)
+        , value(val)
         , loc(l)
     {}
-
-    auto value() const -> uint64_t { return value_; }
-    auto location() const -> srcmap::ByteLoc { return loc; }
 };
 
 enum class CharacterConstantKind
@@ -69,23 +58,17 @@ enum class CharacterConstantKind
 
 struct CharacterConstant : Expr
 {
-private:
-    uint32_t value_;
-    CharacterConstantKind kind_;
+    uint32_t value;
+    CharacterConstantKind char_kind;
     srcmap::ByteLoc loc;
 
-public:
     CharacterConstant(uint32_t val, CharacterConstantKind k, QualType ty,
                       srcmap::ByteLoc l)
         : Expr(ExprClass::CharacterConstant, ExprCategory::RValue, ty)
-        , value_(val)
-        , kind_(k)
+        , value(val)
+        , char_kind(k)
         , loc(l)
     {}
-
-    auto value() const -> uint32_t { return value_; }
-    auto kind() const -> CharacterConstantKind { return kind_; }
-    auto location() const -> srcmap::ByteLoc { return loc; }
 };
 
 enum class StringLiteralKind
@@ -99,19 +82,17 @@ enum class StringLiteralKind
 
 struct StringLiteral : Expr
 {
-private:
     span<std::byte> str_data; ///< String content.
-    StringLiteralKind kind_;
-    size_t char_byte_width_; ///< Character's size in bytes.
+    StringLiteralKind str_kind;
+    size_t char_byte_width; ///< Character's size in bytes.
     span<srcmap::ByteLoc> tok_locs; ///< Sequence of each string location
 
-public:
     StringLiteral(QualType ty, span<std::byte> str_data, StringLiteralKind kind,
-                  size_t char_byte_width, span<srcmap::ByteLoc> locs)
+                  size_t cbw, span<srcmap::ByteLoc> locs)
         : Expr(ExprClass::StringLiteral, ExprCategory::LValue, ty)
         , str_data(str_data)
-        , kind_(kind)
-        , char_byte_width_(char_byte_width)
+        , str_kind(kind)
+        , char_byte_width(cbw)
         , tok_locs(locs)
     {
         cci_expects(!locs.empty());
@@ -119,7 +100,7 @@ public:
 
     auto string_as_utf8() const -> std::string_view
     {
-        cci_expects(char_byte_width() == 1);
+        cci_expects(char_byte_width == 1);
         auto ptr = reinterpret_cast<const char *>(str_data.begin());
         size_t len = str_data.size();
         return {ptr, len};
@@ -130,36 +111,27 @@ public:
         return as_bytes(str_data);
     }
 
-    auto kind() const -> StringLiteralKind { return kind_; }
-
-    auto char_byte_width() const -> size_t { return char_byte_width_; }
     auto byte_length() const -> size_t { return str_data.size(); }
-    auto length() const -> size_t { return byte_length() / char_byte_width(); }
+    auto length() const -> size_t { return byte_length() / char_byte_width; }
 
-    auto location() const -> srcmap::ByteLoc { return tok_locs[0]; }
+    auto loc() const -> srcmap::ByteLoc { return tok_locs[0]; }
     auto loc_begin() const { return tok_locs.begin(); }
     auto loc_end() const { return tok_locs.end(); }
 };
 
 struct ParenExpr : Expr
 {
-private:
-    arena_ptr<Expr> inner_expr_;
+    arena_ptr<Expr> inner_expr;
     srcmap::ByteLoc lparen_loc;
     srcmap::ByteLoc rparen_loc;
 
-public:
     ParenExpr(arena_ptr<Expr> expr, srcmap::ByteLoc lparen,
               srcmap::ByteLoc rparen)
-        : Expr(ExprClass::ParenExpr, expr->category(), expr->type())
-        , inner_expr_(expr)
+        : Expr(ExprClass::ParenExpr, expr->value_category, expr->type)
+        , inner_expr(expr)
         , lparen_loc(lparen)
         , rparen_loc(rparen)
     {}
-
-    auto inner_expr() const -> arena_ptr<Expr> { return inner_expr_; }
-    auto left_paren_loc() const -> srcmap::ByteLoc { return lparen_loc; }
-    auto right_paren_loc() const -> srcmap::ByteLoc { return rparen_loc; }
 };
 
 } // namespace cci

@@ -1,12 +1,9 @@
 #pragma once
 
 #include "cci/syntax/source_map.hpp"
-#include <string>
 #include <string_view>
 
 namespace cci {
-
-struct Scanner;
 
 // Category - This represents the category of a token, e.g. identifier,
 // keyword etc.
@@ -173,6 +170,11 @@ constexpr auto is_char_constant(Category k) -> bool
 // Token - A representation of a token as described in the C11 standard.
 struct Token
 {
+    // Token's syntactic category, e.g. kw_return, identifier etc.
+    Category category = Category::unknown;
+    // Token's start and end locations on the source file (lexeme).
+    srcmap::Range source_range;
+
     enum TokenFlags
     {
         None = 0,
@@ -182,15 +184,14 @@ struct Token
     };
 
     Token() = default;
-    Token(Category c, srcmap::Range r) noexcept : category_(c), range(r) {}
-
-    auto category() const -> Category { return category_; }
+    Token(Category c, srcmap::Range r) noexcept : category(c), source_range(r)
+    {}
 
     // Checks whether this token is of category `k`.
-    bool is(Category k) const { return category_ == k; }
+    bool is(Category k) const { return category == k; }
 
     // Checks whether this token is not of category `k`.
-    bool is_not(Category k) const { return category_ != k; }
+    bool is_not(Category k) const { return category != k; }
 
     // Checks wether this token is of any category in `ks`.
     template <typename... Kinds>
@@ -201,13 +202,13 @@ struct Token
     }
 
     // Returns the source location at which this token starts.
-    auto location() const -> srcmap::ByteLoc { return range.start; }
-
-    // Returns a source range for the token's text (spelling).
-    auto source_range() const -> srcmap::Range { return range; }
+    auto location() const -> srcmap::ByteLoc { return source_range.start; }
 
     // Returns the size of the token spelling in source.
-    auto size() const { return static_cast<size_t>(range.end - range.start); }
+    auto size() const
+    {
+        return static_cast<size_t>(source_range.end - source_range.start);
+    }
 
     void set_flags(TokenFlags fs) { flags |= fs; }
     void clear_flags(TokenFlags fs) { flags &= ~fs; }
@@ -217,14 +218,6 @@ struct Token
     bool is_literal() const { return flags & TokenFlags::IsLiteral; }
 
 private:
-    friend struct Scanner;
-
-    // Token's syntactic category, e.g. kw_return, identifier etc.
-    Category category_ = Category::unknown;
-
-    // Token's start and end locations on the source file (lexeme).
-    srcmap::Range range;
-
     // Token's flags.
     uint8_t flags = TokenFlags::None;
 };
