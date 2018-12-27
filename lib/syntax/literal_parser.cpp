@@ -14,11 +14,12 @@
 
 using namespace cci;
 
-static void report(Scanner &scan, const char *char_ptr, srcmap::ByteLoc tok_loc,
-                   const char *tok_begin, diag::Diag msg)
+static void report(Scanner &scanner, const char *char_ptr,
+                   srcmap::ByteLoc tok_loc, const char *tok_begin,
+                   diag::Diag msg)
 {
-    auto &diag = scan.diagnostics();
-    diag.report(scan.character_location(tok_loc, tok_begin, char_ptr), msg);
+    auto &diag = scanner.diag_handler;
+    diag.report(scanner.character_location(tok_loc, tok_begin, char_ptr), msg);
 }
 
 // Returns the respective character type width for a given string literal or
@@ -285,7 +286,7 @@ auto NumericConstantParser::to_integer() const -> std::pair<uint64_t, bool>
 // This function reads similar to the one used in the main scanning phase. So
 // here's some homework:
 // TODO: Merge this function with scanner's, and put it in a dedicated API.
-static auto parse_ucn_escape(Scanner &scan, srcmap::ByteLoc tok_loc,
+static auto parse_ucn_escape(Scanner &scanner, srcmap::ByteLoc tok_loc,
                              const char *tok_begin, const char *&tok_ptr,
                              const char *tok_end, uint32_t *code_point) -> bool
 {
@@ -297,7 +298,7 @@ static auto parse_ucn_escape(Scanner &scan, srcmap::ByteLoc tok_loc,
 
     if (tok_ptr == tok_end || !is_hexdigit(*tok_ptr))
     {
-        report(scan, escape_begin, tok_loc, tok_begin,
+        report(scanner, escape_begin, tok_loc, tok_begin,
                diag::Diag::missing_ucn_escape_hex_digits);
         return false;
     }
@@ -317,7 +318,8 @@ static auto parse_ucn_escape(Scanner &scan, srcmap::ByteLoc tok_loc,
     // is missing digits, therefore is invalid.
     if (num_countdown)
     {
-        report(scan, escape_begin, tok_loc, tok_begin, diag::Diag::invalid_ucn);
+        report(scanner, escape_begin, tok_loc, tok_begin,
+               diag::Diag::invalid_ucn);
         return false;
     }
 
@@ -325,7 +327,8 @@ static auto parse_ucn_escape(Scanner &scan, srcmap::ByteLoc tok_loc,
               *code_point <= 0xDFFF) || // high and low surrogates
              *code_point > 0x10FFFF) // maximum UTF-32 code point
     {
-        report(scan, escape_begin, tok_loc, tok_begin, diag::Diag::invalid_ucn);
+        report(scanner, escape_begin, tok_loc, tok_begin,
+               diag::Diag::invalid_ucn);
         return false;
     }
 
@@ -383,7 +386,7 @@ static void encode_ucn_to_buffer(uint32_t ucn_val, char **result_buf,
 }
 
 // Returns the value representation of an escape sequence.
-static auto parse_escape_sequence(Scanner &scan, srcmap::ByteLoc tok_loc,
+static auto parse_escape_sequence(Scanner &scanner, srcmap::ByteLoc tok_loc,
                                   const char *tok_begin, const char *&tok_ptr,
                                   const char *tok_end, size_t char_width,
                                   bool *has_error) -> uint32_t
@@ -447,7 +450,7 @@ static auto parse_escape_sequence(Scanner &scan, srcmap::ByteLoc tok_loc,
             // '\777' should not.
             if (char_width < 32 && (result >> char_width) != 0)
             {
-                report(scan, escape_begin, tok_loc, tok_begin,
+                report(scanner, escape_begin, tok_loc, tok_begin,
                        diag::Diag::escape_out_of_range);
                 *has_error = true;
                 // Truncate the result.
@@ -461,7 +464,7 @@ static auto parse_escape_sequence(Scanner &scan, srcmap::ByteLoc tok_loc,
             result = 0;
             if (tok_ptr == tok_end || !is_hexdigit(*tok_ptr))
             {
-                report(scan, escape_begin, tok_loc, tok_begin,
+                report(scanner, escape_begin, tok_loc, tok_begin,
                        diag::Diag::missing_escape_digits);
                 *has_error = true;
                 break;
@@ -494,7 +497,7 @@ static auto parse_escape_sequence(Scanner &scan, srcmap::ByteLoc tok_loc,
 
             if (overflowed)
             {
-                report(scan, escape_begin, tok_loc, tok_begin,
+                report(scanner, escape_begin, tok_loc, tok_begin,
                        diag::Diag::escape_out_of_range);
                 *has_error = true;
             }
@@ -502,7 +505,7 @@ static auto parse_escape_sequence(Scanner &scan, srcmap::ByteLoc tok_loc,
             break;
         }
         default:
-            report(scan, escape_begin, tok_loc, tok_begin,
+            report(scanner, escape_begin, tok_loc, tok_begin,
                    diag::Diag::unknown_escape_sequence);
             *has_error = true;
     }
@@ -522,7 +525,7 @@ CharConstantParser::CharConstantParser(Scanner &scanner,
     const char *const tok_begin = tok_lexeme.begin();
     const char *tok_end = tok_lexeme.end();
     const char *tok_ptr = tok_begin;
-    auto &diag = scanner.diagnostics();
+    auto &diag = scanner.diag_handler;
 
     // Skips either L, u or U.
     if (char_category != Category::char_constant)
@@ -678,7 +681,7 @@ StringLiteralParser::StringLiteralParser(Scanner &scanner,
                                          span<const Token> string_toks,
                                          const TargetInfo &target)
 {
-    auto &diag = scanner.diagnostics();
+    auto &diag = scanner.diag_handler;
 
     // The following code calculates a size bound that is the sum of all
     // strings' size for the result buffer, which is a bit over enough, given
@@ -761,7 +764,7 @@ StringLiteralParser::StringLiteralParser(Scanner &scanner,
         // written to the buffer, which is enough to form a range of iterators.
         const char *tokbuf_ptr = token_buf.data();
         const size_t tok_length = Scanner::get_spelling_to_buffer(
-            string_tok, token_buf.data(), scanner.source_map());
+            string_tok, token_buf.data(), scanner.source_map);
 
         const char *tokbuf_begin = tokbuf_ptr;
         const char *tokbuf_end = tokbuf_begin + tok_length;

@@ -1,9 +1,9 @@
 #include "cci/syntax/parser.hpp"
 #include "cci/ast/expr.hpp"
 #include "cci/ast/type.hpp"
-#include "cci/semantics/sema.hpp"
 #include "cci/syntax/diagnostics.hpp"
 #include "cci/syntax/scanner.hpp"
+#include "cci/syntax/sema.hpp"
 #include "cci/util/contracts.hpp"
 #include "cci/util/small_vector.hpp"
 #include <algorithm>
@@ -45,6 +45,11 @@ auto Parser::expect_and_consume(Category category) -> std::optional<Token>
 
 auto Parser::parse_expression() -> std::optional<arena_ptr<Expr>>
 {
+    return parse_primary_expression();
+}
+
+auto Parser::parse_primary_expression() -> std::optional<arena_ptr<Expr>>
+{
     std::optional<arena_ptr<Expr>> res;
 
     switch (peek().category)
@@ -72,19 +77,20 @@ auto Parser::parse_expression() -> std::optional<arena_ptr<Expr>>
         case Category::l_paren:
         {
             Token lparen_tok = consume();
-            res = parse_expression();
 
-            if (auto rparen_tok = expect_and_consume(Category::r_paren))
+            if ((res = parse_expression()))
             {
-                res = sema.act_on_paren_expr(res.value(), lparen_tok.location(),
-                                             rparen_tok->location());
+                if (auto rparen_tok = expect_and_consume(Category::r_paren))
+                    res = sema.act_on_paren_expr(res.value(),
+                                                 lparen_tok.location(),
+                                                 rparen_tok->location());
             }
 
             break;
         }
     }
 
-    return res;
+    return res ? parse_postfix_expression(*res) : res;
 }
 
 auto Parser::parse_string_literal_expression()
@@ -97,4 +103,26 @@ auto Parser::parse_string_literal_expression()
         string_toks.push_back(consume());
 
     return sema.act_on_string_literal(string_toks);
+}
+
+auto Parser::parse_postfix_expression(arena_ptr<Expr> expr)
+    -> std::optional<arena_ptr<Expr>>
+{
+    switch (peek().category)
+    {
+        case Category::l_bracket:
+        {
+            Token lbracket_tok = consume();
+            if (auto inside_brackets = parse_expression())
+            {
+                if (auto rbracket_tok = expect_and_consume(Category::r_bracket))
+                    return sema.act_on_array_subscript(
+                        expr, inside_brackets.value(), lbracket_tok.location(),
+                        rbracket_tok->location());
+            }
+        }
+        default: cci_unreachable();
+    }
+
+    return std::nullopt;
 }

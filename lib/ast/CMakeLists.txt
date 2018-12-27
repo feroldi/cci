@@ -1,6 +1,7 @@
 add_library(cci_ast
   ast_context.cpp
-  expr.cpp)
+  expr.cpp
+  type.cpp)
 target_include_directories(cci_ast
   PUBLIC $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/include>
   PUBLIC $<INSTALL_INTERFACE:include>)

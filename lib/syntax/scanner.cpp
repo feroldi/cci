@@ -1198,7 +1198,7 @@ auto Scanner::character_location(srcmap::ByteLoc tok_loc,
                                  const char *spelling_begin,
                                  const char *char_pos) const -> srcmap::ByteLoc
 {
-    const auto [file, offset] = this->source_map().lookup_byte_offset(tok_loc);
+    const auto [file, offset] = this->source_map.lookup_byte_offset(tok_loc);
     const char *cur_ptr = this->buffer_begin + static_cast<size_t>(offset);
     for (auto it = spelling_begin; it != char_pos; ++it)
     {
@@ -1207,7 +1207,7 @@ auto Scanner::character_location(srcmap::ByteLoc tok_loc,
         cci_expects(c == *it);
         cur_ptr += size;
     }
-    return this->source_map().ptr_to_byteloc(this->file_loc, cur_ptr);
+    return this->source_map.ptr_to_byteloc(this->file_loc, cur_ptr);
 }
 
 auto Scanner::get_spelling_to_buffer(const Token &tok, char *spelling_buf,

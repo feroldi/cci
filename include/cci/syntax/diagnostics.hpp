@@ -38,6 +38,8 @@ enum class Diag
     unterminated_string_literal,
     unknown_character,
     invalid_unicode_char,
+    typecheck_subscript_value,
+    typecheck_subscript_not_integer,
 };
 
 /// Information about a diagnostic.
@@ -65,9 +67,11 @@ struct DiagnosticBuilder
     DiagnosticBuilder &operator=(DiagnosticBuilder &&) = default;
 
     /// Adds a source range to give more context to the diagnostic.
-    auto range(srcmap::Range range) -> DiagnosticBuilder &
+    auto ranges(std::initializer_list<srcmap::Range> ranges)
+        -> DiagnosticBuilder &
     {
-        this->diag->ranges.push_back(range);
+        for (const srcmap::Range r : ranges)
+            this->diag->ranges.push_back(r);
         return *this;
     }
 
@@ -95,30 +99,24 @@ private:
 /// completely ignore diagnostics.
 struct Handler
 {
+    const srcmap::SourceMap &source_map;
+
     /// The emitter type.
     using Emitter = std::function<void(const Diagnostic &)>;
 
     /// Constructs a handler with a given `Emitter` and the `SourceMap`
     /// associated with it.
-    Handler(Emitter emitter, const srcmap::SourceMap &map)
-        : emitter(std::move(emitter)), map(map)
+    Handler(Emitter emitter, const srcmap::SourceMap &source_map)
+        : source_map(source_map), emitter(std::move(emitter))
     {}
 
-    Handler(Handler &&other) noexcept
-        : emitter(std::move(other.emitter))
-        , err_count_(other.err_count_.load())
-        , map(other.map)
-    {}
-    Handler &operator=(Handler &&other) noexcept
-    {
-        std::swap(other, *this);
-        return *this;
-    }
+    Handler(Handler &&other) = delete;
+    Handler &operator=(Handler &&other) = delete;
 
     /// Helper function to facilitate the construction of a `DiagnosticBuilder`.
     auto report(srcmap::ByteLoc loc, Diag msg) -> DiagnosticBuilder
     {
-        DiagnosticBuilder builder(this->map.lookup_source_location(loc), msg,
+        DiagnosticBuilder builder(source_map.lookup_source_location(loc), msg,
                                   *this);
         return builder;
     }
@@ -128,9 +126,6 @@ struct Handler
 
     /// Returns how many errors have been reported.
     auto err_count() const -> size_t { return this->err_count_.load(); }
-
-    /// Returns the source map associated with it.
-    auto source_map() const -> const srcmap::SourceMap & { return this->map; }
 
     /// Sets a new emitter to be called at diagnostic emission, overriding the
     /// old one.
@@ -150,7 +145,6 @@ protected:
 
 private:
     std::atomic<size_t> err_count_ = 0;
-    const srcmap::SourceMap &map;
 
     /// Increases the error count by one.
     void bump_err_count() { this->err_count_.fetch_add(1); }

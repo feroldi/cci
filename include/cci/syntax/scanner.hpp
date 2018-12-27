@@ -13,16 +13,17 @@ namespace cci {
 struct Scanner
 {
 private:
-    const srcmap::SourceMap &src_map; ///< Source map containing the file map
-                                      ///< being scanned.
     srcmap::ByteLoc file_loc; ///< Start location of the file map being scanned.
-    diag::Handler &diag;
 
     const char *buffer_begin; ///< Iterator into the start of the buffer.
     const char *buffer_end; ///< Iterator into the end of the buffer.
     const char *buffer_ptr; ///< Current position into the buffer to be analyzed.
 
 public:
+    const srcmap::SourceMap &source_map; ///< Source map containing the file map
+                                         ///< being scanned.
+    diag::Handler &diag_handler;
+
     /// Constructs a scanner for a `FileMap` given by `file_loc`, which will
     /// scan only the area delimited by `buf_begin` and `buf_end` iterators.
     //
@@ -36,12 +37,12 @@ public:
     /// errors.
     Scanner(srcmap::ByteLoc file_loc, const char *buf_begin,
             const char *buf_end, diag::Handler &diag)
-        : src_map(diag.source_map())
-        , file_loc(file_loc)
-        , diag(diag)
+        : file_loc(file_loc)
         , buffer_begin(buf_begin)
         , buffer_end(buf_end)
         , buffer_ptr(buf_begin)
+        , source_map(diag.source_map)
+        , diag_handler(diag)
     {
         // Having a null character at the end of the input makes scanning a lot
         // easier.
@@ -75,19 +76,10 @@ public:
     /// \return The next token in the stream.
     auto next_token() -> Token;
 
-    /// Gets the source map associated with this scanner.
-    auto source_map() const -> const srcmap::SourceMap &
-    {
-        return this->src_map;
-    }
-
-    /// Gets the diagnostics handler associated with this scanner.
-    auto diagnostics() const -> diag::Handler & { return this->diag; }
-
     /// Translates a file map's source content iterator into an absolute ByteLoc.
     auto location_for_ptr(const char *ptr) const -> srcmap::ByteLoc
     {
-        return this->source_map().ptr_to_byteloc(this->file_loc, ptr);
+        return this->source_map.ptr_to_byteloc(this->file_loc, ptr);
     }
 
     /// Translates an absolute byte location in the middle of a token's
@@ -144,8 +136,8 @@ public:
         -> std::string_view
     {
         out.resize(tok.size());
-        size_t spell_length = Scanner::get_spelling_to_buffer(
-            tok, out.data(), this->source_map());
+        size_t spell_length =
+            Scanner::get_spelling_to_buffer(tok, out.data(), this->source_map);
         return {out.data(), spell_length};
     }
 
@@ -182,12 +174,13 @@ private:
     auto report(const char *loc_ptr, diag::Diag msg) const
         -> diag::DiagnosticBuilder
     {
-        return this->diag.report(
-            this->source_map().ptr_to_byteloc(this->file_loc, loc_ptr), msg);
+        return this->diag_handler.report(
+            this->source_map.ptr_to_byteloc(this->file_loc, loc_ptr), msg);
     }
 };
 
-constexpr inline auto hexdigit_value(char C) -> uint32_t
+// FIXME: This shouldn't be here.
+inline constexpr auto hexdigit_value(char C) -> uint32_t
 {
     if (C >= '0' && C <= '9')
         return static_cast<uint32_t>(C - '0');

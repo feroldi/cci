@@ -1,6 +1,8 @@
 #pragma once
 #include "cci/ast/arena_types.hpp"
+#include "cci/syntax/source_map.hpp"
 #include <cstdint>
+#include <type_traits>
 
 namespace cci {
 struct ASTContext;
@@ -48,40 +50,48 @@ enum class TypeClass
 {
     Builtin,
     ConstantArray,
+    Pointer,
 };
 
 struct Type
 {
-private:
-    TypeClass tc;
+    TypeClass type_class;
 
-protected:
-    friend struct ASTContext;
-    explicit Type(TypeClass tc) : tc(tc) {}
-
-public:
     Type(const Type &) = delete;
     Type &operator=(const Type &) = delete;
 
-    auto type_class() const -> TypeClass { return tc; }
+    bool is_array_type() const;
+    bool is_integer_type() const;
+
+    template <typename T>
+    auto get_as() const -> arena_ptr<const T>
+    {
+        return T::classof(type_class) ? static_cast<arena_ptr<const T>>(this)
+                                      : nullptr;
+    }
+
+protected:
+    friend struct ASTContext;
+    explicit Type(TypeClass tc) : type_class(tc) {}
 };
 
 struct QualType
 {
 private:
     arena_ptr<Type> type;
-    Qualifiers quals;
 
 public:
+    Qualifiers qualifiers;
+
     QualType() = default;
     QualType(arena_ptr<Type> ty, uint32_t quals_mask)
-        : type(ty), quals(Qualifiers::from_mask(quals_mask))
+        : type(ty), qualifiers(Qualifiers::from_mask(quals_mask))
     {}
-    QualType(arena_ptr<Type> ty, Qualifiers quals) : type(ty), quals(quals) {}
-
-    auto qualifiers() const -> Qualifiers { return quals; }
+    QualType(arena_ptr<Type> ty, Qualifiers quals) : type(ty), qualifiers(quals)
+    {}
 
     explicit operator bool() const noexcept { return type; }
+    auto operator*() const noexcept -> const Type & { return *type; }
     auto operator-> () const noexcept { return type; }
 };
 
@@ -111,37 +121,67 @@ enum class BuiltinTypeKind
 // Builtin types.
 struct BuiltinType : Type
 {
-private:
-    BuiltinTypeKind kind;
+    BuiltinTypeKind builtin_kind;
 
-public:
-    BuiltinType(BuiltinTypeKind k) : Type(TypeClass::Builtin), kind(k) {}
+    BuiltinType(BuiltinTypeKind k) : Type(TypeClass::Builtin), builtin_kind(k)
+    {}
 
-    auto type_kind() const -> BuiltinTypeKind { return kind; }
+    static bool classof(TypeClass tc) { return TypeClass::Builtin == tc; }
 };
 
 struct ArrayType : Type
 {
-private:
     QualType elem_type;
 
-public:
     ArrayType(TypeClass tc, QualType et) : Type(tc), elem_type(et) {}
 
-    auto element_type() const -> const QualType & { return elem_type; }
+    static bool classof(TypeClass tc) { return TypeClass::ConstantArray == tc; }
 };
 
 struct ConstantArrayType : ArrayType
 {
-private:
-    uint64_t size_;
+    uint64_t length;
 
-public:
-    ConstantArrayType(QualType elem_ty, uint64_t sz)
-        : ArrayType(TypeClass::ConstantArray, elem_ty), size_(sz)
+    ConstantArrayType(QualType elem_ty, uint64_t len)
+        : ArrayType(TypeClass::ConstantArray, elem_ty), length(len)
     {}
 
-    auto size() const -> uint64_t { return size_; }
+    static bool classof(TypeClass tc) { return TypeClass::ConstantArray == tc; }
 };
+
+struct PointerType : Type
+{
+    QualType pointee_type;
+    srcmap::ByteLoc star_loc;
+
+    PointerType(QualType pointee_ty, srcmap::ByteLoc star_loc)
+        : Type(TypeClass::Pointer), pointee_type(pointee_ty), star_loc(star_loc)
+    {}
+
+    static bool classof(TypeClass tc) { return TypeClass::Pointer == tc; }
+};
+
+inline bool Type::is_array_type() const
+{
+    return type_class == TypeClass::ConstantArray;
+}
+
+inline bool Type::is_integer_type() const
+{
+    if (auto bt = get_as<BuiltinType>())
+    {
+        return bt->builtin_kind >= BuiltinTypeKind::Bool &&
+               bt->builtin_kind <= BuiltinTypeKind::ULongLong;
+    }
+    return false;
+}
+
+static_assert(std::is_trivially_destructible_v<Qualifiers>);
+static_assert(std::is_trivially_destructible_v<Type>);
+static_assert(std::is_trivially_destructible_v<QualType>);
+static_assert(std::is_trivially_destructible_v<BuiltinType>);
+static_assert(std::is_trivially_destructible_v<ArrayType>);
+static_assert(std::is_trivially_destructible_v<ConstantArrayType>);
+static_assert(std::is_trivially_destructible_v<PointerType>);
 
 } // namespace cci

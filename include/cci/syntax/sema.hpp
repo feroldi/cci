@@ -6,6 +6,7 @@
 #include "cci/syntax/diagnostics.hpp"
 #include "cci/syntax/scanner.hpp"
 #include "cci/syntax/source_map.hpp"
+#include "cci/util/memory_resource.hpp"
 #include <optional>
 
 namespace cci {
@@ -14,13 +15,13 @@ namespace cci {
 struct Sema
 {
 private:
-    Scanner &scan;
-    diag::Handler &diag;
+    Scanner &scanner;
+    diag::Handler &diag_handler;
     ASTContext &context;
 
 public:
-    Sema(Scanner &scan, ASTContext &ctx)
-        : scan(scan), diag(scan.diagnostics()), context(ctx)
+    Sema(Scanner &scanner, ASTContext &ctx)
+        : scanner(scanner), diag_handler(scanner.diag_handler), context(ctx)
     {}
 
     auto act_on_numeric_constant(const Token &)
@@ -32,6 +33,9 @@ public:
     auto act_on_paren_expr(arena_ptr<Expr> expr, srcmap::ByteLoc left,
                            srcmap::ByteLoc right)
         -> std::optional<arena_ptr<ParenExpr>>;
+    auto act_on_array_subscript(arena_ptr<Expr> base, arena_ptr<Expr> idx,
+                                srcmap::ByteLoc left, srcmap::ByteLoc right)
+        -> std::optional<arena_ptr<ArraySubscriptExpr>>;
 };
 
 } // namespace cci

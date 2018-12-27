@@ -1,4 +1,4 @@
-#include "cci/semantics/sema.hpp"
+#include "cci/syntax/sema.hpp"
 #include "cci/ast/arena_types.hpp"
 #include "cci/ast/ast_context.hpp"
 #include "cci/ast/expr.hpp"
@@ -26,14 +26,14 @@ auto Sema::act_on_numeric_constant(const Token &tok)
     if (tok.size() == 1)
     {
         const char digit =
-            scan.source_map().range_to_snippet(tok.source_range)[0];
-        return new (context)
-            IntegerLiteral(digit - '0', context.int_ty, tok.location());
+            scanner.source_map.range_to_snippet(tok.source_range)[0];
+        return IntegerLiteral::create(context, digit - '0', context.int_ty,
+                                      tok.source_range);
     }
 
     small_string<64> spell_buffer;
-    std::string_view spelling = scan.get_spelling(tok, spell_buffer);
-    NumericConstantParser literal(scan, spelling, tok.location());
+    std::string_view spelling = scanner.get_spelling(tok, spell_buffer);
+    NumericConstantParser literal(scanner, spelling, tok.location());
 
     if (literal.has_error)
         return nullptr;
@@ -46,7 +46,8 @@ auto Sema::act_on_numeric_constant(const Token &tok)
         {
             // We could just stop here, but let's be friends with the user and
             // try to parse and diagnose the source code as much as possible.
-            diag.report(tok.location(), diag::Diag::integer_literal_overflow);
+            diag_handler.report(tok.location(),
+                                diag::Diag::integer_literal_overflow);
         }
 
         bool allow_unsigned = literal.is_unsigned || literal.radix != 10;
@@ -100,13 +101,13 @@ auto Sema::act_on_numeric_constant(const Token &tok)
             // represented by any type in its list and has no extended integer
             // type, then the integer constant has no type." However, leaving an
             // expression without a type breaks the code generator and whatnot,
-            // so we'll just do whatever GCC or Clang does here. GCC attempts to
-            // use
-            // __int128, an extended integer type (which [C11 6.4.4.1p6]
+            // so we'll just do whatever GCC or Clang does here. GCC attempts
+            // to use __int128, an extended integer type (which [C11 6.4.4.1p6]
             // suggests doing), and Clang settles down to unsigned long long.
             // Given we don't support any extended types, unsigned long long
             // will be the chosen one.
-            diag.report(tok.location(), diag::Diag::integer_literal_too_large);
+            diag_handler.report(tok.location(),
+                                diag::Diag::integer_literal_too_large);
             integer_ty = context.ulong_long_ty;
             width = context.target_info().long_long_width;
         }
@@ -116,7 +117,8 @@ auto Sema::act_on_numeric_constant(const Token &tok)
         // target info.
         val &= -1U >> (64 - width);
 
-        return new (context) IntegerLiteral(val, integer_ty, tok.location());
+        return IntegerLiteral::create(context, val, integer_ty,
+                                      tok.source_range);
     }
     else if (literal.is_floating_literal())
     {
@@ -134,8 +136,8 @@ auto Sema::act_on_char_constant(const Token &tok)
         Category::utf32_char_constant, Category::wide_char_constant));
 
     small_string<8> spell_buffer;
-    std::string_view spelling = scan.get_spelling(tok, spell_buffer);
-    CharConstantParser literal(scan, spelling, tok.location(), tok.category,
+    std::string_view spelling = scanner.get_spelling(tok, spell_buffer);
+    CharConstantParser literal(scanner, spelling, tok.location(), tok.category,
                                context.target_info());
 
     if (literal.has_error)
@@ -162,15 +164,15 @@ auto Sema::act_on_char_constant(const Token &tok)
         default: cci_expects(Category::char_constant == literal.category);
     }
 
-    return new (context)
-        CharacterConstant(literal.value, char_kind, char_type, tok.location());
+    return CharacterConstant::create(context, literal.value, char_kind,
+                                     char_type, tok.source_range);
 }
 
 auto Sema::act_on_string_literal(span<const Token> string_toks)
     -> std::optional<arena_ptr<StringLiteral>>
 {
     cci_expects(!string_toks.empty());
-    StringLiteralParser literal(scan, string_toks, context.target_info());
+    StringLiteralParser literal(scanner, string_toks, context.target_info());
     if (literal.has_error)
         return nullptr;
 
@@ -232,14 +234,66 @@ auto Sema::act_on_string_literal(span<const Token> string_toks)
         *locs_ptr++ = tok.location();
     cci_ensures(locs_ptr == tok_locs + num_concatenated);
 
-    return new (context) StringLiteral(str_ty, span(str_data, bytes_count),
-                                       str_kind, literal.char_byte_width,
-                                       span(tok_locs, num_concatenated));
+    const srcmap::ByteLoc rquote_loc = string_toks.end()[-1].location();
+
+    return StringLiteral::create(context, str_ty, span(str_data, bytes_count),
+                                 str_kind, literal.char_byte_width,
+                                 span(tok_locs, num_concatenated), rquote_loc);
 }
 
 auto Sema::act_on_paren_expr(arena_ptr<Expr> expr, srcmap::ByteLoc left,
                              srcmap::ByteLoc right)
     -> std::optional<arena_ptr<ParenExpr>>
 {
-    return new (context) ParenExpr(expr, left, right);
+    return ParenExpr::create(context, expr, left, right);
+}
+
+auto Sema::act_on_array_subscript(const arena_ptr<Expr> lhs_expr,
+                                  const arena_ptr<Expr> rhs_expr,
+                                  const srcmap::ByteLoc left_loc,
+                                  const srcmap::ByteLoc right_loc)
+    -> std::optional<arena_ptr<ArraySubscriptExpr>>
+{
+    const QualType lhs_ty = lhs_expr->type();
+    const QualType rhs_ty = rhs_expr->type();
+
+    arena_ptr<Expr> base_expr;
+    arena_ptr<Expr> index_expr;
+    QualType result_ty;
+
+    if (auto ptr_ty = lhs_ty->get_as<PointerType>())
+    {
+        base_expr = lhs_expr;
+        index_expr = rhs_expr;
+        result_ty = ptr_ty->pointee_type;
+    }
+    else if (auto ptr_ty = rhs_ty->get_as<PointerType>())
+    {
+        // Handle the uncommon case of `123[v]`.
+        base_expr = rhs_expr;
+        index_expr = lhs_expr;
+        result_ty = ptr_ty->pointee_type;
+    }
+    else
+    {
+        // C17 6.5.2.1p1: One of the expressions shall have type "pointer to
+        // complete object type", the other expression shall have integer type,
+        // and the result has type "type".
+        diag_handler.report(left_loc, diag::Diag::typecheck_subscript_value)
+            .ranges({lhs_expr->source_range(), rhs_expr->source_range()});
+        return std::nullopt;
+    }
+
+    // C17 6.5.2.1p1
+    if (!index_expr->type()->is_integer_type())
+    {
+        diag_handler
+            .report(index_expr->begin_loc(),
+                    diag::Diag::typecheck_subscript_not_integer)
+            .ranges({index_expr->source_range()});
+    }
+
+    return ArraySubscriptExpr::create(context, base_expr, index_expr,
+                                      ExprValueKind::LValue, result_ty,
+                                      left_loc, right_loc);
 }
