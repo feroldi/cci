@@ -13,7 +13,7 @@ using namespace cci;
 
 auto Parser::peek(size_t lookahead) -> Token
 {
-    cci_expects(peeked_toks.size() <= lookahead);
+    cci_expects(peeked_toks.size() >= lookahead);
 
     if (lookahead < peeked_toks.size())
         return peeked_toks[lookahead];
@@ -121,7 +121,7 @@ auto Parser::parse_postfix_expression(arena_ptr<Expr> expr)
                         rbracket_tok->location());
             }
         }
-        default: cci_unreachable();
+        default: return expr;
     }
 
     return std::nullopt;

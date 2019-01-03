@@ -1,3 +1,4 @@
+#include "../compiler_fixture.hpp"
 #include "cci/syntax/diagnostics.hpp"
 #include "cci/syntax/scanner.hpp"
 #include "cci/syntax/source_map.hpp"
@@ -8,31 +9,19 @@
 #include <string>
 #include <string_view>
 
-namespace cci {
-void PrintTo(const Category category, std::ostream *os) noexcept
-{
-    *os << to_string(category);
-}
-} // namespace cci
-
-using namespace cci;
+using cci::Category;
+using cci::Scanner;
+using cci::Token;
+using cci::diag::Diag;
 
 namespace {
 
-struct ScannerTest : ::testing::Test
+struct ScannerTest : cci::test::CompilerFixture
 {
 protected:
-    srcmap::SourceMap source_map;
-    diag::Handler diag_handler;
-
-    ScannerTest()
-        : source_map(), diag_handler(diag::ignoring_emitter(), source_map)
-    {}
-
     auto create_lex(std::string_view source) -> Scanner
     {
-        const auto &file =
-            source_map.create_owned_filemap("main.c", std::string(source));
+        const auto &file = create_filemap("main.c", std::string(source));
         Scanner scanner(file, diag_handler);
         return scanner;
     }
@@ -51,21 +40,6 @@ protected:
         }
 
         return toks;
-    }
-
-    auto get_source_text(const Token &tok) const -> std::string_view
-    {
-        return source_map.range_to_snippet(tok.source_range);
-    }
-
-    auto get_lexeme(const Token &tok) const -> std::string
-    {
-        std::string lexeme;
-        lexeme.resize(tok.size());
-        const size_t len = Scanner::get_spelling_to_buffer(tok, lexeme.data(),
-                                                           this->source_map);
-        lexeme.resize(len);
-        return lexeme;
     }
 
     auto check_lex(std::string_view source,
@@ -110,6 +84,9 @@ TEST_F(ScannerTest, escapedNewLine)
         "foo\\bar\n"
         "foo\\\n\nbar\n",
         expected_toks);
+
+    EXPECT_EQ(Diag::unknown_character, pop_diag().msg);
+    EXPECT_EQ(Diag::unknown_character, pop_diag().msg);
 }
 
 TEST_F(ScannerTest, trigraphEscapedNewline)
@@ -129,7 +106,8 @@ TEST_F(ScannerTest, trigraphEscapedNewline)
         "foo\?\?/\n\nbar\n",
         expected_toks);
 
-    EXPECT_EQ(2, diag_handler.err_count());
+    EXPECT_EQ(Diag::unknown_character, pop_diag().msg);
+    EXPECT_EQ(Diag::unknown_character, pop_diag().msg);
 }
 
 TEST_F(ScannerTest, escapedTrigraphEscape)
@@ -143,6 +121,9 @@ TEST_F(ScannerTest, escapedTrigraphEscape)
         "\"foo\\\?\?/\n"
         "\"\n",
         expected_toks);
+
+    EXPECT_EQ(Diag::unterminated_string_literal, pop_diag().msg);
+    EXPECT_EQ(Diag::unterminated_string_literal, pop_diag().msg);
 }
 
 TEST_F(ScannerTest, eofToken)
@@ -184,10 +165,12 @@ TEST_F(ScannerTest, universalCharacterName)
     // Incomplete UCNs.
     // FIXME: These checks should be removed once regression tests are written.
     scan("\\u012\n");
-    EXPECT_EQ(2, diag_handler.err_count());
+    EXPECT_EQ(Diag::incomplete_ucn, pop_diag().msg);
+    EXPECT_EQ(Diag::unknown_character, pop_diag().msg);
 
     scan("\\U1F648\n");
-    EXPECT_EQ(4, diag_handler.err_count());
+    EXPECT_EQ(Diag::incomplete_ucn, pop_diag().msg);
+    EXPECT_EQ(Diag::unknown_character, pop_diag().msg);
 }
 
 TEST_F(ScannerTest, identifiers)
@@ -335,7 +318,7 @@ TEST_F(ScannerTest, charConstants)
 
     // Empty character constant.
     scan("''\n");
-    EXPECT_EQ(1, diag_handler.err_count());
+    EXPECT_EQ(Diag::char_const_empty, pop_diag().msg);
 }
 
 TEST_F(ScannerTest, stringLiterals)

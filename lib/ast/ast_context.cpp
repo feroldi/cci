@@ -1,11 +1,12 @@
 #include "cci/ast/ast_context.hpp"
+#include "cci/ast/type.hpp"
 
 namespace cci {
 
 void ASTContext::init_builtin_types()
 {
     auto make_builtin = [this](BuiltinTypeKind kind) {
-        return QualType(new (*this) BuiltinType(kind), Qualifiers::None);
+        return QualType(BuiltinType::create(*this, kind), Qualifiers::None);
     };
 
     void_ty = make_builtin(BuiltinTypeKind::Void);

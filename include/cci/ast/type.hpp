@@ -1,51 +1,11 @@
 #pragma once
 #include "cci/ast/arena_types.hpp"
-#include "cci/syntax/source_map.hpp"
+#include "cci/ast/ast_context.hpp"
+#include "cci/ast/qual_type.hpp"
 #include <cstdint>
 #include <type_traits>
 
 namespace cci {
-struct ASTContext;
-
-struct Qualifiers
-{
-private:
-    uint32_t mask;
-
-public:
-    enum Qual
-    {
-        None = 0,
-        Const = 1 << 0,
-        Volatile = 1 << 1,
-        Restrict = 1 << 2,
-    };
-
-    static auto from_mask(uint32_t mask) -> Qualifiers
-    {
-        Qualifiers q;
-        q.mask = mask;
-        return q;
-    }
-
-    bool has_const() const { return mask & Const; }
-    void add_const() { mask |= Const; }
-    void clear_const() { mask &= ~Const; }
-    void set_const(bool flag) { flag ? add_const() : clear_const(); }
-
-    bool has_volatile() const { return mask & Volatile; }
-    void add_volatile() { mask |= Volatile; }
-    void clear_volatile() { mask &= ~Volatile; }
-    void set_volatile(bool flag) { flag ? add_volatile() : clear_volatile(); }
-
-    bool has_restrict() const { return mask & Restrict; }
-    void add_restrict() { mask |= Restrict; }
-    void clear_restrict() { mask &= ~Restrict; }
-    void set_restrict(bool flag) { flag ? add_restrict() : clear_restrict(); }
-
-    bool has_qualifiers() const { return mask; }
-};
-
 enum class TypeClass
 {
     Builtin,
@@ -55,44 +15,27 @@ enum class TypeClass
 
 struct Type
 {
-    TypeClass type_class;
+private:
+    TypeClass tc;
 
+protected:
+    friend struct ASTContext;
+    explicit Type(TypeClass tc) : tc(tc) {}
+
+public:
     Type(const Type &) = delete;
     Type &operator=(const Type &) = delete;
+
+    auto type_class() const -> TypeClass { return tc; }
 
     bool is_array_type() const;
     bool is_integer_type() const;
 
     template <typename T>
-    auto get_as() const -> arena_ptr<const T>
+    auto get_as() const -> const T *
     {
-        return T::classof(type_class) ? static_cast<arena_ptr<const T>>(this)
-                                      : nullptr;
+        return T::classof(tc) ? static_cast<const T *>(this) : nullptr;
     }
-
-protected:
-    friend struct ASTContext;
-    explicit Type(TypeClass tc) : type_class(tc) {}
-};
-
-struct QualType
-{
-private:
-    arena_ptr<Type> type;
-
-public:
-    Qualifiers qualifiers;
-
-    QualType() = default;
-    QualType(arena_ptr<Type> ty, uint32_t quals_mask)
-        : type(ty), qualifiers(Qualifiers::from_mask(quals_mask))
-    {}
-    QualType(arena_ptr<Type> ty, Qualifiers quals) : type(ty), qualifiers(quals)
-    {}
-
-    explicit operator bool() const noexcept { return type; }
-    auto operator*() const noexcept -> const Type & { return *type; }
-    auto operator-> () const noexcept { return type; }
 };
 
 enum class BuiltinTypeKind
@@ -121,57 +64,91 @@ enum class BuiltinTypeKind
 // Builtin types.
 struct BuiltinType : Type
 {
-    BuiltinTypeKind builtin_kind;
+private:
+    friend struct ASTContext;
+    BuiltinTypeKind btk;
+    BuiltinType(BuiltinTypeKind btk) : Type(TypeClass::Builtin), btk(btk) {}
 
-    BuiltinType(BuiltinTypeKind k) : Type(TypeClass::Builtin), builtin_kind(k)
-    {}
+public:
+    auto builtin_kind() const -> BuiltinTypeKind { return btk; }
+
+    static auto create(const ASTContext &ctx, BuiltinTypeKind btk)
+        -> arena_ptr<BuiltinType>
+    {
+        return new (ctx) BuiltinType(btk);
+    }
 
     static bool classof(TypeClass tc) { return TypeClass::Builtin == tc; }
 };
 
 struct ArrayType : Type
 {
-    QualType elem_type;
+private:
+    QualType elem_ty;
 
-    ArrayType(TypeClass tc, QualType et) : Type(tc), elem_type(et) {}
+protected:
+    friend struct ASTContext;
+    ArrayType(TypeClass tc, QualType et) : Type(tc), elem_ty(et) {}
+
+public:
+    auto element_type() const -> QualType { return elem_ty; }
 
     static bool classof(TypeClass tc) { return TypeClass::ConstantArray == tc; }
 };
 
 struct ConstantArrayType : ArrayType
 {
-    uint64_t length;
+private:
+    uint64_t len;
 
     ConstantArrayType(QualType elem_ty, uint64_t len)
-        : ArrayType(TypeClass::ConstantArray, elem_ty), length(len)
+        : ArrayType(TypeClass::ConstantArray, elem_ty), len(len)
     {}
+
+public:
+    auto array_length() const -> uint64_t { return len; }
+
+    static auto create(const ASTContext &ctx, QualType element_type,
+                       uint64_t length) -> arena_ptr<ConstantArrayType>
+    {
+        return new (ctx) ConstantArrayType(element_type, length);
+    }
 
     static bool classof(TypeClass tc) { return TypeClass::ConstantArray == tc; }
 };
 
 struct PointerType : Type
 {
-    QualType pointee_type;
-    srcmap::ByteLoc star_loc;
+private:
+    QualType pointee_ty;
 
-    PointerType(QualType pointee_ty, srcmap::ByteLoc star_loc)
-        : Type(TypeClass::Pointer), pointee_type(pointee_ty), star_loc(star_loc)
+    PointerType(QualType pointee_ty)
+        : Type(TypeClass::Pointer), pointee_ty(pointee_ty)
     {}
 
+public:
+    static auto create(const ASTContext &ctx, QualType pointee_type)
+        -> arena_ptr<PointerType>
+    {
+        return new (ctx) PointerType(pointee_type);
+    }
+
     static bool classof(TypeClass tc) { return TypeClass::Pointer == tc; }
+
+    auto pointee_type() const -> QualType { return pointee_ty; }
 };
 
 inline bool Type::is_array_type() const
 {
-    return type_class == TypeClass::ConstantArray;
+    return TypeClass::ConstantArray == type_class();
 }
 
 inline bool Type::is_integer_type() const
 {
     if (auto bt = get_as<BuiltinType>())
     {
-        return bt->builtin_kind >= BuiltinTypeKind::Bool &&
-               bt->builtin_kind <= BuiltinTypeKind::ULongLong;
+        return bt->builtin_kind() >= BuiltinTypeKind::Bool &&
+               bt->builtin_kind() <= BuiltinTypeKind::ULongLong;
     }
     return false;
 }

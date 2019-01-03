@@ -1,9 +1,7 @@
 #pragma once
 #include "cci/ast/arena_types.hpp"
-#include "cci/ast/type.hpp"
+#include "cci/ast/qual_type.hpp"
 #include "cci/langopts.hpp"
-#include "cci/syntax/diagnostics.hpp"
-#include "cci/syntax/source_map.hpp"
 #include "cci/util/memory_resource.hpp"
 #include "cci/util/span.hpp"
 #include <cstdint>
@@ -14,26 +12,21 @@ namespace cci {
 // Side-table and resource manager of the AST.
 struct ASTContext
 {
-    ASTContext(const srcmap::SourceMap &src_map, diag::Handler &diag,
-               const TargetInfo &target)
-        : src_map(src_map), diag(diag), target(target)
+    const TargetInfo &target_info;
+
+    ASTContext(const TargetInfo &target) : target_info(target)
     {
         init_builtin_types();
     }
 
-    auto source_map() const -> const srcmap::SourceMap & { return src_map; }
-    auto diagnostics() const -> diag::Handler & { return diag; }
-    auto target_info() const -> const TargetInfo & { return target; }
-
-    [[nodiscard]] auto
-    allocate(size_t bytes, size_t alignment = alignof(std::max_align_t)) const
-        -> void *
+    auto allocate(size_t bytes,
+                  size_t alignment = alignof(std::max_align_t)) const -> void *
     {
         return arena_resource.allocate(bytes, alignment);
     }
 
     template <typename T>
-    [[nodiscard]] auto allocate(size_t num = 1u) const -> T *
+    auto allocate(size_t num = 1u) const -> T *
     {
         return static_cast<T *>(
             arena_resource.allocate(num * sizeof(T), alignof(T)));
@@ -64,10 +57,6 @@ public:
     QualType long_double_ty;
 
 private:
-    const srcmap::SourceMap &src_map;
-    diag::Handler &diag;
-    const TargetInfo &target;
-
     // Arena memory resource used to create AST objects.
     //
     // AST objects are constructed here, but never destructed. All memory

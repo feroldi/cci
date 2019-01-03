@@ -33,6 +33,7 @@ auto Sema::act_on_numeric_constant(const Token &tok)
 
     small_string<64> spell_buffer;
     std::string_view spelling = scanner.get_spelling(tok, spell_buffer);
+    spell_buffer.push_back('\0');
     NumericConstantParser literal(scanner, spelling, tok.location());
 
     if (literal.has_error)
@@ -58,7 +59,7 @@ auto Sema::act_on_numeric_constant(const Token &tok)
         // of the corresponding list in which its value can be represented.
         if (!literal.is_long && !literal.is_long_long)
         {
-            size_t int_width = context.target_info().int_width;
+            size_t int_width = context.target_info.int_width;
             if (val >> int_width == 0)
             {
                 if (!literal.is_unsigned && (val >> (int_width - 1)) == 0)
@@ -71,7 +72,7 @@ auto Sema::act_on_numeric_constant(const Token &tok)
 
         if (!integer_ty && !literal.is_long_long)
         {
-            size_t long_width = context.target_info().long_width;
+            size_t long_width = context.target_info.long_width;
             if (val >> long_width == 0)
             {
                 if (!literal.is_unsigned && (val >> (long_width - 1)) == 0)
@@ -84,7 +85,7 @@ auto Sema::act_on_numeric_constant(const Token &tok)
 
         if (!integer_ty)
         {
-            size_t long_long_width = context.target_info().long_long_width;
+            size_t long_long_width = context.target_info.long_long_width;
             if (val >> long_long_width == 0)
             {
                 if (!literal.is_unsigned && (val >> (long_long_width - 1)) == 0)
@@ -109,7 +110,7 @@ auto Sema::act_on_numeric_constant(const Token &tok)
             diag_handler.report(tok.location(),
                                 diag::Diag::integer_literal_too_large);
             integer_ty = context.ulong_long_ty;
-            width = context.target_info().long_long_width;
+            width = context.target_info.long_long_width;
         }
 
         // Truncates the result.
@@ -137,8 +138,9 @@ auto Sema::act_on_char_constant(const Token &tok)
 
     small_string<8> spell_buffer;
     std::string_view spelling = scanner.get_spelling(tok, spell_buffer);
+    spell_buffer.push_back('\0');
     CharConstantParser literal(scanner, spelling, tok.location(), tok.category,
-                               context.target_info());
+                               context.target_info);
 
     if (literal.has_error)
         return nullptr;
@@ -172,7 +174,7 @@ auto Sema::act_on_string_literal(span<const Token> string_toks)
     -> std::optional<arena_ptr<StringLiteral>>
 {
     cci_expects(!string_toks.empty());
-    StringLiteralParser literal(scanner, string_toks, context.target_info());
+    StringLiteralParser literal(scanner, string_toks, context.target_info);
     if (literal.has_error)
         return nullptr;
 
@@ -208,7 +210,7 @@ auto Sema::act_on_string_literal(span<const Token> string_toks)
 
     // FIXME: Save this type in ASTContext so it can be reused as canonical.
     auto str_ty =
-        QualType(new (context) ConstantArrayType(elem_type, chars_count),
+        QualType(ConstantArrayType::create(context, elem_type, chars_count),
                  Qualifiers::None);
 
     arena_ptr<std::byte> str_data = new (context) std::byte[bytes_count];
@@ -265,14 +267,14 @@ auto Sema::act_on_array_subscript(const arena_ptr<Expr> lhs_expr,
     {
         base_expr = lhs_expr;
         index_expr = rhs_expr;
-        result_ty = ptr_ty->pointee_type;
+        result_ty = ptr_ty->pointee_type();
     }
     else if (auto ptr_ty = rhs_ty->get_as<PointerType>())
     {
         // Handle the uncommon case of `123[v]`.
         base_expr = rhs_expr;
         index_expr = lhs_expr;
-        result_ty = ptr_ty->pointee_type;
+        result_ty = ptr_ty->pointee_type();
     }
     else
     {
