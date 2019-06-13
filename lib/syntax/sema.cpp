@@ -11,11 +11,6 @@
 #include <memory>
 #include <string_view>
 
-static_assert(2 == sizeof(char16_t),
-              "UTF-16 string literals assume that char16_t is 2 bytes long");
-static_assert(4 == sizeof(char32_t),
-              "UTF-32 string literals assume that char32_t is 4 bytes long");
-
 using namespace cci;
 
 auto Sema::act_on_numeric_constant(const Token &tok)
@@ -250,12 +245,19 @@ auto Sema::act_on_paren_expr(arena_ptr<Expr> expr, srcmap::ByteLoc left,
     return ParenExpr::create(context, expr, left, right);
 }
 
-auto Sema::act_on_array_subscript(const arena_ptr<Expr> lhs_expr,
-                                  const arena_ptr<Expr> rhs_expr,
-                                  const srcmap::ByteLoc left_loc,
-                                  const srcmap::ByteLoc right_loc)
+auto Sema::act_on_array_subscript(arena_ptr<Expr> base, arena_ptr<Expr> idx,
+                                  srcmap::ByteLoc left_loc,
+                                  srcmap::ByteLoc right_loc)
     -> std::optional<arena_ptr<ArraySubscriptExpr>>
 {
+    const auto lhs_expr = function_array_lvalue_conversion(base);
+    if (!lhs_expr)
+        return std::nullopt;
+
+    const auto rhs_expr = function_array_lvalue_conversion(idx);
+    if (!rhs_expr)
+        return std::nullopt;
+
     const QualType lhs_ty = lhs_expr->type();
     const QualType rhs_ty = rhs_expr->type();
 
@@ -299,3 +301,63 @@ auto Sema::act_on_array_subscript(const arena_ptr<Expr> lhs_expr,
                                       ExprValueKind::LValue, result_ty,
                                       left_loc, right_loc);
 }
+
+auto Sema::function_array_lvalue_conversion(arena_ptr<Expr> expr)
+    -> std::optional<arena_ptr<Expr>>
+{
+    auto expr_res = function_array_conversion(expr);
+    if (!expr_res)
+        return std::nullopt;
+    expr_res = lvalue_conversion(*expr_res);
+    if (!expr_res)
+        return std::nullopt;
+    return *expr_res;
+}
+
+auto Sema::function_array_conversion(arena_ptr<Expr> expr)
+    -> std::optional<arena_ptr<Expr>>
+{
+    // TODO: Implement for function type
+    if (expr->type()->is_array_type())
+    {
+        // TODO: return the so-qualified decayed from array to pointer type
+        return expr;
+    }
+    return expr;
+}
+
+auto Sema::lvalue_conversion(arena_ptr<Expr> expr)
+    -> std::optional<arena_ptr<Expr>>
+{
+    if (expr->type()->is_void_type())
+        return expr;
+
+    if (!expr->is_lvalue())
+        return expr;
+
+    // C17 6.3.2.1p2:
+    //   If the lvalue has qualified type, the value has the unqualified
+    //   version of the type of the lvalue;
+    QualType ty = expr->type()->get_unqualified_type();
+    auto res = ImplicitCastExpr::create(context, ExprValueKind::RValue, ty,
+                                        CastKind::LValueToRValue, expr);
+
+    // C17 6.3.2.1p2:
+    //   additionally, if the lvalue has atomic type, the value has the
+    //   non-atomic version of the type of the lvalue;
+    if (const auto *atomic = ty->get_as<AtomicType>())
+    {
+        ty = atomic->value_type()->get_unqualified_type();
+        res = ImplicitCastExpr::create(context, ExprValueKind::RValue, ty,
+                                       CastKind::AtomicToNonAtomic, res);
+    }
+
+    // C17 6.3.2.1p2:
+    //   otherwise, the value has the type of the lvalue.
+    return res;
+}
+
+static_assert(2 == sizeof(char16_t),
+              "UTF-16 string literals assume that char16_t is 2 bytes long");
+static_assert(4 == sizeof(char32_t),
+              "UTF-32 string literals assume that char32_t is 4 bytes long");

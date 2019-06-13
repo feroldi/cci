@@ -50,6 +50,9 @@ public:
     auto end_loc() const -> srcmap::ByteLoc { return range.end; }
     auto source_range() const -> srcmap::Range { return range; }
 
+    bool is_lvalue() const { return ExprValueKind::LValue == vk; }
+    bool is_rvalue() const { return ExprValueKind::RValue == vk; }
+
     template <typename T>
     auto get_as() const -> const T *
     {
@@ -258,6 +261,7 @@ enum class CastKind
 {
     LValueToRValue,
     ArrayToPointerDecay,
+    AtomicToNonAtomic,
 };
 
 struct CastExpr : Expr

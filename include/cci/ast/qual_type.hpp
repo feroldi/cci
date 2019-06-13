@@ -41,7 +41,6 @@ public:
     void clear_restrict() { mask &= ~Restrict; }
     void set_restrict(bool flag) { flag ? add_restrict() : clear_restrict(); }
 
-    bool has_qualifiers() const { return mask; }
     bool empty() const { return !mask; }
 };
 
@@ -63,5 +62,11 @@ public:
     explicit operator bool() const noexcept { return type; }
     auto operator*() const noexcept -> const Type & { return *type; }
     auto operator-> () const noexcept { return type; }
+
+    bool has_qualifiers() const { return !qualifiers.empty(); }
+    auto get_unqualified_type() const -> QualType
+    {
+        return QualType(type, Qualifiers::None);
+    }
 };
 } // namespace cci
