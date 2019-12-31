@@ -4,7 +4,7 @@ namespace cci::diag {
 
 DiagnosticBuilder::~DiagnosticBuilder() noexcept(!CCI_CONTRACTS)
 {
-    this->handler.emit(std::move(diag));
+    this->handler->emit(std::move(diag));
 }
 
 auto ignoring_emitter() -> Handler::Emitter

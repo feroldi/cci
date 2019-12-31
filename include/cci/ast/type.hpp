@@ -155,6 +155,8 @@ public:
         return new (ctx) AtomicType(value_type);
     }
 
+    static bool classof(TypeClass tc) { return TypeClass::Atomic == tc; }
+
     auto value_type() const -> QualType { return value_ty; }
 };
 

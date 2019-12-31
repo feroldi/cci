@@ -258,8 +258,8 @@ auto Sema::act_on_array_subscript(arena_ptr<Expr> base, arena_ptr<Expr> idx,
     if (!rhs_expr)
         return std::nullopt;
 
-    const QualType lhs_ty = lhs_expr->type();
-    const QualType rhs_ty = rhs_expr->type();
+    const QualType lhs_ty = (*lhs_expr)->type();
+    const QualType rhs_ty = (*rhs_expr)->type();
 
     arena_ptr<Expr> base_expr;
     arena_ptr<Expr> index_expr;
@@ -267,15 +267,15 @@ auto Sema::act_on_array_subscript(arena_ptr<Expr> base, arena_ptr<Expr> idx,
 
     if (auto ptr_ty = lhs_ty->get_as<PointerType>())
     {
-        base_expr = lhs_expr;
-        index_expr = rhs_expr;
+        base_expr = *lhs_expr;
+        index_expr = *rhs_expr;
         result_ty = ptr_ty->pointee_type();
     }
     else if (auto ptr_ty = rhs_ty->get_as<PointerType>())
     {
         // Handle the uncommon case of `123[v]`.
-        base_expr = rhs_expr;
-        index_expr = lhs_expr;
+        base_expr = *rhs_expr;
+        index_expr = *lhs_expr;
         result_ty = ptr_ty->pointee_type();
     }
     else
@@ -284,7 +284,7 @@ auto Sema::act_on_array_subscript(arena_ptr<Expr> base, arena_ptr<Expr> idx,
         // complete object type", the other expression shall have integer type,
         // and the result has type "type".
         diag_handler.report(left_loc, diag::Diag::typecheck_subscript_value)
-            .ranges({lhs_expr->source_range(), rhs_expr->source_range()});
+            .ranges({(*lhs_expr)->source_range(), (*rhs_expr)->source_range()});
         return std::nullopt;
     }
 
@@ -338,7 +338,7 @@ auto Sema::lvalue_conversion(arena_ptr<Expr> expr)
     // C17 6.3.2.1p2:
     //   If the lvalue has qualified type, the value has the unqualified
     //   version of the type of the lvalue;
-    QualType ty = expr->type()->get_unqualified_type();
+    QualType ty = expr->type().get_unqualified_type();
     auto res = ImplicitCastExpr::create(context, ExprValueKind::RValue, ty,
                                         CastKind::LValueToRValue, expr);
 
@@ -347,7 +347,7 @@ auto Sema::lvalue_conversion(arena_ptr<Expr> expr)
     //   non-atomic version of the type of the lvalue;
     if (const auto *atomic = ty->get_as<AtomicType>())
     {
-        ty = atomic->value_type()->get_unqualified_type();
+        ty = atomic->value_type().get_unqualified_type();
         res = ImplicitCastExpr::create(context, ExprValueKind::RValue, ty,
                                        CastKind::AtomicToNonAtomic, res);
     }
