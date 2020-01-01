@@ -25,9 +25,9 @@ public:
     auto parse_expression() -> std::optional<arena_ptr<Expr>>;
 
 private:
-    auto peek(size_t lookahead = 0) -> Token;
-    auto consume() -> Token;
-    auto expect_and_consume(Category category) -> std::optional<Token>;
+    auto peek_tok(size_t lookahead = 0) -> Token;
+    auto consume_tok() -> Token;
+    auto expect_and_consume_tok(Category category) -> std::optional<Token>;
 
     auto parse_primary_expression() -> std::optional<arena_ptr<Expr>>;
     auto parse_string_literal_expression()
