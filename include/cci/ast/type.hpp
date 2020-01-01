@@ -11,6 +11,7 @@ enum class TypeClass
     Builtin,
     ConstantArray,
     Pointer,
+    Atomic,
 };
 
 struct Type
@@ -30,6 +31,7 @@ public:
 
     bool is_array_type() const;
     bool is_integer_type() const;
+    bool is_void_type() const;
 
     template <typename T>
     auto get_as() const -> const T *
@@ -138,6 +140,26 @@ public:
     auto pointee_type() const -> QualType { return pointee_ty; }
 };
 
+struct AtomicType : Type
+{
+private:
+    QualType value_ty;
+
+    AtomicType(QualType value_ty) : Type(TypeClass::Atomic), value_ty(value_ty)
+    {}
+
+public:
+    static auto create(const ASTContext &ctx, QualType value_type)
+        -> arena_ptr<AtomicType>
+    {
+        return new (ctx) AtomicType(value_type);
+    }
+
+    static bool classof(TypeClass tc) { return TypeClass::Atomic == tc; }
+
+    auto value_type() const -> QualType { return value_ty; }
+};
+
 inline bool Type::is_array_type() const
 {
     return TypeClass::ConstantArray == type_class();
@@ -146,10 +168,15 @@ inline bool Type::is_array_type() const
 inline bool Type::is_integer_type() const
 {
     if (auto bt = get_as<BuiltinType>())
-    {
         return bt->builtin_kind() >= BuiltinTypeKind::Bool &&
                bt->builtin_kind() <= BuiltinTypeKind::ULongLong;
-    }
+    return false;
+}
+
+inline bool Type::is_void_type() const
+{
+    if (auto bt = get_as<BuiltinType>())
+        return bt->builtin_kind() == BuiltinTypeKind::Void;
     return false;
 }
 

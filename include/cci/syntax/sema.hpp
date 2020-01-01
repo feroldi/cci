@@ -36,6 +36,12 @@ public:
     auto act_on_array_subscript(arena_ptr<Expr> base, arena_ptr<Expr> idx,
                                 srcmap::ByteLoc left, srcmap::ByteLoc right)
         -> std::optional<arena_ptr<ArraySubscriptExpr>>;
+    auto function_array_lvalue_conversion(arena_ptr<Expr> expr)
+        -> std::optional<arena_ptr<Expr>>;
+    auto function_array_conversion(arena_ptr<Expr> expr)
+        -> std::optional<arena_ptr<Expr>>;
+    auto lvalue_conversion(arena_ptr<Expr> expr)
+        -> std::optional<arena_ptr<Expr>>;
 };
 
 } // namespace cci

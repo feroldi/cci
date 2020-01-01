@@ -60,7 +60,7 @@ struct Diagnostic
 struct DiagnosticBuilder
 {
     DiagnosticBuilder(srcmap::SourceLoc loc, Diag msg, Handler &handler)
-        : handler(handler), diag(std::make_unique<Diagnostic>(loc, msg))
+        : handler(&handler), diag(std::make_unique<Diagnostic>(loc, msg))
     {}
 
     DiagnosticBuilder(DiagnosticBuilder &&) = default;
@@ -87,8 +87,8 @@ struct DiagnosticBuilder
     ~DiagnosticBuilder() noexcept(!CCI_CONTRACTS);
 
 private:
-    Handler &handler; ///< The handler that will be handed the diagnostic.
-    std::unique_ptr<Diagnostic> diag; ///< Diagnostic being constructed.
+    Handler *handler; ///< The handler to which the diagnostic will be handed.
+    std::unique_ptr<Diagnostic> diag; ///< Diagnostic which is being constructed.
 };
 
 /// A diagnostic handler.
