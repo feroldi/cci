@@ -110,14 +110,14 @@ auto Parser::parse_postfix_expression(arena_ptr<Expr> expr)
     switch (peek().category)
     {
         case Category::l_bracket: {
-            Token lbracket_tok = consume();
-            if (auto inside_brackets = parse_expression())
+            const Token lbracket_tok = consume();
+            if (auto expr_inside_brackets = parse_expression())
             {
                 if (auto rbracket_tok = expect_and_consume(Category::r_bracket))
                 {
                     return sema.act_on_array_subscript(
-                        expr, inside_brackets.value(), lbracket_tok.location(),
-                        rbracket_tok->location());
+                        expr, expr_inside_brackets.value(),
+                        lbracket_tok.location(), rbracket_tok->location());
                 }
             }
             break;
