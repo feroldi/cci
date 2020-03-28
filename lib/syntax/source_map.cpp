@@ -13,8 +13,8 @@ namespace cci::srcmap {
 FileMap::FileMap(std::string n, std::string s, ByteLoc sl)
     : name(std::move(n)), src(std::move(s)), start_loc(sl)
 {
-    // Removes UTF-8 BOM.
-    if (this->src_view().substr(0, 3) == "\uFEFF")
+    const auto utf8_bom = "\uFEFF";
+    if (this->src_view().substr(0, 3) == utf8_bom)
         this->src.erase(0, 3);
 
     if (!this->src.empty() && this->src.back() != '\n')

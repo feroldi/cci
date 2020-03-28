@@ -44,8 +44,6 @@ protected:
     auto parse_numeric_constant(std::string source) -> NumericConstantParser
     {
         EXPECT_FALSE(source.empty());
-        if (source.back() != '\n')
-            source.push_back('\n');
         auto lexed_toks = scan(std::move(source));
         EXPECT_EQ(1, lexed_toks.size());
         Token tok = lexed_toks.front();
