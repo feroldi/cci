@@ -81,8 +81,8 @@ auto SourceMap::create_owned_filemap(std::string name, std::string src)
 
 auto SourceMap::lookup_filemap_idx(ByteLoc loc) const -> size_t
 {
-    cci_expects(!this->file_maps.empty() &&
-                loc < this->file_maps.back()->end_loc);
+    cci_expects(!this->file_maps.empty());
+    cci_expects(loc < this->file_maps.back()->end_loc);
     const auto file =
         std::find_if(this->file_maps.begin(), this->file_maps.end(),
                      [&](const auto &fm) { return fm->contains(loc); });

@@ -4,6 +4,7 @@
 #include "cci/syntax/scanner.hpp"
 #include "cci/syntax/source_map.hpp"
 #include "cci/syntax/token.hpp"
+#include "cci/util/memory_resource.hpp"
 #include "gtest/gtest.h"
 #include <ostream>
 #include <queue>
@@ -17,11 +18,13 @@ protected:
     srcmap::SourceMap source_map;
     diag::Handler diag_handler;
     std::queue<diag::Diagnostic> diags;
+    pmr::monotonic_buffer_resource arena;
 
     CompilerFixture()
         : source_map()
         , diag_handler([this](const diag::Diagnostic &d) { diags.push(d); },
                        source_map)
+        , arena()
     {}
 
     void TearDown() override
@@ -39,6 +42,16 @@ protected:
     auto get_source_text(const cci::Token &tok) const -> std::string_view
     {
         return source_map.range_to_snippet(tok.source_range);
+    }
+
+    auto get_lexeme_view(const Token &tok) -> std::string_view
+    {
+        char *lexeme_buffer = new (this->arena.allocate(
+            tok.size(), alignof(char))) char[tok.size() + 1];
+        const size_t lexeme_len = Scanner::get_spelling_to_buffer(
+            tok, lexeme_buffer, this->source_map);
+        lexeme_buffer[lexeme_len] = '\0';
+        return {lexeme_buffer, lexeme_len};
     }
 
     auto get_lexeme(const cci::Token &tok) const -> std::string

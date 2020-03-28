@@ -1,9 +1,9 @@
+#include "../compiler_fixture.hpp"
 #include "cci/syntax/diagnostics.hpp"
 #include "cci/syntax/literal_parser.hpp"
 #include "cci/syntax/scanner.hpp"
 #include "cci/syntax/source_map.hpp"
 #include "cci/util/contracts.hpp"
-#include "cci/util/memory_resource.hpp"
 #include "cci/util/span.hpp"
 #include "cci/util/unicode.hpp"
 #include "gtest/gtest.h"
@@ -15,22 +15,13 @@ using namespace cci;
 
 namespace {
 
-struct LiteralParserTest : ::testing::Test
+struct LiteralParserTest : cci::test::CompilerFixture
 {
 protected:
-    srcmap::SourceMap source_map;
-    diag::Handler diag_handler;
     std::unique_ptr<Scanner> scanner;
     TargetInfo target;
-    pmr::monotonic_buffer_resource arena;
 
-    LiteralParserTest()
-        : source_map()
-        , diag_handler(diag::ignoring_emitter(), source_map)
-        , scanner()
-        , target()
-        , arena()
-    {}
+    LiteralParserTest() : scanner(), target() {}
 
     auto scan(std::string source) -> std::vector<Token>
     {
@@ -50,16 +41,6 @@ protected:
         return toks;
     }
 
-    auto get_lexeme(const Token &tok) -> std::string_view
-    {
-        char *lexeme_buffer = new (this->arena.allocate(
-            tok.size(), alignof(char))) char[tok.size() + 1];
-        const size_t lexeme_len = Scanner::get_spelling_to_buffer(
-            tok, lexeme_buffer, this->source_map);
-        lexeme_buffer[lexeme_len] = '\0';
-        return {lexeme_buffer, lexeme_len};
-    }
-
     auto parse_numeric_constant(std::string source) -> NumericConstantParser
     {
         EXPECT_FALSE(source.empty());
@@ -68,7 +49,7 @@ protected:
         auto lexed_toks = scan(std::move(source));
         EXPECT_EQ(1, lexed_toks.size());
         Token tok = lexed_toks.front();
-        NumericConstantParser parser(*this->scanner, get_lexeme(tok),
+        NumericConstantParser parser(*this->scanner, get_lexeme_view(tok),
                                      tok.location());
         return parser;
     }
@@ -79,7 +60,7 @@ protected:
         auto lexed_toks = scan(std::move(source));
         std::vector<NumericConstantParser> parsers;
         for (const Token &tok : lexed_toks)
-            parsers.emplace_back(*this->scanner, get_lexeme(tok),
+            parsers.emplace_back(*this->scanner, get_lexeme_view(tok),
                                  tok.location());
         return parsers;
     }
@@ -90,7 +71,7 @@ protected:
         auto lexed_toks = scan(std::move(source));
         std::vector<CharConstantParser> parsers;
         for (const Token &tok : lexed_toks)
-            parsers.emplace_back(*this->scanner, get_lexeme(tok),
+            parsers.emplace_back(*this->scanner, get_lexeme_view(tok),
                                  tok.location(), tok.category, target);
         return parsers;
     }
@@ -165,7 +146,7 @@ TEST_F(LiteralParserTest, numConstUnsignedSuffixAppearsTwice)
     auto parsed_num = parse_numeric_constant("0uU");
 
     EXPECT_TRUE(parsed_num.has_error);
-    EXPECT_EQ(Diag::invalid_digit, pop_diag().msg);
+    EXPECT_EQ(Diag::invalid_suffix, pop_diag().msg);
 }
 
 TEST_F(LiteralParserTest, numConstLongAndLongLongSuffixes)
@@ -173,7 +154,7 @@ TEST_F(LiteralParserTest, numConstLongAndLongLongSuffixes)
     auto parsed_num = parse_numeric_constant("0LLL");
 
     EXPECT_TRUE(parsed_num.has_error);
-    EXPECT_EQ(Diag::invalid_digit, pop_diag().msg);
+    EXPECT_EQ(Diag::invalid_suffix, pop_diag().msg);
 }
 
 TEST_F(LiteralParserTest, numConstInvalidOctalDigit)
@@ -365,6 +346,7 @@ TEST_F(LiteralParserTest, charConstants)
 
     // '\x'
     EXPECT_TRUE(chars[1].has_error);
+    EXPECT_EQ(Diag::missing_escape_digits, pop_diag().msg);
 
     // u'\u00A8'
     EXPECT_FALSE(chars[2].has_error);
@@ -374,6 +356,7 @@ TEST_F(LiteralParserTest, charConstants)
 
     // u'\u00A'
     EXPECT_TRUE(chars[3].has_error);
+    EXPECT_EQ(Diag::invalid_ucn, pop_diag().msg);
 
     // 'abcd'
     EXPECT_FALSE(chars[4].has_error);
@@ -384,6 +367,7 @@ TEST_F(LiteralParserTest, charConstants)
     // '\u0080'
     EXPECT_TRUE(chars[5].has_error);
     EXPECT_EQ(-128u, chars[5].value);
+    EXPECT_EQ(Diag::unicode_too_large_for_unit, pop_diag().msg);
 
     // '\123'
     EXPECT_FALSE(chars[6].has_error);
@@ -393,6 +377,7 @@ TEST_F(LiteralParserTest, charConstants)
 
     // '\777'
     EXPECT_TRUE(chars[7].has_error);
+    EXPECT_EQ(Diag::escape_out_of_range, pop_diag().msg);
 }
 
 TEST_F(LiteralParserTest, stringLiteral)
@@ -489,6 +474,8 @@ TEST_F(LiteralParserTest, stringLiteralConcatDifferentKinds)
     auto str =
         parse_string_literal("u8\"bad\" \" string\" L\" concat\" L\"!\"");
     EXPECT_TRUE(str.has_error);
+    EXPECT_EQ(Diag::nonstandard_string_concat, pop_diag().msg);
+    EXPECT_EQ(Diag::nonstandard_string_concat, pop_diag().msg);
 }
 
 TEST_F(LiteralParserTest, stringLiteralUCNs)
