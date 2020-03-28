@@ -54,17 +54,6 @@ protected:
         return parser;
     }
 
-    auto parse_numeric_constants(std::string source)
-        -> std::vector<NumericConstantParser>
-    {
-        auto lexed_toks = scan(std::move(source));
-        std::vector<NumericConstantParser> parsers;
-        for (const Token &tok : lexed_toks)
-            parsers.emplace_back(*this->scanner, get_lexeme_view(tok),
-                                 tok.location());
-        return parsers;
-    }
-
     auto parse_char_constants(std::string source)
         -> std::vector<CharConstantParser>
     {
