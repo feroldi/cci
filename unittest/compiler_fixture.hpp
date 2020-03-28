@@ -10,6 +10,7 @@
 #include <type_traits>
 
 namespace cci::test {
+
 struct CompilerFixture : ::testing::Test
 {
 protected:
@@ -64,18 +65,24 @@ protected:
         return diags.front();
     }
 };
+
 } // namespace cci::test
 
 namespace cci {
+
 inline void PrintTo(const Category category, std::ostream *os) noexcept
 {
     *os << to_string(category);
 }
+
 namespace diag {
+
 inline void PrintTo(const Diag msg, std::ostream *os) noexcept
 {
     *os << "Diag(" << static_cast<std::underlying_type_t<diag::Diag>>(msg)
         << ")";
 }
+
 } // namespace diag
+
 } // namespace cci

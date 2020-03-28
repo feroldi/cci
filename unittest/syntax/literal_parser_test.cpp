@@ -10,6 +10,7 @@
 #include <string>
 #include <string_view>
 
+using namespace cci::diag;
 using namespace cci;
 
 namespace {
@@ -59,6 +60,19 @@ protected:
         return {lexeme_buffer, lexeme_len};
     }
 
+    auto parse_numeric_constant(std::string source) -> NumericConstantParser
+    {
+        EXPECT_FALSE(source.empty());
+        if (source.back() != '\n')
+            source.push_back('\n');
+        auto lexed_toks = scan(std::move(source));
+        EXPECT_EQ(1, lexed_toks.size());
+        Token tok = lexed_toks.front();
+        NumericConstantParser parser(*this->scanner, get_lexeme(tok),
+                                     tok.location());
+        return parser;
+    }
+
     auto parse_numeric_constants(std::string source)
         -> std::vector<NumericConstantParser>
     {
@@ -89,157 +103,244 @@ protected:
     }
 };
 
-TEST_F(LiteralParserTest, numericConstants)
+TEST_F(LiteralParserTest, numConstUnsignedLongIntWithSuffix)
 {
-    auto nums = parse_numeric_constants(
-        "42uL "
-        "042 "
-        "0xDEADc0dellu "
-        "0uU "
-        "0LLL "
-        "0128 "
-        "314e10 "
-        "1.f "
-        "1.ef "
-        ".0 "
-        "01238. "
-        "0xabcde.ffP+1 "
-        "0xep1f "
-        "0x.f \n");
+    auto parsed_num = parse_numeric_constant("42ul");
 
-    ASSERT_EQ(14, nums.size());
+    EXPECT_TRUE(parsed_num.is_unsigned);
+    EXPECT_TRUE(parsed_num.is_long);
+    EXPECT_TRUE(parsed_num.is_integer_literal());
 
-    // 42uL
-    EXPECT_FALSE(nums[0].has_error);
-    EXPECT_FALSE(nums[0].has_period);
-    EXPECT_FALSE(nums[0].has_exponent);
-    EXPECT_TRUE(nums[0].is_unsigned);
-    EXPECT_TRUE(nums[0].is_long);
-    EXPECT_FALSE(nums[0].is_long_long);
-    EXPECT_FALSE(nums[0].is_float);
-    EXPECT_TRUE(nums[0].is_integer_literal());
-    EXPECT_FALSE(nums[0].is_floating_literal());
-    EXPECT_EQ(10, nums[0].radix);
-    EXPECT_EQ(std::pair(42ul, false), nums[0].to_integer());
+    EXPECT_FALSE(parsed_num.has_error);
+    EXPECT_FALSE(parsed_num.has_period);
+    EXPECT_FALSE(parsed_num.has_exponent);
+    EXPECT_FALSE(parsed_num.is_long_long);
+    EXPECT_FALSE(parsed_num.is_float);
+    EXPECT_FALSE(parsed_num.is_floating_literal());
 
-    // 042
-    EXPECT_FALSE(nums[1].has_error);
-    EXPECT_FALSE(nums[1].has_period);
-    EXPECT_FALSE(nums[1].has_exponent);
-    EXPECT_FALSE(nums[1].is_unsigned);
-    EXPECT_FALSE(nums[1].is_long);
-    EXPECT_FALSE(nums[1].is_long_long);
-    EXPECT_FALSE(nums[1].is_float);
-    EXPECT_TRUE(nums[1].is_integer_literal());
-    EXPECT_FALSE(nums[1].is_floating_literal());
-    EXPECT_EQ(8, nums[1].radix);
-    EXPECT_EQ(std::pair(34ul, false), nums[1].to_integer());
+    EXPECT_EQ(10, parsed_num.radix);
+    EXPECT_EQ(std::pair(42ul, false), parsed_num.to_integer());
+}
 
-    // 0xDEADc0dellu
-    EXPECT_FALSE(nums[2].has_error);
-    EXPECT_FALSE(nums[2].has_period);
-    EXPECT_FALSE(nums[2].has_exponent);
-    EXPECT_TRUE(nums[2].is_unsigned);
-    EXPECT_FALSE(nums[2].is_long);
-    EXPECT_TRUE(nums[2].is_long_long);
-    EXPECT_FALSE(nums[2].is_float);
-    EXPECT_TRUE(nums[2].is_integer_literal());
-    EXPECT_FALSE(nums[2].is_floating_literal());
-    EXPECT_EQ(16, nums[2].radix);
-    EXPECT_EQ(std::pair(3735929054ul, false), nums[2].to_integer());
+TEST_F(LiteralParserTest, numConstIntOctal)
+{
+    auto parsed_num = parse_numeric_constant("042");
 
-    // 0uU
-    EXPECT_TRUE(nums[3].has_error);
+    EXPECT_TRUE(parsed_num.is_integer_literal());
 
-    // 0LLL
-    EXPECT_TRUE(nums[4].has_error);
+    EXPECT_FALSE(parsed_num.has_error);
+    EXPECT_FALSE(parsed_num.has_period);
+    EXPECT_FALSE(parsed_num.has_exponent);
+    EXPECT_FALSE(parsed_num.is_unsigned);
+    EXPECT_FALSE(parsed_num.is_long);
+    EXPECT_FALSE(parsed_num.is_long_long);
+    EXPECT_FALSE(parsed_num.is_float);
+    EXPECT_FALSE(parsed_num.is_floating_literal());
 
-    // 0128
-    EXPECT_TRUE(nums[5].has_error);
+    EXPECT_EQ(8, parsed_num.radix);
+    EXPECT_EQ(std::pair(34ul, false), parsed_num.to_integer());
+}
 
-    // 314e10
-    EXPECT_FALSE(nums[6].has_error);
-    EXPECT_FALSE(nums[6].has_period);
-    EXPECT_TRUE(nums[6].has_exponent);
-    EXPECT_FALSE(nums[6].is_unsigned);
-    EXPECT_FALSE(nums[6].is_long);
-    EXPECT_FALSE(nums[6].is_long_long);
-    EXPECT_FALSE(nums[6].is_float);
-    EXPECT_FALSE(nums[6].is_integer_literal());
-    EXPECT_TRUE(nums[6].is_floating_literal());
-    EXPECT_EQ(10, nums[6].radix);
-    // EXPECT_EQ(std::pair(314e10, false), nums[6].to_floating_point());
+TEST_F(LiteralParserTest, numConstUnsignedLongLongIntHex)
+{
+    auto parsed_num = parse_numeric_constant("0xDEADc0dellu");
 
-    // 1.f
-    EXPECT_FALSE(nums[7].has_error);
-    EXPECT_TRUE(nums[7].has_period);
-    EXPECT_FALSE(nums[7].has_exponent);
-    EXPECT_FALSE(nums[7].is_unsigned);
-    EXPECT_FALSE(nums[7].is_long);
-    EXPECT_FALSE(nums[7].is_long_long);
-    EXPECT_TRUE(nums[7].is_float);
-    EXPECT_FALSE(nums[7].is_integer_literal());
-    EXPECT_TRUE(nums[7].is_floating_literal());
-    EXPECT_EQ(10, nums[7].radix);
-    // EXPECT_EQ(std::pair(1.0, false), nums[7].to_floating_point());
+    EXPECT_TRUE(parsed_num.is_unsigned);
+    EXPECT_TRUE(parsed_num.is_long_long);
+    EXPECT_TRUE(parsed_num.is_integer_literal());
 
-    // 1.ef
-    EXPECT_TRUE(nums[8].has_error);
+    EXPECT_FALSE(parsed_num.has_error);
+    EXPECT_FALSE(parsed_num.has_period);
+    EXPECT_FALSE(parsed_num.has_exponent);
+    EXPECT_FALSE(parsed_num.is_long);
+    EXPECT_FALSE(parsed_num.is_float);
+    EXPECT_FALSE(parsed_num.is_floating_literal());
 
-    // .0
-    EXPECT_FALSE(nums[9].has_error);
-    EXPECT_TRUE(nums[9].has_period);
-    EXPECT_FALSE(nums[9].has_exponent);
-    EXPECT_FALSE(nums[9].is_unsigned);
-    EXPECT_FALSE(nums[9].is_long);
-    EXPECT_FALSE(nums[9].is_long_long);
-    EXPECT_FALSE(nums[9].is_float);
-    EXPECT_FALSE(nums[9].is_integer_literal());
-    EXPECT_TRUE(nums[9].is_floating_literal());
-    EXPECT_EQ(10, nums[9].radix);
-    // EXPECT_EQ(std::pair(0.0, false), nums[9].to_floating_point());
+    EXPECT_EQ(16, parsed_num.radix);
+    EXPECT_EQ(std::pair(3735929054ul, false), parsed_num.to_integer());
+}
 
-    // 01238.
-    EXPECT_FALSE(nums[10].has_error);
-    EXPECT_TRUE(nums[10].has_period);
-    EXPECT_FALSE(nums[10].has_exponent);
-    EXPECT_FALSE(nums[10].is_unsigned);
-    EXPECT_FALSE(nums[10].is_long);
-    EXPECT_FALSE(nums[10].is_long_long);
-    EXPECT_FALSE(nums[10].is_float);
-    EXPECT_FALSE(nums[10].is_integer_literal());
-    EXPECT_TRUE(nums[10].is_floating_literal());
-    EXPECT_EQ(10, nums[10].radix);
-    // EXPECT_EQ(std::pair(1238.0, false), nums[10].to_floating_point());
+TEST_F(LiteralParserTest, numConstUnsignedSuffixAppearsTwice)
+{
+    auto parsed_num = parse_numeric_constant("0uU");
 
-    // 0xabcde.ffP+1
-    EXPECT_FALSE(nums[11].has_error);
-    EXPECT_TRUE(nums[11].has_period);
-    EXPECT_TRUE(nums[11].has_exponent);
-    EXPECT_FALSE(nums[11].is_unsigned);
-    EXPECT_FALSE(nums[11].is_long);
-    EXPECT_FALSE(nums[11].is_long_long);
-    EXPECT_FALSE(nums[11].is_float);
-    EXPECT_FALSE(nums[11].is_integer_literal());
-    EXPECT_TRUE(nums[11].is_floating_literal());
-    EXPECT_EQ(16, nums[11].radix);
-    // EXPECT_EQ(std::pair(1.40742e+06, false), nums[11].to_floating_point());
+    EXPECT_TRUE(parsed_num.has_error);
+    EXPECT_EQ(Diag::invalid_digit, pop_diag().msg);
+}
 
-    // 0xep1f
-    EXPECT_FALSE(nums[12].has_error);
-    EXPECT_FALSE(nums[12].has_period);
-    EXPECT_TRUE(nums[12].has_exponent);
-    EXPECT_FALSE(nums[12].is_unsigned);
-    EXPECT_FALSE(nums[12].is_long);
-    EXPECT_FALSE(nums[12].is_long_long);
-    EXPECT_TRUE(nums[12].is_float);
-    EXPECT_FALSE(nums[12].is_integer_literal());
-    EXPECT_TRUE(nums[12].is_floating_literal());
-    EXPECT_EQ(16, nums[12].radix);
-    // EXPECT_EQ(std::pair(28.0, false), nums[12].to_floating_point());
+TEST_F(LiteralParserTest, numConstLongAndLongLongSuffixes)
+{
+    auto parsed_num = parse_numeric_constant("0LLL");
 
-    // 0x.f
-    EXPECT_TRUE(nums[13].has_error);
+    EXPECT_TRUE(parsed_num.has_error);
+    EXPECT_EQ(Diag::invalid_digit, pop_diag().msg);
+}
+
+TEST_F(LiteralParserTest, numConstInvalidOctalDigit)
+{
+    auto parsed_num = parse_numeric_constant("0128");
+
+    EXPECT_TRUE(parsed_num.has_error);
+    EXPECT_EQ(Diag::invalid_digit, pop_diag().msg);
+}
+
+TEST_F(LiteralParserTest, numConstDoubleHasExponent)
+{
+    auto parsed_num = parse_numeric_constant("314e10");
+
+    EXPECT_TRUE(parsed_num.has_exponent);
+    EXPECT_TRUE(parsed_num.is_floating_literal());
+
+    EXPECT_FALSE(parsed_num.has_error);
+    EXPECT_FALSE(parsed_num.has_period);
+    EXPECT_FALSE(parsed_num.is_unsigned);
+    EXPECT_FALSE(parsed_num.is_long);
+    EXPECT_FALSE(parsed_num.is_long_long);
+    EXPECT_FALSE(parsed_num.is_float);
+    EXPECT_FALSE(parsed_num.is_integer_literal());
+
+    EXPECT_EQ(10, parsed_num.radix);
+
+    // TODO: Implement float conversion. Also, use EXPECT_DOUBLE_EQ.
+    // EXPECT_EQ(std::pair(314e10, false), parsed_num.to_floating_point());
+}
+
+TEST_F(LiteralParserTest, numConstDoubleHasPeriodNoRightDigits)
+{
+    auto parsed_num = parse_numeric_constant("1.");
+
+    EXPECT_TRUE(parsed_num.has_period);
+    EXPECT_TRUE(parsed_num.is_floating_literal());
+
+    EXPECT_FALSE(parsed_num.has_error);
+    EXPECT_FALSE(parsed_num.has_exponent);
+    EXPECT_FALSE(parsed_num.is_unsigned);
+    EXPECT_FALSE(parsed_num.is_long);
+    EXPECT_FALSE(parsed_num.is_long_long);
+    EXPECT_FALSE(parsed_num.is_float);
+    EXPECT_FALSE(parsed_num.is_integer_literal());
+
+    EXPECT_EQ(10, parsed_num.radix);
+
+    // TODO: Implement float conversion. Also, use EXPECT_DOUBLE_EQ.
+    // EXPECT_EQ(std::pair(1.0, false), parsed_num.to_floating_point());
+}
+
+TEST_F(LiteralParserTest, numConstFloatHasPeriodNoRightDigits)
+{
+    auto parsed_num = parse_numeric_constant("1.f");
+
+    EXPECT_TRUE(parsed_num.has_period);
+    EXPECT_TRUE(parsed_num.is_float);
+    EXPECT_TRUE(parsed_num.is_floating_literal());
+
+    EXPECT_FALSE(parsed_num.has_error);
+    EXPECT_FALSE(parsed_num.has_exponent);
+    EXPECT_FALSE(parsed_num.is_unsigned);
+    EXPECT_FALSE(parsed_num.is_long);
+    EXPECT_FALSE(parsed_num.is_long_long);
+    EXPECT_FALSE(parsed_num.is_integer_literal());
+
+    EXPECT_EQ(10, parsed_num.radix);
+
+    // TODO: Implement float conversion. Also, use EXPECT_FLOAT_EQ.
+    // EXPECT_EQ(std::pair(1.0f, false), parsed_num.to_floating_point());
+}
+
+TEST_F(LiteralParserTest, numConstMissingExponentDigits)
+{
+    auto parsed_num = parse_numeric_constant("1.ef");
+
+    EXPECT_TRUE(parsed_num.has_error);
+    EXPECT_EQ(Diag::missing_exponent_digits, pop_diag().msg);
+}
+
+TEST_F(LiteralParserTest, numConstDoubleHasPeriodNoLeftDigits)
+{
+    auto parsed_num = parse_numeric_constant(".0");
+
+    EXPECT_TRUE(parsed_num.has_period);
+    EXPECT_TRUE(parsed_num.is_floating_literal());
+
+    EXPECT_FALSE(parsed_num.has_error);
+    EXPECT_FALSE(parsed_num.has_exponent);
+    EXPECT_FALSE(parsed_num.is_unsigned);
+    EXPECT_FALSE(parsed_num.is_long);
+    EXPECT_FALSE(parsed_num.is_long_long);
+    EXPECT_FALSE(parsed_num.is_float);
+    EXPECT_FALSE(parsed_num.is_integer_literal());
+
+    EXPECT_EQ(10, parsed_num.radix);
+
+    // TODO: Implement float conversion. Also, use EXPECT_DOUBLE_EQ.
+    // EXPECT_EQ(std::pair(0.0, false), parsed_num.to_floating_point());
+}
+
+TEST_F(LiteralParserTest, numConstDoubleStartsWithZeroHasPeriod)
+{
+    auto parsed_num = parse_numeric_constant("01238.");
+
+    EXPECT_TRUE(parsed_num.has_period);
+    EXPECT_TRUE(parsed_num.is_floating_literal());
+
+    EXPECT_FALSE(parsed_num.has_error);
+    EXPECT_FALSE(parsed_num.has_exponent);
+    EXPECT_FALSE(parsed_num.is_unsigned);
+    EXPECT_FALSE(parsed_num.is_long);
+    EXPECT_FALSE(parsed_num.is_long_long);
+    EXPECT_FALSE(parsed_num.is_float);
+    EXPECT_FALSE(parsed_num.is_integer_literal());
+
+    EXPECT_EQ(10, parsed_num.radix);
+    // EXPECT_EQ(std::pair(1238.0, false), parsed_num.to_floating_point());
+}
+
+TEST_F(LiteralParserTest, numConstDoubleHexHasPeriodExponentPlus)
+{
+    auto parsed_num = parse_numeric_constant("0xabcde.ffP+1");
+
+    EXPECT_TRUE(parsed_num.has_period);
+    EXPECT_TRUE(parsed_num.has_exponent);
+    EXPECT_TRUE(parsed_num.is_floating_literal());
+
+    EXPECT_FALSE(parsed_num.has_error);
+    EXPECT_FALSE(parsed_num.is_unsigned);
+    EXPECT_FALSE(parsed_num.is_long);
+    EXPECT_FALSE(parsed_num.is_long_long);
+    EXPECT_FALSE(parsed_num.is_float);
+    EXPECT_FALSE(parsed_num.is_integer_literal());
+
+    EXPECT_EQ(16, parsed_num.radix);
+
+    // EXPECT_EQ(std::pair(1.40742e+06, false), parsed_num.to_floating_point());
+}
+
+TEST_F(LiteralParserTest, numConstFloatHexHasExponent)
+{
+    auto parsed_num = parse_numeric_constant("0xep1f");
+
+    EXPECT_TRUE(parsed_num.has_exponent);
+    EXPECT_TRUE(parsed_num.is_float);
+    EXPECT_TRUE(parsed_num.is_floating_literal());
+
+    EXPECT_FALSE(parsed_num.has_error);
+    EXPECT_FALSE(parsed_num.has_period);
+    EXPECT_FALSE(parsed_num.is_unsigned);
+    EXPECT_FALSE(parsed_num.is_long);
+    EXPECT_FALSE(parsed_num.is_long_long);
+    EXPECT_FALSE(parsed_num.is_integer_literal());
+
+    EXPECT_EQ(16, parsed_num.radix);
+
+    // EXPECT_EQ(std::pair(28.0, false), parsed_num.to_floating_point());
+}
+
+TEST_F(LiteralParserTest, numConstMissingBinaryExponent)
+{
+    auto parsed_num = parse_numeric_constant("0x.f");
+
+    EXPECT_TRUE(parsed_num.has_error);
+    EXPECT_EQ(Diag::missing_binary_exponent, pop_diag().msg);
 }
 
 TEST_F(LiteralParserTest, charConstants)
