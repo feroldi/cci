@@ -52,15 +52,15 @@ protected:
         return parser;
     }
 
-    auto parse_char_constants(std::string source)
-        -> std::vector<CharConstantParser>
+    auto parse_char_constant(std::string source) -> CharConstantParser
     {
+        EXPECT_FALSE(source.empty());
         auto lexed_toks = scan(std::move(source));
-        std::vector<CharConstantParser> parsers;
-        for (const Token &tok : lexed_toks)
-            parsers.emplace_back(*this->scanner, get_lexeme_view(tok),
-                                 tok.location(), tok.category, target);
-        return parsers;
+        EXPECT_EQ(1, lexed_toks.size());
+        Token tok = lexed_toks.front();
+        CharConstantParser parser(*this->scanner, get_lexeme_view(tok),
+                                  tok.location(), tok.category, target);
+        return parser;
     }
 
     auto parse_string_literal(std::string source) -> StringLiteralParser
@@ -311,59 +311,81 @@ TEST_F(LiteralParserTest, numConstMissingBinaryExponent)
     EXPECT_EQ(Diag::missing_binary_exponent, pop_diag().msg);
 }
 
-TEST_F(LiteralParserTest, charConstants)
+TEST_F(LiteralParserTest, charConstBasic)
 {
-    auto chars = parse_char_constants(
-        "'A' "
-        "'\\x' "
-        "u'\\u00A8' "
-        "u'\\u00A' "
-        "'abcd' "
-        "'\\u0080' "
-        "'\\123' "
-        "'\\777'\n");
+    auto parsed_char = parse_char_constant("'A'");
 
-    ASSERT_EQ(8, chars.size());
+    EXPECT_FALSE(parsed_char.has_error);
+    EXPECT_FALSE(parsed_char.is_multibyte);
 
-    // 'A'
-    EXPECT_FALSE(chars[0].has_error);
-    EXPECT_FALSE(chars[0].is_multibyte);
-    EXPECT_EQ(Category::char_constant, chars[0].category);
-    EXPECT_EQ(65, chars[0].value);
+    EXPECT_EQ(Category::char_constant, parsed_char.category);
+    EXPECT_EQ(65, parsed_char.value);
+}
 
-    // '\x'
-    EXPECT_TRUE(chars[1].has_error);
+TEST_F(LiteralParserTest, charConstMissingEscapeDigits)
+{
+    auto parsed_char = parse_char_constant(R"('\x')");
+
+    EXPECT_TRUE(parsed_char.has_error);
     EXPECT_EQ(Diag::missing_escape_digits, pop_diag().msg);
+}
 
-    // u'\u00A8'
-    EXPECT_FALSE(chars[2].has_error);
-    EXPECT_FALSE(chars[2].is_multibyte);
-    EXPECT_EQ(Category::utf16_char_constant, chars[2].category);
-    EXPECT_EQ(168, chars[2].value);
+TEST_F(LiteralParserTest, charConstUtf16)
+{
+    auto parsed_char = parse_char_constant(R"(u'\u00A8')");
 
-    // u'\u00A'
-    EXPECT_TRUE(chars[3].has_error);
+    EXPECT_FALSE(parsed_char.has_error);
+    EXPECT_FALSE(parsed_char.is_multibyte);
+
+    EXPECT_EQ(Category::utf16_char_constant, parsed_char.category);
+    EXPECT_EQ(168, parsed_char.value);
+}
+
+TEST_F(LiteralParserTest, charConstInvalidUcn)
+{
+    auto parsed_char = parse_char_constant(R"(u'\u00A')");
+
+    EXPECT_TRUE(parsed_char.has_error);
     EXPECT_EQ(Diag::invalid_ucn, pop_diag().msg);
+}
 
-    // 'abcd'
-    EXPECT_FALSE(chars[4].has_error);
-    EXPECT_TRUE(chars[4].is_multibyte);
-    EXPECT_EQ(Category::char_constant, chars[4].category);
-    EXPECT_EQ(1633837924u, chars[4].value);
+TEST_F(LiteralParserTest, charConstMultibyte)
+{
+    auto parsed_char = parse_char_constant(R"('abcd')");
 
-    // '\u0080'
-    EXPECT_TRUE(chars[5].has_error);
-    EXPECT_EQ(-128u, chars[5].value);
+    EXPECT_FALSE(parsed_char.has_error);
+    EXPECT_TRUE(parsed_char.is_multibyte);
+
+    EXPECT_EQ(Category::char_constant, parsed_char.category);
+    EXPECT_EQ(1633837924u, parsed_char.value);
+}
+
+TEST_F(LiteralParserTest, charConstUnicodeTooLarge)
+{
+    auto parsed_char = parse_char_constant(R"('\u0080')");
+
+    EXPECT_TRUE(parsed_char.has_error);
+
+    EXPECT_EQ(-128u, parsed_char.value);
     EXPECT_EQ(Diag::unicode_too_large_for_unit, pop_diag().msg);
+}
 
-    // '\123'
-    EXPECT_FALSE(chars[6].has_error);
-    EXPECT_FALSE(chars[6].is_multibyte);
-    EXPECT_EQ(Category::char_constant, chars[6].category);
-    EXPECT_EQ(83, chars[6].value);
+TEST_F(LiteralParserTest, charConstOctalEscapeSequence)
+{
+    auto parsed_char = parse_char_constant(R"('\123')");
 
-    // '\777'
-    EXPECT_TRUE(chars[7].has_error);
+    EXPECT_FALSE(parsed_char.has_error);
+    EXPECT_FALSE(parsed_char.is_multibyte);
+
+    EXPECT_EQ(Category::char_constant, parsed_char.category);
+    EXPECT_EQ(83, parsed_char.value);
+}
+
+TEST_F(LiteralParserTest, charConstOctalEscapeOutOfRange)
+{
+    auto parsed_char = parse_char_constant(R"('\777')");
+
+    EXPECT_TRUE(parsed_char.has_error);
     EXPECT_EQ(Diag::escape_out_of_range, pop_diag().msg);
 }
 

@@ -1,8 +1,10 @@
 #pragma once
+
 #include "cci/ast/arena_types.hpp"
 #include <cstdint>
 
 namespace cci {
+
 struct Type;
 
 struct Qualifiers
@@ -69,4 +71,5 @@ public:
         return QualType(type, Qualifiers::None);
     }
 };
+
 } // namespace cci
