@@ -389,45 +389,52 @@ TEST_F(LiteralParserTest, charConstOctalEscapeOutOfRange)
     EXPECT_EQ(Diag::escape_out_of_range, pop_diag().msg);
 }
 
-TEST_F(LiteralParserTest, stringLiteral)
+TEST_F(LiteralParserTest, strLitAsciiChars)
 {
-    auto str = parse_string_literal("\"foo bar\"");
+    auto parsed_str = parse_string_literal(R"("foo bar")");
 
-    EXPECT_FALSE(str.has_error);
-    EXPECT_EQ(Category::string_literal, str.category);
-    EXPECT_EQ(1, str.char_byte_width);
-    EXPECT_EQ(7, str.byte_length());
-    EXPECT_EQ(7, str.num_string_chars());
-    EXPECT_STREQ("foo bar", str.string().data());
+    EXPECT_FALSE(parsed_str.has_error);
+    EXPECT_EQ(Category::string_literal, parsed_str.category);
+
+    EXPECT_EQ(1, parsed_str.char_byte_width);
+    EXPECT_EQ(7, parsed_str.byte_length());
+    EXPECT_EQ(7, parsed_str.num_string_chars());
+
+    EXPECT_STREQ("foo bar", parsed_str.string().data());
 }
 
-TEST_F(LiteralParserTest, stringLiteralUTF8)
+TEST_F(LiteralParserTest, strLitUTF8)
 {
-    auto str = parse_string_literal("u8\"foo\"");
-    EXPECT_FALSE(str.has_error);
-    EXPECT_EQ(Category::utf8_string_literal, str.category);
-    EXPECT_EQ(1, str.char_byte_width);
-    EXPECT_EQ(3, str.byte_length());
-    EXPECT_EQ(3, str.num_string_chars());
-    EXPECT_STREQ("foo", str.string().data());
+    auto parsed_str = parse_string_literal(R"(u8"foo")");
+
+    EXPECT_FALSE(parsed_str.has_error);
+    EXPECT_EQ(Category::utf8_string_literal, parsed_str.category);
+
+    EXPECT_EQ(1, parsed_str.char_byte_width);
+    EXPECT_EQ(3, parsed_str.byte_length());
+    EXPECT_EQ(3, parsed_str.num_string_chars());
+
+    EXPECT_STREQ("foo", parsed_str.string().data());
 }
 
-TEST_F(LiteralParserTest, stringLiteralUTF16)
+TEST_F(LiteralParserTest, strLitUTF16)
 {
-    auto str = parse_string_literal("u\"foo\"");
-    EXPECT_FALSE(str.has_error);
-    EXPECT_EQ(Category::utf16_string_literal, str.category);
-    EXPECT_EQ(2, str.char_byte_width);
-    EXPECT_EQ(2 * 3, str.byte_length());
-    EXPECT_EQ(3, str.num_string_chars());
+    auto parsed_str = parse_string_literal("u\"foo\"");
 
-    auto as_utf16 = reinterpret_cast<const uint16_t *>(str.string().data());
+    EXPECT_FALSE(parsed_str.has_error);
+    EXPECT_EQ(Category::utf16_string_literal, parsed_str.category);
+
+    EXPECT_EQ(2, parsed_str.char_byte_width);
+    EXPECT_EQ(2 * 3, parsed_str.byte_length());
+    EXPECT_EQ(3, parsed_str.num_string_chars());
+
+    auto as_utf16 = parsed_str.string_as_utf16();
     EXPECT_EQ(u'f', as_utf16[0]);
     EXPECT_EQ(u'o', as_utf16[1]);
     EXPECT_EQ(u'o', as_utf16[2]);
 }
 
-TEST_F(LiteralParserTest, stringLiteralUTF32)
+TEST_F(LiteralParserTest, strLitUTF32)
 {
     auto str = parse_string_literal("U\"foo\"");
     EXPECT_FALSE(str.has_error);
@@ -442,7 +449,7 @@ TEST_F(LiteralParserTest, stringLiteralUTF32)
     EXPECT_EQ(U'o', as_utf32[2]);
 }
 
-TEST_F(LiteralParserTest, stringLiteralContatenation)
+TEST_F(LiteralParserTest, strLitContatenation)
 {
     auto str = parse_string_literal("\"foo\" \"bar\"");
 
@@ -454,7 +461,7 @@ TEST_F(LiteralParserTest, stringLiteralContatenation)
     EXPECT_STREQ("foobar", str.string().data());
 }
 
-TEST_F(LiteralParserTest, stringLiteralEmpty)
+TEST_F(LiteralParserTest, strLitEmpty)
 {
     auto str = parse_string_literal("\"\"");
 
@@ -466,7 +473,7 @@ TEST_F(LiteralParserTest, stringLiteralEmpty)
     EXPECT_STREQ("", str.string().data());
 }
 
-TEST_F(LiteralParserTest, stringLiteralConcatAsciiAndOtherKind)
+TEST_F(LiteralParserTest, strLitConcatAsciiAndOtherKind)
 {
     auto str = parse_string_literal("\"good\" u8\" foo\"");
 
@@ -478,7 +485,7 @@ TEST_F(LiteralParserTest, stringLiteralConcatAsciiAndOtherKind)
     EXPECT_STREQ("good foo", str.string().data());
 }
 
-TEST_F(LiteralParserTest, stringLiteralConcatDifferentKinds)
+TEST_F(LiteralParserTest, strLitConcatDifferentKinds)
 {
     auto str =
         parse_string_literal("u8\"bad\" \" string\" L\" concat\" L\"!\"");
@@ -487,7 +494,7 @@ TEST_F(LiteralParserTest, stringLiteralConcatDifferentKinds)
     EXPECT_EQ(Diag::nonstandard_string_concat, pop_diag().msg);
 }
 
-TEST_F(LiteralParserTest, stringLiteralUCNs)
+TEST_F(LiteralParserTest, strLitUCNs)
 {
     auto utf32_str = parse_string_literal("U\"\U00010437\"");
 
@@ -503,7 +510,7 @@ TEST_F(LiteralParserTest, stringLiteralUCNs)
     EXPECT_EQ(0x10437, utf32_code_point);
 }
 
-TEST_F(LiteralParserTest, stringLiteralWithUnicodeChars)
+TEST_F(LiteralParserTest, strLitWithUnicodeChars)
 {
     auto str = parse_string_literal("u8\"𐐷\"");
 

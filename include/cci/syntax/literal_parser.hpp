@@ -72,6 +72,13 @@ public:
     {
         return {result_buf.data(), byte_length()};
     }
+
+    auto string_as_utf16() const -> std::u16string_view
+    {
+        cci_expects(char_byte_width == sizeof(char16_t));
+        auto as_utf16 = reinterpret_cast<const char16_t *>(result_buf.data());
+        return {as_utf16, byte_length()};
+    }
 };
 
 } // namespace cci
