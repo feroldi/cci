@@ -16,6 +16,7 @@ matrix:
           packages: ['g++-9']
       env:
         - MATRIX_EVAL="CC=gcc-9 && CXX=g++-9 LDFLAGS=-lstdc++fs"
+        - GCOV_BINARY=/usr/bin/gcov-9
         - CMAKE="cmake"
         - CMAKE_BUILD_TYPE=Debug
         - CMAKE_PREFIX_PATH="$HOME/.local/usr/local" # gcov location
