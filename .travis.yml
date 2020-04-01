@@ -58,7 +58,7 @@ script:
   - cmake --version
   - export VERBOSE=yes
   - |
-    $CMAKE .. -DBUILD_TESTING=yes \
+    $CMAKE . -DBUILD_TESTING=yes \
            -DCCI_COVERAGE=$COVERAGE \
            -DCMAKE_BUILD_TYPE=$CMAKE_BUILD_TYPE \
            -DCMAKE_EXPORT_COMPILE_COMMANDS=yes
