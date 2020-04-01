@@ -44,13 +44,6 @@ before_install:
   - sudo cp -a $GTEST_BIN_PATH/googletest/libgtest_main.so /usr/lib/
   - sudo cp -a $GTEST_BIN_PATH/googletest/libgtest.so /usr/lib/
 
-  # Install CMake.
-  - CMAKE_VERSION=3.17.0
-  - CMAKE_BIN_PATH=$HOME/cmake
-  - CMAKE_URL="https://cmake.org/files/v${CMAKE_VERSION%.[0-9]}/cmake-$CMAKE_VERSION-Linux-x86_64.tar.gz"
-  - mkdir $CMAKE_BIN_PATH && wget --no-check-certificate -O - ${CMAKE_URL} | tar --strip-components=1 -xz -C $CMAKE_BIN_PATH
-  - export PATH=$CMAKE_BIN_PATH/bin:$PATH
-
 script:
   - $CXX --version
   - cmake --version

@@ -1,6 +1,9 @@
 # CCI: C11 Compiler Infrastructure
 
 [![Build Status](https://travis-ci.org/feroldi/cci.svg?branch=master)](https://travis-ci.org/feroldi/cci)
+[![Codecov](https://codecov.io/gh/feroldi/cci/branch/master/graph/badge.svg)](https://codecov.io/gh/feroldi/cci)
+
+
 
 This is an experimental project, using C++17 to write a C11 compiler. It
 doesn't provide an implementation of the Standard Library, though. The main
