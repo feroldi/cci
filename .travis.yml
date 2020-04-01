@@ -1,20 +1,36 @@
-dist: trusty
-sudo: require
 language: cpp
+dist: bionic
+sudo: require
+
+notifications:
+  email: false
+
 matrix:
   include:
-    - os: linux
+    - name: x86_64-linux-gcc-coverage
+      os: linux
       compiler: gcc
       addons:
         apt:
-          sources:
-            - ubuntu-toolchain-r-test
-          packages:
-            - g++-8
+          sources: ['ubuntu-toolchain-r-test']
+          packages: ['g++-9']
       env:
-        - MATRIX_EVAL="export CC=gcc-8 CXX=g++-8 LDFLAGS=-lstdc++fs"
+        - MATRIX_EVAL="CC=gcc-9 && CXX=g++-9 LDFLAGS=-lstdc++fs"
+        - CMAKE="cmake"
+        - CMAKE_BUILD_TYPE=Debug
+        - CMAKE_PREFIX_PATH="$HOME/.local/usr/local" # gcov location
+      install:
+        - sudo apt-get -y install libperlio-gzip-perl libconfig-json-perl
+        - wget https://github.com/linux-test-project/lcov/archive/master.zip -O lcov.zip
+        - unzip lcov.zip
+        - make -C lcov-master install DESTDIR=$HOME/.local
+        - cp $GCOV_BINARY $HOME/.local/usr/local/bin/gcov
+      after_success:
+        - bash <(curl -s https://codecov.io/bash)
+
 before_install:
   - eval "${MATRIX_EVAL}"
+
 install:
   # Install GoogleTest.
   - GTEST_VERSION=1.8.0
@@ -28,18 +44,20 @@ install:
   - sudo cp -a $GTEST_BIN_PATH/googletest/libgtest_main.so /usr/lib/
   - sudo cp -a $GTEST_BIN_PATH/googletest/libgtest.so /usr/lib/
 
-  # Install a recent version of CMake.
-  - CMAKE_VERSION=3.11.4
+  # Install CMake.
+  - CMAKE_VERSION=3.17.0
   - CMAKE_BIN_PATH=$HOME/cmake
   - CMAKE_URL="https://cmake.org/files/v${CMAKE_VERSION%.[0-9]}/cmake-$CMAKE_VERSION-Linux-x86_64.tar.gz"
   - mkdir $CMAKE_BIN_PATH && wget --no-check-certificate -O - ${CMAKE_URL} | tar --strip-components=1 -xz -C $CMAKE_BIN_PATH
   - export PATH=$CMAKE_BIN_PATH/bin:$PATH
+
 script:
   - $CXX --version
   - cmake --version
-  - export VERBOSE=1
-  - cmake .
-  - cmake --build . && ctest --output-on-failure
-
-notifications:
-  email: false
+  - export VERBOSE=yes
+  - |
+    $CMAKE -DBUILD_TESTING=yes \
+           -DCCI_COVERAGE=$COVERAGE \
+           -DCMAKE_BUILD_TYPE=$CMAKE_BUILD_TYPE \
+           -DCMAKE_EXPORT_COMPILE_COMMANDS=yes
+  - $CMAKE --build . --target coverage
