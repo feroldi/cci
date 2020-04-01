@@ -17,6 +17,7 @@ matrix:
       env:
         - MATRIX_EVAL="CC=gcc-9 && CXX=g++-9 LDFLAGS=-lstdc++fs"
         - GCOV_BINARY=/usr/bin/gcov-9
+        - COVERAGE=yes
         - CMAKE="cmake"
         - CMAKE_BUILD_TYPE=Debug
         - CMAKE_PREFIX_PATH="$HOME/.local/usr/local" # gcov location
@@ -57,7 +58,7 @@ script:
   - cmake --version
   - export VERBOSE=yes
   - |
-    $CMAKE -DBUILD_TESTING=yes \
+    $CMAKE .. -DBUILD_TESTING=yes \
            -DCCI_COVERAGE=$COVERAGE \
            -DCMAKE_BUILD_TYPE=$CMAKE_BUILD_TYPE \
            -DCMAKE_EXPORT_COMPILE_COMMANDS=yes
