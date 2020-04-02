@@ -76,8 +76,19 @@ public:
     auto string_as_utf16() const -> std::u16string_view
     {
         cci_expects(char_byte_width == sizeof(char16_t));
+        // TODO: This isn't wrong, but isn't the best way either. Should we
+        // return a new string?
         auto as_utf16 = reinterpret_cast<const char16_t *>(result_buf.data());
         return {as_utf16, byte_length()};
+    }
+
+    auto string_as_utf32() const -> std::u32string_view
+    {
+        cci_expects(char_byte_width == sizeof(char32_t));
+        // TODO: This isn't wrong, but isn't the best way either. Should we
+        // return a new string?
+        auto as_utf32 = reinterpret_cast<const char32_t *>(result_buf.data());
+        return {as_utf32, byte_length()};
     }
 };
 
