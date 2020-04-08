@@ -3,11 +3,10 @@
 [![Build Status](https://travis-ci.org/feroldi/cci.svg?branch=master)](https://travis-ci.org/feroldi/cci)
 [![Codecov](https://codecov.io/gh/feroldi/cci/branch/master/graph/badge.svg)](https://codecov.io/gh/feroldi/cci)
 
-This is an experimental project, using C++17 to write a C11 compiler. It
-doesn't provide an implementation of the Standard Library, though. The main
-purpose of this project is to teach me compiler data structures, language
-design and optimization techniques (also to unlock an achievement: wrote a C
-compiler).
+This is an experimental project, using C++17 to write a C compiler (ISO/IEC
+9899:2011, to be precise).  The main purpose of this project is to teach me
+compiler data structures, language design and optimization techniques (also to
+unlock an achievement: make a C compiler!).
 
 ## Building
 
@@ -33,7 +32,7 @@ install it in order to compile the project, it's only required if you actually
 want to run the unit tests.
 
 **Note**: When generating the CMake configuration files, make sure to disable
-the CMake option `BUILD_TESTING` **if** you don't want to compile and run unit
+the CMake option `BUILD_TESTING` in case you don't want to compile and run unit
 tests.
 
 The following command runs the unit tests:
@@ -41,7 +40,7 @@ The following command runs the unit tests:
     GTEST_COLOR=yes ctest --output-on-failure
 
 This will run all unit tests and show a compact status summary. In case
-anything goes wrong, it will output a detailed message for the failed tests.
+anything goes wrong, `ctest` will output a detailed message for all failing tests.
 
 ## License
 
@@ -74,31 +73,23 @@ tree, generate an IR, produce an executable, write a back-end, and so on.
 
 ## Directory skeleton
 
-+ `include/`: This directory exposes the CCI's API you can use to write
-  your own applications. There are functions for scanning, parsing,
-  diagnosing, analysing, IR etc.
-+ `lib/`: This is where most of CCI's code base is located at. All APIs
-  are implemented here.
-+ `src/`: This is where some CCI tools are implemented, where each
-  directory is a separate project. For example, the CCI compiler tool
-  is implemented in `src/cci/`.
-+ `unittest/`: This directory contains unit tests for the API. Regression
-  tests are in another directory.
-+ `doc/`:  All documentation or manuals go here.
-+ `cmake/`: This contains some modules used across the build system.
++ `include/`: Exposes the CCI's API you can use to write your own applications.
+    There are functions for scanning, parsing, diagnosing, analysing, IRs etc.
++ `lib/`: This is where most of CCI's code base lives. APIs are implemented here.
++ `src/`: This is where some CCI tools live, where each directory is a separate project.
+  - For example, the CCI compiler tool lives under `src/cci/`.
++ `unittest/`: Contains unit tests for the API.
++ `doc/`:  Documentation or manuals go here.
++ `cmake/`: Contains some modules used across the build system.
 
 Almost all directories have a *README.md* explaining their structure
 and purpose, what they do and solve etc.
 
-There's also a `git_revision.cpp.in` file in the root directory: that's
-meant to be configured by CMake when you build a tool. You can use this
-to make your application's build version.
-
 ## Why C11 only
 
-C11 is a challenging language to write a compiler for. Such a project is a
-journey for myself. One can learn so much by writing a compiler, and C11 seems
-(to me) perfect for that.
+C11 is a great, challenging language to make a compiler for.
+It's also true that one can learn a lot by writing a compiler.
+That being so, C11 seems to be an option that gets the most out of the experience.
 
 ## API design
 
