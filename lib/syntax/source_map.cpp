@@ -127,15 +127,19 @@ auto SourceMap::lookup_source_location(ByteLoc loc) const -> SourceLoc
     const auto line_chloc =
         byteloc_to_filemap_charloc(fm.lines[line_idx]).second;
 
-    const auto line = line_idx + 1;
+    const auto line = LineNum(line_idx + 1);
     const auto col = chloc - line_chloc;
 
     cci_expects(chloc >= line_chloc);
 
-    return SourceLoc{fm, line, col};
+    return SourceLoc{
+        .file = fm,
+        .line = line,
+        .column = col,
+    };
 }
 
-auto SourceMap::range_to_snippet(Range range) const -> std::string_view
+auto SourceMap::span_to_snippet(ByteSpan range) const -> std::string_view
 {
     cci_expects(range.start <= range.end);
 
@@ -150,12 +154,12 @@ auto SourceMap::range_to_snippet(Range range) const -> std::string_view
 }
 
 auto SourceMap::byteloc_to_filemap_charloc(ByteLoc loc) const
-    -> std::pair<const FileMap &, CharLoc>
+    -> std::pair<const FileMap &, CharPos>
 {
     const FileMap &filemap = *this->file_maps[lookup_filemap_idx(loc)];
     size_t extra_bytes = 0;
 
-    for (const auto [mbc_loc, mbc_bytes] : filemap.multibyte_chars)
+    for (const auto &[mbc_loc, mbc_bytes] : filemap.multibyte_chars)
     {
         if (mbc_loc < loc)
         {
@@ -168,6 +172,6 @@ auto SourceMap::byteloc_to_filemap_charloc(ByteLoc loc) const
     }
 
     cci_ensures(filemap.start_loc + ByteLoc(extra_bytes) <= loc);
-    return {filemap, CharLoc(loc - filemap.start_loc - ByteLoc(extra_bytes))};
+    return {filemap, CharPos(loc - filemap.start_loc - ByteLoc(extra_bytes))};
 }
 } // namespace cci::srcmap

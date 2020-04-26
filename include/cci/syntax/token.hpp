@@ -5,9 +5,9 @@
 
 namespace cci {
 
-// Category - This represents the category of a token, e.g. identifier,
+// A token kind represents the category of a token, e.g. identifier,
 // keyword etc.
-enum class Category
+enum class TokenKind
 {
     // Keywords
     kw_auto,
@@ -137,43 +137,43 @@ enum class Category
 // For instance, the name of Category::kw_auto is "auto",
 // Category::identifier's name is "identifier", Category::plusplus's
 // name is "++" etc.
-auto to_string(Category) -> std::string_view;
+auto to_string(TokenKind) -> std::string_view;
 
 // Checks whether the parameter is a variant of a string literal.
-constexpr auto is_string_literal(Category k) -> bool
+constexpr auto is_string_literal(TokenKind k) -> bool
 {
     switch (k)
     {
-        case Category::string_literal:
-        case Category::utf8_string_literal:
-        case Category::utf16_string_literal:
-        case Category::utf32_string_literal:
-        case Category::wide_string_literal: return true;
+        case TokenKind::string_literal:
+        case TokenKind::utf8_string_literal:
+        case TokenKind::utf16_string_literal:
+        case TokenKind::utf32_string_literal:
+        case TokenKind::wide_string_literal: return true;
         default: return false;
     }
 }
 
 // Checks whether the parameter is a variant of a char constant.
-constexpr auto is_char_constant(Category k) -> bool
+constexpr auto is_char_constant(TokenKind k) -> bool
 {
     switch (k)
     {
-        case Category::char_constant:
-        case Category::utf8_char_constant:
-        case Category::utf16_char_constant:
-        case Category::utf32_char_constant:
-        case Category::wide_char_constant: return true;
+        case TokenKind::char_constant:
+        case TokenKind::utf8_char_constant:
+        case TokenKind::utf16_char_constant:
+        case TokenKind::utf32_char_constant:
+        case TokenKind::wide_char_constant: return true;
         default: return false;
     }
 }
 
-// Token - A representation of a token as described in the C11 standard.
+// A representation of a token as described in the C11 standard.
 struct Token
 {
     // Token's syntactic category, e.g. kw_return, identifier etc.
-    Category category = Category::unknown;
+    TokenKind category = TokenKind::unknown;
     // Token's start and end locations on the source file (lexeme).
-    srcmap::Range source_range;
+    srcmap::ByteSpan source_range;
 
     enum TokenFlags
     {
@@ -184,20 +184,21 @@ struct Token
     };
 
     Token() = default;
-    Token(Category c, srcmap::Range r) noexcept : category(c), source_range(r)
+    Token(TokenKind c, srcmap::ByteSpan r) noexcept
+        : category(c), source_range(r)
     {}
 
     // Checks whether this token is of category `k`.
-    bool is(Category k) const { return category == k; }
+    bool is(TokenKind k) const { return category == k; }
 
     // Checks whether this token is not of category `k`.
-    bool is_not(Category k) const { return category != k; }
+    bool is_not(TokenKind k) const { return category != k; }
 
     // Checks wether this token is of any category in `ks`.
     template <typename... Kinds>
     bool is_one_of(const Kinds... ks) const
     {
-        static_assert((std::is_same_v<Category, Kinds> && ...));
+        static_assert((std::is_same_v<TokenKind, Kinds> && ...));
         return (is(ks) || ...);
     }
 

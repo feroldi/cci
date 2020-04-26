@@ -16,12 +16,12 @@ using namespace cci;
 auto Sema::act_on_numeric_constant(const Token &tok)
     -> std::optional<arena_ptr<Expr>>
 {
-    cci_expects(tok.is(Category::numeric_constant));
+    cci_expects(tok.is(TokenKind::numeric_constant));
 
     if (tok.size() == 1)
     {
         const char digit =
-            scanner.source_map.range_to_snippet(tok.source_range)[0];
+            scanner.source_map.span_to_snippet(tok.source_range)[0];
         return IntegerLiteral::create(context, digit - '0', context.int_ty,
                                       tok.source_range);
     }
@@ -128,8 +128,8 @@ auto Sema::act_on_char_constant(const Token &tok)
     -> std::optional<arena_ptr<CharacterConstant>>
 {
     cci_expects(tok.is_one_of(
-        Category::char_constant, Category::utf16_char_constant,
-        Category::utf32_char_constant, Category::wide_char_constant));
+        TokenKind::char_constant, TokenKind::utf16_char_constant,
+        TokenKind::utf32_char_constant, TokenKind::wide_char_constant));
 
     small_string<8> spell_buffer;
     std::string_view spelling = scanner.get_spelling(tok, spell_buffer);
@@ -146,19 +146,19 @@ auto Sema::act_on_char_constant(const Token &tok)
 
     switch (literal.category)
     {
-        case Category::utf16_char_constant:
+        case TokenKind::utf16_char_constant:
             char_type = context.char16_t_ty;
             char_kind = CharacterConstantKind::UTF16;
             break;
-        case Category::utf32_char_constant:
+        case TokenKind::utf32_char_constant:
             char_type = context.char32_t_ty;
             char_kind = CharacterConstantKind::UTF32;
             break;
-        case Category::wide_char_constant:
+        case TokenKind::wide_char_constant:
             char_type = context.wchar_ty;
             char_kind = CharacterConstantKind::Wide;
             break;
-        default: cci_expects(Category::char_constant == literal.category);
+        default: cci_expects(TokenKind::char_constant == literal.category);
     }
 
     return CharacterConstant::create(context, literal.value, char_kind,
@@ -181,22 +181,22 @@ auto Sema::act_on_string_literal(span<const Token> string_toks)
 
     switch (literal.category)
     {
-        case Category::utf8_string_literal:
+        case TokenKind::utf8_string_literal:
             str_kind = StringLiteralKind::UTF8;
             break;
-        case Category::utf16_string_literal:
+        case TokenKind::utf16_string_literal:
             elem_type = context.char16_t_ty;
             str_kind = StringLiteralKind::UTF16;
             break;
-        case Category::utf32_string_literal:
+        case TokenKind::utf32_string_literal:
             elem_type = context.char32_t_ty;
             str_kind = StringLiteralKind::UTF32;
             break;
-        case Category::wide_string_literal:
+        case TokenKind::wide_string_literal:
             elem_type = context.wchar_ty;
             str_kind = StringLiteralKind::Wide;
             break;
-        default: cci_expects(Category::string_literal == literal.category);
+        default: cci_expects(TokenKind::string_literal == literal.category);
     }
 
     // Length of string literal including null character.

@@ -154,16 +154,16 @@ private:
     auto lex_identifier(const char *cur_ptr, Token &result) -> bool;
     auto lex_numeric_constant(const char *cur_ptr, Token &result) -> bool;
     auto lex_character_constant(const char *cur_ptr, Token &result,
-                                Category char_kind) -> bool;
+                                TokenKind char_kind) -> bool;
     auto lex_string_literal(const char *cur_ptr, Token &result,
-                            Category str_kind) -> bool;
+                            TokenKind str_kind) -> bool;
     auto lex_unicode(const char *cur_ptr, uint32_t code_point, Token &result)
         -> bool;
     auto lex_token(const char *cur_ptr, Token &result) -> bool;
 
     /// Fitly finalizes the scanning of a token, advancing the buffer pointer
     /// past it. This is used only by the internals of the lexical analysis.
-    void form_token(Token &tok, const char *tok_end, Category category)
+    void form_token(Token &tok, const char *tok_end, TokenKind category)
     {
         tok.category = category;
         tok.source_range = {location_for_ptr(buffer_ptr),

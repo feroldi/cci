@@ -41,7 +41,7 @@ protected:
 
     auto get_source_text(const cci::Token &tok) const -> std::string_view
     {
-        return source_map.range_to_snippet(tok.source_range);
+        return source_map.span_to_snippet(tok.source_range);
     }
 
     auto get_lexeme_view(const Token &tok) -> std::string_view
@@ -83,7 +83,7 @@ protected:
 
 namespace cci {
 
-inline void PrintTo(const Category category, std::ostream *os) noexcept
+inline void PrintTo(const TokenKind category, std::ostream *os) noexcept
 {
     *os << to_string(category);
 }

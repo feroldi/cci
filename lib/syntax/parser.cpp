@@ -33,7 +33,7 @@ auto Parser::consume_tok() -> Token
     return consumed;
 }
 
-auto Parser::expect_and_consume_tok(Category category) -> std::optional<Token>
+auto Parser::expect_and_consume_tok(TokenKind category) -> std::optional<Token>
 {
     if (peek_tok().is(category))
         return consume_tok();
@@ -55,31 +55,32 @@ auto Parser::parse_primary_expression() -> std::optional<arena_ptr<Expr>>
     switch (peek_tok().category)
     {
         default: cci_unreachable();
-        case Category::numeric_constant:
+        case TokenKind::numeric_constant:
             res = sema.act_on_numeric_constant(consume_tok());
             break;
 
-        case Category::char_constant:
-        case Category::utf8_char_constant:
-        case Category::utf16_char_constant:
-        case Category::utf32_char_constant:
-        case Category::wide_char_constant:
+        case TokenKind::char_constant:
+        case TokenKind::utf8_char_constant:
+        case TokenKind::utf16_char_constant:
+        case TokenKind::utf32_char_constant:
+        case TokenKind::wide_char_constant:
             res = sema.act_on_char_constant(consume_tok());
             break;
 
-        case Category::string_literal:
-        case Category::utf8_string_literal:
-        case Category::utf16_string_literal:
-        case Category::utf32_string_literal:
-        case Category::wide_string_literal:
+        case TokenKind::string_literal:
+        case TokenKind::utf8_string_literal:
+        case TokenKind::utf16_string_literal:
+        case TokenKind::utf32_string_literal:
+        case TokenKind::wide_string_literal:
             res = parse_string_literal_expression();
             break;
-        case Category::l_paren: {
+        case TokenKind::l_paren: {
             Token lparen_tok = consume_tok();
 
             if ((res = parse_expression()))
             {
-                if (auto rparen_tok = expect_and_consume_tok(Category::r_paren))
+                if (auto rparen_tok =
+                        expect_and_consume_tok(TokenKind::r_paren))
                     res = sema.act_on_paren_expr(res.value(),
                                                  lparen_tok.location(),
                                                  rparen_tok->location());
@@ -109,11 +110,12 @@ auto Parser::parse_postfix_expression(arena_ptr<Expr> expr)
 {
     switch (peek_tok().category)
     {
-        case Category::l_bracket: {
+        case TokenKind::l_bracket: {
             const Token lbracket_tok = consume_tok();
             if (auto expr_inside_brackets = parse_expression())
             {
-                if (auto rbracket_tok = expect_and_consume_tok(Category::r_bracket))
+                if (auto rbracket_tok =
+                        expect_and_consume_tok(TokenKind::r_bracket))
                 {
                     return sema.act_on_array_subscript(
                         expr, expr_inside_brackets.value(),

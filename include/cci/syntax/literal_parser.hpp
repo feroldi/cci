@@ -38,12 +38,12 @@ public:
 struct CharConstantParser
 {
     uint32_t value;
-    Category category;
+    TokenKind category;
     bool is_multibyte;
     bool has_error = false;
 
     CharConstantParser(Scanner &, std::string_view tok_spelling,
-                       srcmap::ByteLoc tok_loc, Category char_category,
+                       srcmap::ByteLoc tok_loc, TokenKind char_category,
                        const TargetInfo &);
 };
 
@@ -54,7 +54,7 @@ private:
     char *result_ptr;
 
 public:
-    Category category;
+    TokenKind category;
     size_t char_byte_width;
     bool has_error = false;
 

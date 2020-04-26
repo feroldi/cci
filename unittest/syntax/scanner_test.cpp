@@ -9,9 +9,9 @@
 #include <string>
 #include <string_view>
 
-using cci::Category;
 using cci::Scanner;
 using cci::Token;
+using cci::TokenKind;
 using cci::diag::Diag;
 
 namespace {
@@ -34,7 +34,7 @@ protected:
         while (true)
         {
             auto tok = l.next_token();
-            if (tok.is(Category::eof))
+            if (tok.is(TokenKind::eof))
                 break;
             toks.push_back(tok);
         }
@@ -43,7 +43,7 @@ protected:
     }
 
     auto check_lex(std::string_view source,
-                   span<std::pair<Category, std::string>> expected_toks)
+                   span<std::pair<TokenKind, std::string>> expected_toks)
         -> std::vector<Token>
     {
         auto toks = this->scan(source);
@@ -61,8 +61,8 @@ protected:
 
 TEST_F(ScannerTest, regressionNewlineAsUnknownToken)
 {
-    std::vector<std::pair<Category, std::string>> expected_toks{
-        {Category::identifier, "foo"},
+    std::vector<std::pair<TokenKind, std::string>> expected_toks{
+        {TokenKind::identifier, "foo"},
     };
 
     check_lex("\\\n\nfoo\n", expected_toks);
@@ -70,12 +70,12 @@ TEST_F(ScannerTest, regressionNewlineAsUnknownToken)
 
 TEST_F(ScannerTest, escapedNewLine)
 {
-    std::vector<std::pair<Category, std::string>> expected_toks{
-        {Category::identifier, "foobar"}, {Category::identifier, "foo"},
-        {Category::unknown, "\\"},        {Category::identifier, "bar"},
-        {Category::identifier, "foo"},    {Category::unknown, "\\"},
-        {Category::identifier, "bar"},    {Category::identifier, "foo"},
-        {Category::identifier, "bar"},
+    std::vector<std::pair<TokenKind, std::string>> expected_toks{
+        {TokenKind::identifier, "foobar"}, {TokenKind::identifier, "foo"},
+        {TokenKind::unknown, "\\"},        {TokenKind::identifier, "bar"},
+        {TokenKind::identifier, "foo"},    {TokenKind::unknown, "\\"},
+        {TokenKind::identifier, "bar"},    {TokenKind::identifier, "foo"},
+        {TokenKind::identifier, "bar"},
     };
 
     check_lex(
@@ -91,12 +91,12 @@ TEST_F(ScannerTest, escapedNewLine)
 
 TEST_F(ScannerTest, trigraphEscapedNewline)
 {
-    std::vector<std::pair<Category, std::string>> expected_toks{
-        {Category::identifier, "foobar"}, {Category::identifier, "foo"},
-        {Category::unknown, "\\"},        {Category::identifier, "bar"},
-        {Category::identifier, "foo"},    {Category::unknown, "\\"},
-        {Category::identifier, "bar"},    {Category::identifier, "foo"},
-        {Category::identifier, "bar"},
+    std::vector<std::pair<TokenKind, std::string>> expected_toks{
+        {TokenKind::identifier, "foobar"}, {TokenKind::identifier, "foo"},
+        {TokenKind::unknown, "\\"},        {TokenKind::identifier, "bar"},
+        {TokenKind::identifier, "foo"},    {TokenKind::unknown, "\\"},
+        {TokenKind::identifier, "bar"},    {TokenKind::identifier, "foo"},
+        {TokenKind::identifier, "bar"},
     };
 
     check_lex(
@@ -112,9 +112,9 @@ TEST_F(ScannerTest, trigraphEscapedNewline)
 
 TEST_F(ScannerTest, escapedTrigraphEscape)
 {
-    std::vector<std::pair<Category, std::string>> expected_toks{
-        {Category::unknown, "\"foo\\\?\?/"},
-        {Category::unknown, "\""},
+    std::vector<std::pair<TokenKind, std::string>> expected_toks{
+        {TokenKind::unknown, "\"foo\\\?\?/"},
+        {TokenKind::unknown, "\""},
     };
 
     check_lex(
@@ -130,15 +130,15 @@ TEST_F(ScannerTest, eofToken)
 {
     auto scanner = create_lex("foo\n");
     scanner.next_token();
-    EXPECT_EQ(Category::eof, scanner.next_token().category);
-    EXPECT_EQ(Category::eof, scanner.next_token().category);
+    EXPECT_EQ(TokenKind::eof, scanner.next_token().category);
+    EXPECT_EQ(TokenKind::eof, scanner.next_token().category);
 }
 
 TEST_F(ScannerTest, maximallyMunchPunctuation)
 {
-    std::vector<std::pair<Category, std::string>> expected_toks{
-        {Category::lessless, "<<"},
-        {Category::lessequal, "<="},
+    std::vector<std::pair<TokenKind, std::string>> expected_toks{
+        {TokenKind::lessless, "<<"},
+        {TokenKind::lessequal, "<="},
     };
 
     check_lex("<<<=\n", expected_toks);
@@ -146,11 +146,11 @@ TEST_F(ScannerTest, maximallyMunchPunctuation)
 
 TEST_F(ScannerTest, universalCharacterName)
 {
-    std::vector<std::pair<Category, std::string>> expected_toks{
-        {Category::identifier, "\\u037e"}, // GREEK-QUESTION-MARK (U+037E)
-        {Category::identifier, "\\U0000037e"}, // GREEK-QUESTION-MARK (U+037E)
-        {Category::identifier, "\\U0001F648"}, // SEE-NO-EVIL MONKEY (U+1F648)
-        {Category::identifier, "\\u01234"},
+    std::vector<std::pair<TokenKind, std::string>> expected_toks{
+        {TokenKind::identifier, "\\u037e"}, // GREEK-QUESTION-MARK (U+037E)
+        {TokenKind::identifier, "\\U0000037e"}, // GREEK-QUESTION-MARK (U+037E)
+        {TokenKind::identifier, "\\U0001F648"}, // SEE-NO-EVIL MONKEY (U+1F648)
+        {TokenKind::identifier, "\\u01234"},
     };
 
     check_lex(
@@ -175,11 +175,11 @@ TEST_F(ScannerTest, universalCharacterName)
 
 TEST_F(ScannerTest, identifiers)
 {
-    std::vector<std::pair<Category, std::string>> expected_toks{
-        {Category::identifier, "Alpha"},
-        {Category::identifier, "AlphaNum123"},
-        {Category::identifier, "_under_line"},
-        {Category::identifier, "$$$dol$lar$$$"},
+    std::vector<std::pair<TokenKind, std::string>> expected_toks{
+        {TokenKind::identifier, "Alpha"},
+        {TokenKind::identifier, "AlphaNum123"},
+        {TokenKind::identifier, "_under_line"},
+        {TokenKind::identifier, "$$$dol$lar$$$"},
     };
 
     check_lex("Alpha AlphaNum123 _under_line $$$dol$lar$$$\n", expected_toks);
@@ -187,51 +187,51 @@ TEST_F(ScannerTest, identifiers)
 
 TEST_F(ScannerTest, keywords)
 {
-    std::vector<std::pair<Category, std::string>> expected_toks{
-        {Category::kw_auto, "auto"},
-        {Category::kw_break, "break"},
-        {Category::kw_case, "case"},
-        {Category::kw_char, "char"},
-        {Category::kw_const, "const"},
-        {Category::kw_continue, "continue"},
-        {Category::kw_default, "default"},
-        {Category::kw_do, "do"},
-        {Category::kw_double, "double"},
-        {Category::kw_else, "else"},
-        {Category::kw_enum, "enum"},
-        {Category::kw_extern, "extern"},
-        {Category::kw_float, "float"},
-        {Category::kw_for, "for"},
-        {Category::kw_goto, "goto"},
-        {Category::kw_if, "if"},
-        {Category::kw_inline, "inline"},
-        {Category::kw_int, "int"},
-        {Category::kw_long, "long"},
-        {Category::kw_register, "register"},
-        {Category::kw_restrict, "restrict"},
-        {Category::kw_return, "return"},
-        {Category::kw_short, "short"},
-        {Category::kw_signed, "signed"},
-        {Category::kw_sizeof, "sizeof"},
-        {Category::kw_static, "static"},
-        {Category::kw_struct, "struct"},
-        {Category::kw_switch, "switch"},
-        {Category::kw_typedef, "typedef"},
-        {Category::kw_union, "union"},
-        {Category::kw_unsigned, "unsigned"},
-        {Category::kw_void, "void"},
-        {Category::kw_volatile, "volatile"},
-        {Category::kw_while, "while"},
-        {Category::kw__Alignas, "_Alignas"},
-        {Category::kw__Alignof, "_Alignof"},
-        {Category::kw__Atomic, "_Atomic"},
-        {Category::kw__Bool, "_Bool"},
-        {Category::kw__Complex, "_Complex"},
-        {Category::kw__Generic, "_Generic"},
-        {Category::kw__Imaginary, "_Imaginary"},
-        {Category::kw__Noreturn, "_Noreturn"},
-        {Category::kw__Static_assert, "_Static_assert"},
-        {Category::kw__Thread_local, "_Thread_local"},
+    std::vector<std::pair<TokenKind, std::string>> expected_toks{
+        {TokenKind::kw_auto, "auto"},
+        {TokenKind::kw_break, "break"},
+        {TokenKind::kw_case, "case"},
+        {TokenKind::kw_char, "char"},
+        {TokenKind::kw_const, "const"},
+        {TokenKind::kw_continue, "continue"},
+        {TokenKind::kw_default, "default"},
+        {TokenKind::kw_do, "do"},
+        {TokenKind::kw_double, "double"},
+        {TokenKind::kw_else, "else"},
+        {TokenKind::kw_enum, "enum"},
+        {TokenKind::kw_extern, "extern"},
+        {TokenKind::kw_float, "float"},
+        {TokenKind::kw_for, "for"},
+        {TokenKind::kw_goto, "goto"},
+        {TokenKind::kw_if, "if"},
+        {TokenKind::kw_inline, "inline"},
+        {TokenKind::kw_int, "int"},
+        {TokenKind::kw_long, "long"},
+        {TokenKind::kw_register, "register"},
+        {TokenKind::kw_restrict, "restrict"},
+        {TokenKind::kw_return, "return"},
+        {TokenKind::kw_short, "short"},
+        {TokenKind::kw_signed, "signed"},
+        {TokenKind::kw_sizeof, "sizeof"},
+        {TokenKind::kw_static, "static"},
+        {TokenKind::kw_struct, "struct"},
+        {TokenKind::kw_switch, "switch"},
+        {TokenKind::kw_typedef, "typedef"},
+        {TokenKind::kw_union, "union"},
+        {TokenKind::kw_unsigned, "unsigned"},
+        {TokenKind::kw_void, "void"},
+        {TokenKind::kw_volatile, "volatile"},
+        {TokenKind::kw_while, "while"},
+        {TokenKind::kw__Alignas, "_Alignas"},
+        {TokenKind::kw__Alignof, "_Alignof"},
+        {TokenKind::kw__Atomic, "_Atomic"},
+        {TokenKind::kw__Bool, "_Bool"},
+        {TokenKind::kw__Complex, "_Complex"},
+        {TokenKind::kw__Generic, "_Generic"},
+        {TokenKind::kw__Imaginary, "_Imaginary"},
+        {TokenKind::kw__Noreturn, "_Noreturn"},
+        {TokenKind::kw__Static_assert, "_Static_assert"},
+        {TokenKind::kw__Thread_local, "_Thread_local"},
     };
 
     check_lex(
@@ -249,13 +249,13 @@ TEST_F(ScannerTest, keywords)
 
 TEST_F(ScannerTest, numericConstants)
 {
-    std::vector<std::pair<Category, std::string>> expected_toks{
-        {Category::numeric_constant, "42ULL"},
-        {Category::numeric_constant, "3.14f"},
-        {Category::numeric_constant, "161.80e-3"},
-        {Category::numeric_constant, "1.9E377P+1"},
-        {Category::numeric_constant, ".999"},
-        {Category::numeric_constant, "0."},
+    std::vector<std::pair<TokenKind, std::string>> expected_toks{
+        {TokenKind::numeric_constant, "42ULL"},
+        {TokenKind::numeric_constant, "3.14f"},
+        {TokenKind::numeric_constant, "161.80e-3"},
+        {TokenKind::numeric_constant, "1.9E377P+1"},
+        {TokenKind::numeric_constant, ".999"},
+        {TokenKind::numeric_constant, "0."},
     };
 
     check_lex("42ULL 3.14f 161.80e-3 1.9E377P+1 .999 0.\n", expected_toks);
@@ -263,21 +263,21 @@ TEST_F(ScannerTest, numericConstants)
 
 TEST_F(ScannerTest, comments)
 {
-    std::vector<std::pair<Category, std::string>> expected_toks{
-        {Category::identifier, "foo"},
-        {Category::identifier, "bar"},
-        {Category::string_literal, "\"a//b\""},
-        {Category::identifier, "f"},
-        {Category::equal, "="},
-        {Category::identifier, "g"},
-        {Category::slash, "/"},
-        {Category::identifier, "h"},
-        {Category::identifier, "z"},
-        {Category::identifier, "m"},
-        {Category::equal, "="},
-        {Category::identifier, "n"},
-        {Category::plus, "+"},
-        {Category::identifier, "p"},
+    std::vector<std::pair<TokenKind, std::string>> expected_toks{
+        {TokenKind::identifier, "foo"},
+        {TokenKind::identifier, "bar"},
+        {TokenKind::string_literal, "\"a//b\""},
+        {TokenKind::identifier, "f"},
+        {TokenKind::equal, "="},
+        {TokenKind::identifier, "g"},
+        {TokenKind::slash, "/"},
+        {TokenKind::identifier, "h"},
+        {TokenKind::identifier, "z"},
+        {TokenKind::identifier, "m"},
+        {TokenKind::equal, "="},
+        {TokenKind::identifier, "n"},
+        {TokenKind::plus, "+"},
+        {TokenKind::identifier, "p"},
     };
 
     check_lex(
@@ -303,13 +303,13 @@ m = n//**/o
 
 TEST_F(ScannerTest, charConstants)
 {
-    std::vector<std::pair<Category, std::string>> expected_toks{
-        {Category::char_constant, "'a'"},
-        {Category::wide_char_constant, "L'b'"},
-        {Category::utf16_char_constant, "u'c'"},
-        {Category::utf32_char_constant, "U'd'"},
-        {Category::char_constant, "'\\''"},
-        {Category::char_constant, "'\"'"},
+    std::vector<std::pair<TokenKind, std::string>> expected_toks{
+        {TokenKind::char_constant, "'a'"},
+        {TokenKind::wide_char_constant, "L'b'"},
+        {TokenKind::utf16_char_constant, "u'c'"},
+        {TokenKind::utf32_char_constant, "U'd'"},
+        {TokenKind::char_constant, "'\\''"},
+        {TokenKind::char_constant, "'\"'"},
     };
 
     check_lex(R"('a' L'b' u'c' U'd' '\'' '"')"
@@ -323,15 +323,15 @@ TEST_F(ScannerTest, charConstants)
 
 TEST_F(ScannerTest, stringLiterals)
 {
-    std::vector<std::pair<Category, std::string>> expected_toks{
-        {Category::string_literal, "\"\""},
-        {Category::string_literal, "\"foo\""},
-        {Category::wide_string_literal, "L\"bar\""},
-        {Category::utf16_string_literal, "u\"baz\""},
-        {Category::utf32_string_literal, "U\"fizz\""},
-        {Category::utf8_string_literal, "u8\"buzz\""},
-        {Category::string_literal, "\"\\\"\""},
-        {Category::string_literal, "\"'\""},
+    std::vector<std::pair<TokenKind, std::string>> expected_toks{
+        {TokenKind::string_literal, "\"\""},
+        {TokenKind::string_literal, "\"foo\""},
+        {TokenKind::wide_string_literal, "L\"bar\""},
+        {TokenKind::utf16_string_literal, "u\"baz\""},
+        {TokenKind::utf32_string_literal, "U\"fizz\""},
+        {TokenKind::utf8_string_literal, "u8\"buzz\""},
+        {TokenKind::string_literal, "\"\\\"\""},
+        {TokenKind::string_literal, "\"'\""},
     };
 
     check_lex(R"("" "foo" L"bar" u"baz" U"fizz" u8"buzz" "\"" "'")"
@@ -341,61 +341,61 @@ TEST_F(ScannerTest, stringLiterals)
 
 TEST_F(ScannerTest, punctuators)
 {
-    std::vector<std::pair<Category, std::string>> expected_toks{
-        {Category::l_bracket, "["},
-        {Category::r_bracket, "]"},
-        {Category::l_paren, "("},
-        {Category::r_paren, ")"},
-        {Category::l_brace, "{"},
-        {Category::r_brace, "}"},
-        {Category::period, "."},
-        {Category::arrow, "->"},
-        {Category::plusplus, "++"},
-        {Category::minusminus, "--"},
-        {Category::ampersand, "&"},
-        {Category::star, "*"},
-        {Category::plus, "+"},
-        {Category::minus, "-"},
-        {Category::tilde, "~"},
-        {Category::exclama, "!"},
-        {Category::slash, "/"},
-        {Category::percent, "%"},
-        {Category::lessless, "<<"},
-        {Category::greatergreater, ">>"},
-        {Category::less, "<"},
-        {Category::greater, ">"},
-        {Category::lessequal, "<="},
-        {Category::greaterequal, ">="},
-        {Category::question, "?"},
-        {Category::colon, ":"},
-        {Category::semi, ";"},
-        {Category::ellipsis, "..."},
-        {Category::equal, "="},
-        {Category::starequal, "*="},
-        {Category::slashequal, "/="},
-        {Category::percentequal, "%="},
-        {Category::plusequal, "+="},
-        {Category::minusequal, "-="},
-        {Category::lesslessequal, "<<="},
-        {Category::comma, ","},
-        {Category::hash, "#"},
-        {Category::hashhash, "##"},
-        {Category::l_bracket, "<:"},
-        {Category::r_bracket, ":>"},
-        {Category::l_brace, "<%"},
-        {Category::r_brace, "%>"},
-        {Category::hash, "%:"},
-        {Category::hashhash, "%:%:"},
-        {Category::equalequal, "=="},
-        {Category::greatergreaterequal, ">>="},
-        {Category::exclamaequal, "!="},
-        {Category::ampequal, "&="},
-        {Category::caret, "^"},
-        {Category::pipe, "|"},
-        {Category::caretequal, "^="},
-        {Category::ampamp, "&&"},
-        {Category::pipepipe, "||"},
-        {Category::pipeequal, "|="},
+    std::vector<std::pair<TokenKind, std::string>> expected_toks{
+        {TokenKind::l_bracket, "["},
+        {TokenKind::r_bracket, "]"},
+        {TokenKind::l_paren, "("},
+        {TokenKind::r_paren, ")"},
+        {TokenKind::l_brace, "{"},
+        {TokenKind::r_brace, "}"},
+        {TokenKind::period, "."},
+        {TokenKind::arrow, "->"},
+        {TokenKind::plusplus, "++"},
+        {TokenKind::minusminus, "--"},
+        {TokenKind::ampersand, "&"},
+        {TokenKind::star, "*"},
+        {TokenKind::plus, "+"},
+        {TokenKind::minus, "-"},
+        {TokenKind::tilde, "~"},
+        {TokenKind::exclama, "!"},
+        {TokenKind::slash, "/"},
+        {TokenKind::percent, "%"},
+        {TokenKind::lessless, "<<"},
+        {TokenKind::greatergreater, ">>"},
+        {TokenKind::less, "<"},
+        {TokenKind::greater, ">"},
+        {TokenKind::lessequal, "<="},
+        {TokenKind::greaterequal, ">="},
+        {TokenKind::question, "?"},
+        {TokenKind::colon, ":"},
+        {TokenKind::semi, ";"},
+        {TokenKind::ellipsis, "..."},
+        {TokenKind::equal, "="},
+        {TokenKind::starequal, "*="},
+        {TokenKind::slashequal, "/="},
+        {TokenKind::percentequal, "%="},
+        {TokenKind::plusequal, "+="},
+        {TokenKind::minusequal, "-="},
+        {TokenKind::lesslessequal, "<<="},
+        {TokenKind::comma, ","},
+        {TokenKind::hash, "#"},
+        {TokenKind::hashhash, "##"},
+        {TokenKind::l_bracket, "<:"},
+        {TokenKind::r_bracket, ":>"},
+        {TokenKind::l_brace, "<%"},
+        {TokenKind::r_brace, "%>"},
+        {TokenKind::hash, "%:"},
+        {TokenKind::hashhash, "%:%:"},
+        {TokenKind::equalequal, "=="},
+        {TokenKind::greatergreaterequal, ">>="},
+        {TokenKind::exclamaequal, "!="},
+        {TokenKind::ampequal, "&="},
+        {TokenKind::caret, "^"},
+        {TokenKind::pipe, "|"},
+        {TokenKind::caretequal, "^="},
+        {TokenKind::ampamp, "&&"},
+        {TokenKind::pipepipe, "||"},
+        {TokenKind::pipeequal, "|="},
     };
 
     check_lex(
@@ -408,11 +408,11 @@ TEST_F(ScannerTest, punctuators)
 
 TEST_F(ScannerTest, trigraphs)
 {
-    std::vector<std::pair<Category, std::string>> expected_toks{
-        {Category::hash, "#"},      {Category::l_bracket, "["},
-        {Category::r_bracket, "]"}, {Category::caret, "^"},
-        {Category::l_brace, "{"},   {Category::r_brace, "}"},
-        {Category::pipe, "|"},      {Category::tilde, "~"},
+    std::vector<std::pair<TokenKind, std::string>> expected_toks{
+        {TokenKind::hash, "#"},      {TokenKind::l_bracket, "["},
+        {TokenKind::r_bracket, "]"}, {TokenKind::caret, "^"},
+        {TokenKind::l_brace, "{"},   {TokenKind::r_brace, "}"},
+        {TokenKind::pipe, "|"},      {TokenKind::tilde, "~"},
     };
 
     // ??/ becomes \, which escapes the last but one new line.

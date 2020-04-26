@@ -46,8 +46,8 @@ TEST_F(ParserTest, unbalancedParens)
     build_parser("(((42))+\n");
     parser->parse_expression();
     EXPECT_EQ(Diag::expected_but_got, peek_diag().msg);
-    EXPECT_EQ(Diagnostic::Arg(cci::Category::r_paren), peek_diag().args[0]);
-    EXPECT_EQ(Diagnostic::Arg(cci::Category::plus), pop_diag().args[1]);
+    EXPECT_EQ(Diagnostic::Arg(cci::TokenKind::r_paren), peek_diag().args[0]);
+    EXPECT_EQ(Diagnostic::Arg(cci::TokenKind::plus), pop_diag().args[1]);
 }
 
 } // namespace

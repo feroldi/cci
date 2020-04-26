@@ -45,13 +45,19 @@ enum class Diag
 /// Information about a diagnostic.
 struct Diagnostic
 {
-    using Arg = std::variant<Category, char>;
+    using Arg = std::variant<TokenKind, char>;
 
-    srcmap::SourceLoc loc; ///< Location from where the diagnostic was reported.
-    Diag msg; ///< The diagnostic message.
-    std::vector<srcmap::Range> ranges; ///< Location ranges that are related to
-                                       ///< this diagnostic.
-    std::vector<Arg> args; ///< Arguments for the format message.
+    /// Location from where the diagnostic was reported.
+    srcmap::SourceLoc loc;
+
+    /// The diagnostic message.
+    Diag msg;
+
+    /// Location ranges that are related to this diagnostic.
+    std::vector<srcmap::ByteSpan> ranges;
+
+    /// Arguments for the format message.
+    std::vector<Arg> args;
 
     Diagnostic(srcmap::SourceLoc loc, Diag msg) : loc(loc), msg(msg) {}
 };
@@ -67,10 +73,10 @@ struct DiagnosticBuilder
     DiagnosticBuilder &operator=(DiagnosticBuilder &&) = default;
 
     /// Adds a source range to give more context to the diagnostic.
-    auto ranges(std::initializer_list<srcmap::Range> ranges)
+    auto ranges(std::initializer_list<srcmap::ByteSpan> ranges)
         -> DiagnosticBuilder &
     {
-        for (const srcmap::Range r : ranges)
+        for (const srcmap::ByteSpan r : ranges)
             this->diag->ranges.push_back(r);
         return *this;
     }
@@ -87,8 +93,11 @@ struct DiagnosticBuilder
     ~DiagnosticBuilder() noexcept(!CCI_CONTRACTS);
 
 private:
-    Handler *handler; ///< The handler to which the diagnostic will be handed.
-    std::unique_ptr<Diagnostic> diag; ///< Diagnostic which is being constructed.
+    /// The handler to which the diagnostic will be handed.
+    Handler *handler;
+
+    /// Diagnostic which is being constructed.
+    std::unique_ptr<Diagnostic> diag;
 };
 
 /// A diagnostic handler.

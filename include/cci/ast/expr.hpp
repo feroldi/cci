@@ -35,10 +35,10 @@ private:
     ExprClass ec;
     ExprValueKind vk;
     QualType ty;
-    srcmap::Range range;
+    srcmap::ByteSpan range;
 
 protected:
-    Expr(ExprClass ec, ExprValueKind vk, QualType ty, srcmap::Range r)
+    Expr(ExprClass ec, ExprValueKind vk, QualType ty, srcmap::ByteSpan r)
         : ec(ec), vk(vk), ty(ty), range(r)
     {}
 
@@ -48,7 +48,7 @@ public:
     auto type() const -> QualType { return ty; }
     auto begin_loc() const -> srcmap::ByteLoc { return range.start; }
     auto end_loc() const -> srcmap::ByteLoc { return range.end; }
-    auto source_range() const -> srcmap::Range { return range; }
+    auto source_range() const -> srcmap::ByteSpan { return range; }
 
     bool is_lvalue() const { return ExprValueKind::LValue == vk; }
     bool is_rvalue() const { return ExprValueKind::RValue == vk; }
@@ -66,7 +66,7 @@ struct IntegerLiteral : Expr
 private:
     uint64_t val;
 
-    IntegerLiteral(uint64_t val, QualType ty, srcmap::Range r)
+    IntegerLiteral(uint64_t val, QualType ty, srcmap::ByteSpan r)
         : Expr(ExprClass::IntegerLiteral, ExprValueKind::RValue, ty, r)
         , val(val)
     {}
@@ -75,7 +75,8 @@ public:
     auto value() const -> uint64_t { return val; }
 
     static auto create(const ASTContext &ctx, uint64_t value, QualType ty,
-                       srcmap::Range source_range) -> arena_ptr<IntegerLiteral>
+                       srcmap::ByteSpan source_range)
+        -> arena_ptr<IntegerLiteral>
     {
         return new (ctx) IntegerLiteral(value, ty, source_range);
     }
@@ -101,7 +102,7 @@ private:
     CharacterConstantKind cck;
 
     CharacterConstant(uint32_t val, CharacterConstantKind cck, QualType ty,
-                      srcmap::Range r)
+                      srcmap::ByteSpan r)
         : Expr(ExprClass::CharacterConstant, ExprValueKind::RValue, ty, r)
         , val(val)
         , cck(cck)
@@ -113,7 +114,7 @@ public:
 
     static auto create(const ASTContext &ctx, uint32_t value,
                        CharacterConstantKind cck, QualType ty,
-                       srcmap::Range source_range)
+                       srcmap::ByteSpan source_range)
         -> arena_ptr<CharacterConstant>
     {
         return new (ctx) CharacterConstant(value, cck, ty, source_range);
@@ -146,7 +147,7 @@ private:
                   size_t cbw, span<srcmap::ByteLoc> locs,
                   srcmap::ByteLoc rquote_loc)
         : Expr(ExprClass::StringLiteral, ExprValueKind::LValue, ty,
-               srcmap::Range(locs[0], rquote_loc + srcmap::ByteLoc(1)))
+               srcmap::ByteSpan(locs[0], rquote_loc + srcmap::ByteLoc(1)))
         , str_data(str_data)
         , sk(sk)
         , char_byte_width(cbw)
@@ -194,7 +195,7 @@ private:
     ParenExpr(arena_ptr<Expr> expr, srcmap::ByteLoc lparen,
               srcmap::ByteLoc rparen)
         : Expr(ExprClass::ParenExpr, expr->value_kind(), expr->type(),
-               srcmap::Range(lparen, rparen + srcmap::ByteLoc(1)))
+               srcmap::ByteSpan(lparen, rparen + srcmap::ByteLoc(1)))
         , inner_expr(expr)
         , lparen_loc(lparen)
         , rparen_loc(rparen)
@@ -227,8 +228,8 @@ private:
                        srcmap::ByteLoc lbracket_loc,
                        srcmap::ByteLoc rbracket_loc)
         : Expr(ExprClass::ArraySubscript, vk, ty,
-               srcmap::Range(base->begin_loc(),
-                             rbracket_loc + srcmap::ByteLoc(1)))
+               srcmap::ByteSpan(base->begin_loc(),
+                                rbracket_loc + srcmap::ByteLoc(1)))
         , base(base)
         , idx(idx)
         , lbracket_loc(lbracket_loc)
@@ -272,7 +273,7 @@ private:
 
 protected:
     CastExpr(ExprClass ec, ExprValueKind vk, QualType ty, CastKind ck,
-             arena_ptr<Expr> op, srcmap::Range r)
+             arena_ptr<Expr> op, srcmap::ByteSpan r)
         : Expr(ec, vk, ty, r), ck(ck), op(op)
     {}
 

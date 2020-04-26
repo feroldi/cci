@@ -24,22 +24,22 @@ static void report(Scanner &scanner, const char *char_ptr,
 
 // Returns the respective character type width for a given string literal or
 // character constant token.
-static auto map_char_width(Category category, const TargetInfo &target)
+static auto map_char_width(TokenKind category, const TargetInfo &target)
     -> size_t
 {
     cci_expects(is_char_constant(category) || is_string_literal(category));
     switch (category)
     {
-        case Category::char_constant:
-        case Category::string_literal:
-        case Category::utf8_char_constant:
-        case Category::utf8_string_literal: return target.char_width;
-        case Category::wide_char_constant:
-        case Category::wide_string_literal: return target.wchar_width;
-        case Category::utf16_char_constant:
-        case Category::utf16_string_literal: return target.char16_t_width;
-        case Category::utf32_char_constant:
-        case Category::utf32_string_literal: return target.char32_t_width;
+        case TokenKind::char_constant:
+        case TokenKind::string_literal:
+        case TokenKind::utf8_char_constant:
+        case TokenKind::utf8_string_literal: return target.char_width;
+        case TokenKind::wide_char_constant:
+        case TokenKind::wide_string_literal: return target.wchar_width;
+        case TokenKind::utf16_char_constant:
+        case TokenKind::utf16_string_literal: return target.char16_t_width;
+        case TokenKind::utf32_char_constant:
+        case TokenKind::utf32_string_literal: return target.char32_t_width;
         default: cci_unreachable();
     }
 }
@@ -433,8 +433,7 @@ static auto parse_escape_sequence(Scanner &scanner, srcmap::ByteLoc tok_loc,
         case '4':
         case '5':
         case '6':
-        case '7':
-        {
+        case '7': {
             result -= '0';
             int num_digits = 1;
             while (tok_ptr != tok_end && num_digits < 3 &&
@@ -459,8 +458,7 @@ static auto parse_escape_sequence(Scanner &scanner, srcmap::ByteLoc tok_loc,
 
             break;
         }
-        case 'x':
-        {
+        case 'x': {
             result = 0;
             if (tok_ptr == tok_end || !is_hexdigit(*tok_ptr))
             {
@@ -516,7 +514,7 @@ static auto parse_escape_sequence(Scanner &scanner, srcmap::ByteLoc tok_loc,
 CharConstantParser::CharConstantParser(Scanner &scanner,
                                        std::string_view tok_lexeme,
                                        srcmap::ByteLoc tok_loc,
-                                       Category char_category,
+                                       TokenKind char_category,
                                        const TargetInfo &target)
     : value(0), category(char_category)
 {
@@ -528,7 +526,7 @@ CharConstantParser::CharConstantParser(Scanner &scanner,
     auto &diag = scanner.diag_handler;
 
     // Skips either L, u or U.
-    if (char_category != Category::char_constant)
+    if (char_category != TokenKind::char_constant)
     {
         cci_expects(*tok_ptr == 'L' || *tok_ptr == 'u' || *tok_ptr == 'U');
         ++tok_ptr;
@@ -550,12 +548,12 @@ CharConstantParser::CharConstantParser(Scanner &scanner,
     // may hold, depending on its category. Code points bigger than
     // `largest_value_for_category` results in an error.
     const uint32_t largest_value_for_category = [&] {
-        if (char_category == Category::char_constant ||
-            char_category == Category::utf8_char_constant)
+        if (char_category == TokenKind::char_constant ||
+            char_category == TokenKind::utf8_char_constant)
             return 0x7F;
-        if (char_category == Category::utf16_char_constant)
+        if (char_category == TokenKind::utf16_char_constant)
             return 0xFFFF;
-        cci_expects(char_category == Category::utf32_char_constant);
+        cci_expects(char_category == TokenKind::utf32_char_constant);
         return 0x10FFFFFF;
     }();
 
@@ -638,7 +636,7 @@ CharConstantParser::CharConstantParser(Scanner &scanner,
     is_multibyte = num_of_chars > 1;
     uint32_t result_value = 0;
 
-    if (category == Category::char_constant && is_multibyte)
+    if (category == TokenKind::char_constant && is_multibyte)
     {
         cci_expects(char_byte_width == 1);
         bool overflowed = false;
@@ -670,7 +668,7 @@ CharConstantParser::CharConstantParser(Scanner &scanner,
     // type char has the same range of values as unsigned char, the character
     // constant
     // '\xFF' has the value +255.
-    if (category == Category::char_constant && num_of_chars == 1 &&
+    if (category == TokenKind::char_constant && num_of_chars == 1 &&
         target.is_char_signed)
         result_value = static_cast<signed char>(result_value);
 
@@ -705,9 +703,9 @@ StringLiteralParser::StringLiteralParser(Scanner &scanner,
     {
         cci_expects(is_string_literal(string_toks[i].category));
         if (string_toks[i].is_not(category) &&
-            string_toks[i].is_not(Category::string_literal))
+            string_toks[i].is_not(TokenKind::string_literal))
         {
-            if (category == Category::string_literal)
+            if (category == TokenKind::string_literal)
                 category = string_toks[i].category;
             else
             {
@@ -770,11 +768,11 @@ StringLiteralParser::StringLiteralParser(Scanner &scanner,
         const char *tokbuf_end = tokbuf_begin + tok_length;
 
         // Skips u, U, or L.
-        if (string_tok.is_not(Category::string_literal))
+        if (string_tok.is_not(TokenKind::string_literal))
         {
             ++tokbuf_ptr;
             // Skips 8 from u8.
-            if (string_tok.is(Category::utf8_string_literal))
+            if (string_tok.is(TokenKind::utf8_string_literal))
                 ++tokbuf_ptr;
         }
 
@@ -833,7 +831,7 @@ StringLiteralParser::StringLiteralParser(Scanner &scanner,
                 {
                     // If we're parsing an ASCII string literal, then copy the
                     // string chunk regardless of bad encoding.
-                    if (string_tok.is(Category::string_literal))
+                    if (string_tok.is(TokenKind::string_literal))
                     {
                         this->result_ptr =
                             std::copy(tokbuf_ptr, chunk_end, this->result_ptr);

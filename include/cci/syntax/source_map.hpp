@@ -20,49 +20,68 @@ enum class ByteLoc : uint32_t
 
 inline constexpr ByteLoc operator+(ByteLoc lhs, ByteLoc rhs) noexcept
 {
-    return ByteLoc(static_cast<uint32_t>(lhs) + static_cast<uint32_t>(rhs));
-}
-inline constexpr ByteLoc operator-(ByteLoc lhs, ByteLoc rhs) noexcept
-{
-    return ByteLoc(static_cast<uint32_t>(lhs) - static_cast<uint32_t>(rhs));
+    using UnderType = std::underlying_type_t<ByteLoc>;
+    return ByteLoc(static_cast<UnderType>(lhs) + static_cast<UnderType>(rhs));
 }
 
-/// A UTF-8 character offset. A byte offset is not equivalent to a character
-/// offset, because UTF-8 characters are multibyte.
-enum class CharLoc : uint32_t
+inline constexpr ByteLoc operator-(ByteLoc lhs, ByteLoc rhs) noexcept
+{
+    using UnderType = std::underlying_type_t<ByteLoc>;
+    return ByteLoc(static_cast<UnderType>(lhs) - static_cast<UnderType>(rhs));
+}
+
+/// A UTF-8 character offset.
+//
+/// A character offset is not equivalent to a byte offset, because UTF-8
+/// characters are multibyte.
+enum class CharPos : uint32_t
 {
 };
 
-inline constexpr CharLoc operator+(CharLoc lhs, CharLoc rhs) noexcept
+inline constexpr CharPos operator+(CharPos lhs, CharPos rhs) noexcept
 {
-    return CharLoc(static_cast<uint32_t>(lhs) + static_cast<uint32_t>(rhs));
-}
-inline constexpr CharLoc operator-(CharLoc lhs, CharLoc rhs) noexcept
-{
-    return CharLoc(static_cast<uint32_t>(lhs) - static_cast<uint32_t>(rhs));
+    using UnderType = std::underlying_type_t<CharPos>;
+    return CharPos(static_cast<UnderType>(lhs) + static_cast<UnderType>(rhs));
 }
 
-/// A range represents a region of code.
-struct Range
+inline constexpr CharPos operator-(CharPos lhs, CharPos rhs) noexcept
+{
+    using UnderType = std::underlying_type_t<CharPos>;
+    return CharPos(static_cast<UnderType>(lhs) - static_cast<UnderType>(rhs));
+}
+
+/// A representation of a byte-based source code span.
+struct ByteSpan
 {
     ByteLoc start = ByteLoc(0);
     ByteLoc end = ByteLoc(0);
 
-    Range() = default;
-    Range(ByteLoc start, ByteLoc end) noexcept : start(start), end(end) {}
+    ByteSpan() = default;
+    ByteSpan(ByteLoc start, ByteLoc end) noexcept : start(start), end(end) {}
+
+    bool operator==(const ByteSpan &other) const
+    {
+        return start == other.start && end == other.end;
+    }
+};
+
+/// One-based line number.
+enum LineNum : size_t
+{
 };
 
 /// Information about a source location for diagnostics.
 struct SourceLoc
 {
+    // TODO: Remove this "file" and use a `ByteLoc` instead.
     const FileMap &file; ///< Original source.
-    size_t line; ///< 1-based line number.
-    CharLoc col; ///< 0-based column offset.
+    LineNum line;
+    CharPos column;
 };
 
 static_assert(std::is_trivially_copyable_v<ByteLoc>);
-static_assert(std::is_trivially_copyable_v<CharLoc>);
-static_assert(std::is_trivially_copyable_v<Range>);
+static_assert(std::is_trivially_copyable_v<CharPos>);
+static_assert(std::is_trivially_copyable_v<ByteSpan>);
 
 /// A single source in the SourceMap.
 //
@@ -72,18 +91,21 @@ static_assert(std::is_trivially_copyable_v<Range>);
 struct FileMap
 {
     // FIXME: Storing the source here is slow and temporary. Use a buffer for
-    // this in the SourceMap.
-    std::string name; ///< File name.
-    std::string src; ///< Source code content.
-    ByteLoc start_loc; ///< The absolute start byte location of this file in a
-                       ///< `SourceMap`.
-    ByteLoc end_loc; ///< The absolute end byte location of this file in a
-                     ///< `SourceMap`.
-    std::vector<ByteLoc> lines; ///< Byte locations of the start of all lines in
-                                ///< the source code.
-    std::vector<std::pair<ByteLoc, size_t>>
-        multibyte_chars; ///< Byte locations and sizes of all multibyte
-                         ///< characters.
+    // this in the `SourceMap`.
+    std::string name;
+    std::string src;
+
+    /// The absolute start byte location of this file in a `SourceMap`.
+    ByteLoc start_loc;
+
+    /// The absolute end byte location of this file in a `SourceMap`.
+    ByteLoc end_loc;
+
+    /// Byte locations of the start of all lines in the source code.
+    std::vector<ByteLoc> lines;
+
+    /// Byte locations and sizes of all multibyte characters.
+    std::vector<std::pair<ByteLoc, size_t>> multibyte_chars;
 
     /// Constructs a `FileMap` to be processed by a `SourceMap`.
     //
@@ -167,12 +189,12 @@ public:
     /// For a global position, lookups the source location.
     auto lookup_source_location(ByteLoc loc) const -> SourceLoc;
 
-    /// Converts a Range of code into a string view.
-    auto range_to_snippet(Range r) const -> std::string_view;
+    /// Converts a ByteSpan of code into a string view.
+    auto span_to_snippet(ByteSpan r) const -> std::string_view;
 
     /// Converts a byte position to a character position.
     auto byteloc_to_filemap_charloc(ByteLoc loc) const
-        -> std::pair<const FileMap &, CharLoc>;
+        -> std::pair<const FileMap &, CharPos>;
 
     /// Converts a pointer into the source to a global byte location.
     auto ptr_to_byteloc(ByteLoc file_start_loc, const char *ptr) const
