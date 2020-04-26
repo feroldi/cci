@@ -34,6 +34,16 @@ TEST_F(DiagnosticsTest, initialDiagnosticBagIsEmpty)
     EXPECT_EQ(true, bag.empty());
 }
 
+TEST_F(DiagnosticsTest, addingToDiagnosticBagMakesItNonEmpty)
+{
+    auto diag = DiagnosticBuilder(custom_descriptor).build();
+    auto bag = DiagnosticBag();
+
+    bag.add(std::move(diag));
+
+    EXPECT_EQ(false, bag.empty());
+}
+
 TEST_F(DiagnosticsTest, builderWithDescriptor)
 {
     auto diag = DiagnosticBuilder(custom_descriptor).build();

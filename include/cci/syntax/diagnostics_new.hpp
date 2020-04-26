@@ -69,14 +69,6 @@ struct DiagnosticDescriptor
     std::vector<Arg> args;
 };
 
-class DiagnosticBag
-{
-public:
-    DiagnosticBag() = default;
-
-    auto empty() -> bool { return true; }
-};
-
 /// Information about a diagnostic.
 struct Diagnostic
 {
@@ -97,6 +89,21 @@ struct Diagnostic
                std::optional<ByteLoc> caret_loc)
         : descriptor(descriptor), caret_loc(caret_loc)
     {}
+};
+
+class DiagnosticBag
+{
+    std::vector<Diagnostic> diagnostics;
+
+public:
+    DiagnosticBag() = default;
+
+    auto empty() -> bool { return this->diagnostics.empty(); }
+
+    void add(Diagnostic &&diagnostic)
+    {
+        this->diagnostics.push_back(std::move(diagnostic));
+    }
 };
 
 /// Helper class to construct a `Diagnostic`.
