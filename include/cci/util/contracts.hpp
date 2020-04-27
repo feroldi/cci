@@ -36,22 +36,24 @@ struct unreachable_exception : std::runtime_error
 /// See
 /// https://github.com/isocpp/CppCoreGuidelines/blob/master/CppCoreGuidelines.md#Ri-expects
 #define cci_expects(cond)                                                      \
-    ((cond) ? void(0)                                                          \
-            : throw broken_contract("precondition failure at  " __FILE__       \
-                                    ":" STRINGIFY(__LINE__) ": " #cond))
+    ((cond)                                                                    \
+         ? void(0)                                                             \
+         : throw ::cci::broken_contract("precondition failure at  " __FILE__   \
+                                        ":" STRINGIFY(__LINE__) ": " #cond))
 
 /// I.8: Prefer Ensures() for expressing postconditions.
 /// See
 /// https://github.com/isocpp/CppCoreGuidelines/blob/master/CppCoreGuidelines.md#Ri-ensures
 #define cci_ensures(cond)                                                      \
-    ((cond) ? void(0)                                                          \
-            : throw broken_contract("postcondition failure at  " __FILE__      \
-                                    ":" STRINGIFY(__LINE__) ": " #cond))
+    ((cond)                                                                    \
+         ? void(0)                                                             \
+         : throw ::cci::broken_contract("postcondition failure at  " __FILE__  \
+                                        ":" STRINGIFY(__LINE__) ": " #cond))
 
 /// Unreachable code must be marked with this.
 #define cci_unreachable()                                                      \
-    (throw unreachable_exception("unreachable code reached at " __FILE__       \
-                                 ":" STRINGIFY(__LINE__)))
+    (throw ::cci::unreachable_exception(                                       \
+        "unreachable code reached at " __FILE__ ":" STRINGIFY(__LINE__)))
 
 #else
 

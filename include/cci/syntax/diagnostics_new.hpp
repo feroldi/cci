@@ -4,6 +4,7 @@
 #include "cci/syntax/token.hpp"
 #include "cci/util/contracts.hpp"
 #include <atomic>
+#include <compare>
 #include <functional>
 #include <initializer_list>
 #include <optional>
@@ -47,47 +48,118 @@ enum class DiagnosticLevel
     Error,
 };
 
-enum class ArgKind
+enum class DiagnosticParamKind
 {
     Str,
     Int,
     TokenKind,
 };
 
-struct Arg
+struct DiagnosticParam
 {
     std::string_view name;
-    ArgKind kind;
+    DiagnosticParamKind kind;
 
-    Arg(std::string_view name, ArgKind kind) : name(name), kind(kind) {}
+    DiagnosticParam(std::string_view name, DiagnosticParamKind kind)
+        : name(name), kind(kind)
+    {}
 };
 
 struct DiagnosticDescriptor
 {
     DiagnosticLevel level;
     std::string_view message;
-    std::vector<Arg> args;
+    std::vector<DiagnosticParam> args;
+
+    auto get_param(std::string_view name) const
+        -> std::optional<DiagnosticParam>
+    {
+        auto param_it =
+            std::find_if(this->args.begin(), this->args.end(),
+                         [name](auto param) { return param.name == name; });
+        if (param_it != this->args.end())
+            return *param_it;
+        else
+            return std::nullopt;
+    }
+};
+
+struct Arg
+{
+    DiagnosticParamKind param_kind;
+
+    Arg(DiagnosticParamKind param_kind) : param_kind(param_kind) {}
+
+    auto operator<=>(const Arg &) const = default;
+};
+
+struct StrArg final : Arg
+{
+    std::string value;
+
+    StrArg(std::string &&value)
+        : Arg(DiagnosticParamKind::Str), value(std::move(value))
+    {}
+
+    bool operator==(const StrArg &) const = default;
+};
+
+struct IntArg final : Arg
+{
+    int value;
+
+    IntArg(int value) : Arg(DiagnosticParamKind::Int), value(value) {}
+
+    bool operator==(const IntArg &) const = default;
+};
+
+struct TokenKindArg : Arg
+{
+    TokenKind value;
+
+    TokenKindArg(TokenKind value)
+        : Arg(DiagnosticParamKind::TokenKind), value(value)
+    {}
+
+    bool operator==(const TokenKindArg &) const = default;
+};
+
+using DiagnosticArgBase = std::variant<IntArg, StrArg, TokenKindArg>;
+
+struct DiagnosticArg final : DiagnosticArgBase
+{
+    using DiagnosticArgBase::DiagnosticArgBase;
+    using DiagnosticArgBase::operator=;
+
+    auto param_kind() const -> DiagnosticParamKind
+    {
+        return std::visit([](auto &&arg) { return arg.param_kind; }, *this);
+    }
+
+    template <typename T>
+    auto get_as() const -> const T *
+    {
+        return std::get_if<T>(this);
+    }
 };
 
 /// Information about a diagnostic.
 struct Diagnostic
 {
-    using Arg = std::variant<int, std::string>;
-
-    DiagnosticDescriptor *descriptor;
+    const DiagnosticDescriptor *descriptor;
 
     /// Location from where the diagnostic was reported.
-    std::optional<ByteLoc> caret_loc;
+    std::optional<ByteLoc> caret_location;
 
     /// Location spans that are related to this diagnostic.
     std::vector<ByteSpan> spans;
 
     /// Arguments for the format message.
-    std::vector<std::pair<std::string_view, Arg>> args;
+    std::vector<std::pair<std::string_view, DiagnosticArg>> args;
 
-    Diagnostic(DiagnosticDescriptor *descriptor,
+    Diagnostic(const DiagnosticDescriptor *descriptor,
                std::optional<ByteLoc> caret_loc)
-        : descriptor(descriptor), caret_loc(caret_loc)
+        : descriptor(descriptor), caret_location(caret_loc)
     {}
 };
 
@@ -98,7 +170,7 @@ class DiagnosticBag
 public:
     DiagnosticBag() = default;
 
-    auto empty() -> bool { return this->diagnostics.empty(); }
+    auto empty() const -> bool { return this->diagnostics.empty(); }
 
     void add(Diagnostic &&diagnostic)
     {
@@ -107,9 +179,15 @@ public:
 };
 
 /// Helper class to construct a `Diagnostic`.
-struct DiagnosticBuilder
+class DiagnosticBuilder
 {
-    DiagnosticBuilder(DiagnosticDescriptor &descriptor)
+    const DiagnosticDescriptor *descriptor;
+    std::optional<ByteLoc> caret_loc;
+    std::vector<ByteSpan> spans;
+    std::vector<std::pair<std::string_view, DiagnosticArg>> args;
+
+public:
+    DiagnosticBuilder(const DiagnosticDescriptor &descriptor)
         : descriptor(&descriptor)
     {}
 
@@ -138,17 +216,38 @@ struct DiagnosticBuilder
     }
 
     template <typename Arg>
-    auto with_arg(std::string_view param, Arg &&arg) -> DiagnosticBuilder &
+    auto with_arg(std::string_view param_name, Arg &&arg) -> DiagnosticBuilder &
     {
-        this->args.emplace_back(param, std::forward<Arg>(arg));
+        cci_expects(check_param_is_not_set(param_name));
+
+        auto diag_arg = DiagnosticArg(make_arg(std::forward<Arg>(arg)));
+
+        cci_expects(check_arg_matches_param_kind(param_name, diag_arg));
+
+        this->args.emplace_back(param_name, std::move(diag_arg));
         return *this;
     }
 
 private:
-    DiagnosticDescriptor *descriptor;
-    std::optional<ByteLoc> caret_loc;
-    std::vector<ByteSpan> spans;
-    std::vector<std::pair<std::string_view, Diagnostic::Arg>> args;
+    auto make_arg(int value) -> IntArg { return value; }
+    auto make_arg(std::string value) -> StrArg { return value; }
+    auto make_arg(TokenKind token_kind) -> TokenKindArg { return token_kind; }
+
+    auto check_arg_matches_param_kind(std::string_view param_name,
+                                      DiagnosticArg &arg) const -> bool
+    {
+        auto param = this->descriptor->get_param(param_name);
+        cci_expects(param.has_value());
+        return arg.param_kind() == param->kind;
+    }
+
+    auto check_param_is_not_set(std::string_view param_name) const -> bool
+    {
+        auto arg_it = std::find_if(
+            this->args.begin(), this->args.end(),
+            [param_name](auto arg) { return arg.first == param_name; });
+        return arg_it == this->args.end();
+    }
 };
 
 } // namespace cci::syntax

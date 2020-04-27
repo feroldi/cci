@@ -4,18 +4,7 @@
 #include <string_view>
 
 using namespace std::string_view_literals;
-using namespace std::string_literals;
-
-using cci::syntax::Arg;
-using cci::syntax::ArgKind;
-using cci::syntax::ByteLoc;
-using cci::syntax::ByteSpan;
-using cci::syntax::Diag;
-using cci::syntax::Diagnostic;
-using cci::syntax::DiagnosticBag;
-using cci::syntax::DiagnosticBuilder;
-using cci::syntax::DiagnosticDescriptor;
-using cci::syntax::DiagnosticLevel;
+using namespace cci::syntax;
 
 namespace {
 
@@ -30,7 +19,7 @@ protected:
 
 TEST_F(DiagnosticsTest, initialDiagnosticBagIsEmpty)
 {
-    auto bag = DiagnosticBag();
+    const auto bag = DiagnosticBag();
     EXPECT_EQ(true, bag.empty());
 }
 
@@ -56,7 +45,7 @@ TEST_F(DiagnosticsTest, builderWithCarret)
         DiagnosticBuilder(custom_descriptor).caret_at(ByteLoc(42)).build();
 
     EXPECT_EQ(&custom_descriptor, diag.descriptor);
-    EXPECT_EQ(ByteLoc(42), diag.caret_loc);
+    EXPECT_EQ(ByteLoc(42), diag.caret_location);
 }
 
 TEST_F(DiagnosticsTest, builderWithSpans)
@@ -75,16 +64,37 @@ TEST_F(DiagnosticsTest, builderWithSpans)
 
 TEST_F(DiagnosticsTest, builderWithArgs)
 {
-    auto diag = DiagnosticBuilder(custom_descriptor)
+    DiagnosticDescriptor descriptor{
+        .level = DiagnosticLevel::Error,
+        .message = "a diagnostic description",
+        .args =
+            {
+                DiagnosticParam("a", DiagnosticParamKind::Int),
+                DiagnosticParam("b", DiagnosticParamKind::Str),
+                DiagnosticParam("c", DiagnosticParamKind::TokenKind),
+            },
+    };
+
+    auto diag = DiagnosticBuilder(descriptor)
                     .with_arg("a", 42)
                     .with_arg("b", "foo")
+                    .with_arg("c", cci::TokenKind::comma)
                     .build();
 
-    EXPECT_EQ(&custom_descriptor, diag.descriptor);
+    EXPECT_EQ(&descriptor, diag.descriptor);
 
-    ASSERT_EQ(2, diag.args.size());
-    EXPECT_EQ(std::pair("a"sv, Diagnostic::Arg(42)), diag.args[0]);
-    EXPECT_EQ(std::pair("b"sv, Diagnostic::Arg("foo"s)), diag.args[1]);
+    ASSERT_EQ(3, diag.args.size());
+
+    EXPECT_EQ("a", diag.args[0].first);
+    EXPECT_EQ(DiagnosticArg(IntArg(42)), diag.args[0].second);
+
+    EXPECT_EQ("b", diag.args[1].first);
+    EXPECT_EQ(DiagnosticArg(StrArg("foo")), diag.args[1].second);
+
+    EXPECT_EQ("c", diag.args[2].first);
+    EXPECT_EQ(DiagnosticArg(TokenKindArg(cci::TokenKind::comma)),
+              diag.args[2].second);
 }
 
 } // namespace
+
