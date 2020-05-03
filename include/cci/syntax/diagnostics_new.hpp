@@ -113,7 +113,7 @@ struct IntArg final : Arg
     bool operator==(const IntArg &) const = default;
 };
 
-struct TokenKindArg : Arg
+struct TokenKindArg final : Arg
 {
     TokenKind value;
 
@@ -161,6 +161,8 @@ struct Diagnostic
                std::optional<ByteLoc> caret_loc)
         : descriptor(descriptor), caret_location(caret_loc)
     {}
+
+    bool operator==(const Diagnostic &) const = default;
 };
 
 class DiagnosticBag
@@ -168,6 +170,8 @@ class DiagnosticBag
     std::vector<Diagnostic> diagnostics;
 
 public:
+    using iterator = std::vector<Diagnostic>::const_iterator;
+
     DiagnosticBag() = default;
 
     auto empty() const -> bool { return this->diagnostics.empty(); }
@@ -176,6 +180,8 @@ public:
     {
         this->diagnostics.push_back(std::move(diagnostic));
     }
+
+    auto begin() const -> iterator { return std::begin(diagnostics); }
 };
 
 /// Helper class to construct a `Diagnostic`.
@@ -222,7 +228,7 @@ public:
 
         auto diag_arg = DiagnosticArg(make_arg(std::forward<Arg>(arg)));
 
-        cci_expects(check_arg_matches_param_kind(param_name, diag_arg));
+        cci_expects(check_arg_kind_matches_param_kind(param_name, diag_arg));
 
         this->args.emplace_back(param_name, std::move(diag_arg));
         return *this;
@@ -233,8 +239,8 @@ private:
     auto make_arg(std::string value) -> StrArg { return value; }
     auto make_arg(TokenKind token_kind) -> TokenKindArg { return token_kind; }
 
-    auto check_arg_matches_param_kind(std::string_view param_name,
-                                      DiagnosticArg &arg) const -> bool
+    auto check_arg_kind_matches_param_kind(std::string_view param_name,
+                                           DiagnosticArg &arg) const -> bool
     {
         auto param = this->descriptor->get_param(param_name);
         cci_expects(param.has_value());
