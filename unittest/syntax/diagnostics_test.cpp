@@ -14,8 +14,8 @@ protected:
     auto make_descriptor() -> DiagnosticDescriptor
     {
         return {
-            .level = DiagnosticLevel::Error,
             .message = "a diagnostic description",
+            .params = {},
         };
     }
 
@@ -23,8 +23,8 @@ protected:
         -> DiagnosticDescriptor
     {
         return {
-            .level = DiagnosticLevel::Error,
             .message = message,
+            .params = {},
         };
     }
 
@@ -111,9 +111,8 @@ TEST_F(DiagnosticsTest, builderWithSpans)
 TEST_F(DiagnosticsTest, builderWithArgs)
 {
     DiagnosticDescriptor descriptor{
-        .level = DiagnosticLevel::Error,
         .message = "a diagnostic description",
-        .args =
+        .params =
             {
                 DiagnosticParam("a", DiagnosticParamKind::Int),
                 DiagnosticParam("b", DiagnosticParamKind::Str),

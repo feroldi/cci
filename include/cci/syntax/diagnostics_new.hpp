@@ -15,39 +15,6 @@ namespace cci::syntax {
 
 using namespace cci::srcmap;
 
-enum class Diag
-{
-    expected_but_got,
-    integer_literal_overflow,
-    integer_literal_too_large,
-    invalid_digit,
-    invalid_suffix,
-    missing_exponent_digits,
-    missing_binary_exponent,
-    missing_ucn_escape_hex_digits,
-    invalid_ucn,
-    escape_out_of_range,
-    missing_escape_digits,
-    unknown_escape_sequence,
-    unicode_too_large_for_unit,
-    char_const_empty,
-    char_const_overflow,
-    nonstandard_string_concat,
-    incomplete_ucn,
-    unterminated_comment,
-    unterminated_char_const,
-    unterminated_string_literal,
-    unknown_character,
-    invalid_unicode_char,
-    typecheck_subscript_value,
-    typecheck_subscript_not_integer,
-};
-
-enum class DiagnosticLevel
-{
-    Error,
-};
-
 enum class DiagnosticParamKind
 {
     Str,
@@ -67,17 +34,16 @@ struct DiagnosticParam
 
 struct DiagnosticDescriptor
 {
-    DiagnosticLevel level;
     std::string_view message;
-    std::vector<DiagnosticParam> args;
+    std::vector<DiagnosticParam> params;
 
-    auto get_param(std::string_view name) const
+    auto get_param_by_name(std::string_view name) const
         -> std::optional<DiagnosticParam>
     {
         auto param_it =
-            std::find_if(this->args.begin(), this->args.end(),
+            std::find_if(this->params.begin(), this->params.end(),
                          [name](auto param) { return param.name == name; });
-        if (param_it != this->args.end())
+        if (param_it != this->params.end())
             return *param_it;
         else
             return std::nullopt;
@@ -124,22 +90,25 @@ struct TokenKindArg final : Arg
     bool operator==(const TokenKindArg &) const = default;
 };
 
-using DiagnosticArgBase = std::variant<IntArg, StrArg, TokenKindArg>;
-
-struct DiagnosticArg final : DiagnosticArgBase
+struct DiagnosticArg final
 {
-    using DiagnosticArgBase::DiagnosticArgBase;
-    using DiagnosticArgBase::operator=;
+    using ArgType = std::variant<IntArg, StrArg, TokenKindArg>;
+
+    ArgType arg;
+
+    DiagnosticArg(ArgType arg) : arg(std::move(arg)) {}
+
+    bool operator==(const DiagnosticArg &) const = default;
 
     auto param_kind() const -> DiagnosticParamKind
     {
-        return std::visit([](auto &&arg) { return arg.param_kind; }, *this);
+        return std::visit([](auto &&arg) { return arg.param_kind; }, arg);
     }
 
     template <typename T>
     auto get_as() const -> const T *
     {
-        return std::get_if<T>(this);
+        return std::get_if<T>(arg);
     }
 };
 
@@ -242,7 +211,7 @@ private:
     auto check_arg_kind_matches_param_kind(std::string_view param_name,
                                            DiagnosticArg &arg) const -> bool
     {
-        auto param = this->descriptor->get_param(param_name);
+        auto param = this->descriptor->get_param_by_name(param_name);
         cci_expects(param.has_value());
         return arg.param_kind() == param->kind;
     }

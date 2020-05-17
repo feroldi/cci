@@ -430,9 +430,14 @@ TEST_F(LiteralParserTest, strLitUTF16)
 
     auto as_utf16 = parsed_str.string_as_utf16();
 
-    EXPECT_EQ(u'f', as_utf16[0]);
-    EXPECT_EQ(u'o', as_utf16[1]);
-    EXPECT_EQ(u'o', as_utf16[2]);
+    // TODO: Remove these casts once GoogleTest learns to print char16_t.
+    // See: https://github.com/google/googletest/issues/2854
+    EXPECT_EQ(static_cast<std::uint_least16_t>(u'f'),
+              static_cast<std::uint_least16_t>(as_utf16[0]));
+    EXPECT_EQ(static_cast<std::uint_least16_t>(u'o'),
+              static_cast<std::uint_least16_t>(as_utf16[1]));
+    EXPECT_EQ(static_cast<std::uint_least16_t>(u'o'),
+              static_cast<std::uint_least16_t>(as_utf16[2]));
 }
 
 TEST_F(LiteralParserTest, strLitUTF32)
@@ -448,9 +453,14 @@ TEST_F(LiteralParserTest, strLitUTF32)
 
     auto as_utf32 = parsed_str.string_as_utf32();
 
-    EXPECT_EQ(U'f', as_utf32[0]);
-    EXPECT_EQ(U'o', as_utf32[1]);
-    EXPECT_EQ(U'o', as_utf32[2]);
+    // TODO: Remove these casts once GoogleTest learns to print char32_t.
+    // See: https://github.com/google/googletest/issues/2854
+    EXPECT_EQ(static_cast<std::uint_least32_t>(U'f'),
+              static_cast<std::uint_least32_t>(as_utf32[0]));
+    EXPECT_EQ(static_cast<std::uint_least32_t>(U'o'),
+              static_cast<std::uint_least32_t>(as_utf32[1]));
+    EXPECT_EQ(static_cast<std::uint_least32_t>(U'o'),
+              static_cast<std::uint_least32_t>(as_utf32[2]));
 }
 
 TEST_F(LiteralParserTest, strLitContatenation)
