@@ -13,10 +13,10 @@ matrix:
       addons:
         apt:
           sources: ['ubuntu-toolchain-r-test']
-          packages: ['g++-9']
+          packages: ['g++-10']
       env:
-        - MATRIX_EVAL="CC=gcc-9 && CXX=g++-9 LDFLAGS=-lstdc++fs"
-        - GCOV_BINARY=/usr/bin/gcov-9
+        - MATRIX_EVAL="CC=gcc-10 && CXX=g++-10 LDFLAGS=-lstdc++fs"
+        - GCOV_BINARY=/usr/bin/gcov-10
         - COVERAGE=yes
         - CMAKE="cmake"
         - CMAKE_BUILD_TYPE=Debug
@@ -33,7 +33,7 @@ matrix:
 before_install:
   - eval "${MATRIX_EVAL}"
   # Install GoogleTest.
-  - GTEST_VERSION=1.8.0
+  - GTEST_VERSION=1.10.0
   - GTEST_ARCHIVE_PATH=$HOME/gtest.tar.gz
   - GTEST_BIN_PATH=$HOME/gtest
   - wget https://github.com/google/googletest/archive/release-$GTEST_VERSION.tar.gz -O $GTEST_ARCHIVE_PATH
