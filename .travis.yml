@@ -41,8 +41,8 @@ before_install:
   - tar xf $GTEST_ARCHIVE_PATH --strip-components=1 -C $GTEST_BIN_PATH
   - (cd $GTEST_BIN_PATH/googletest && cmake -DBUILD_SHARED_LIBS=ON . && cmake --build .)
   - sudo cp -a $GTEST_BIN_PATH/googletest/include/gtest /usr/include
-  - sudo cp -a $GTEST_BIN_PATH/googletest/libgtest_main.so /usr/lib/
-  - sudo cp -a $GTEST_BIN_PATH/googletest/libgtest.so /usr/lib/
+  - sudo cp -a $GTEST_BIN_PATH/googletest/lib/libgtest_main.so /usr/lib/
+  - sudo cp -a $GTEST_BIN_PATH/googletest/lib/libgtest.so /usr/lib/
 
 script:
   - $CXX --version
