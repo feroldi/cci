@@ -97,6 +97,12 @@ inline uint64_t NextPowerOf2(uint64_t A)
 
 namespace llvm_vecsmall {
 
+// std::is_pod has been deprecated in C++20.
+template <typename T>
+struct IsPod : std::integral_constant<bool, std::is_standard_layout<T>::value &&
+                                                std::is_trivial<T>::value>
+{};
+
 /// This is all the non-templated stuff common to all SmallVectors.
 class SmallVectorBase
 {
@@ -420,9 +426,9 @@ public:
 /// This class consists of common code factored out of the SmallVector class to
 /// reduce code duplication based on the SmallVector 'N' template parameter.
 template <typename T>
-class SmallVectorImpl : public SmallVectorTemplateBase<T, std::is_pod<T>::value>
+class SmallVectorImpl : public SmallVectorTemplateBase<T, IsPod<T>::value>
 {
-    typedef SmallVectorTemplateBase<T, std::is_pod<T>::value> SuperClass;
+    typedef SmallVectorTemplateBase<T, IsPod<T>::value> SuperClass;
 
     SmallVectorImpl(const SmallVectorImpl &) = delete;
 
@@ -434,7 +440,7 @@ public:
 protected:
     // Default ctor - Initialize to empty.
     explicit SmallVectorImpl(unsigned N)
-        : SmallVectorTemplateBase<T, std::is_pod<T>::value>(N * sizeof(T))
+        : SmallVectorTemplateBase<T, IsPod<T>::value>(N * sizeof(T))
     {}
 
 public:
