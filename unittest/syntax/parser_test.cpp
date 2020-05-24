@@ -10,8 +10,8 @@
 #include "gtest/gtest.h"
 #include <memory>
 
-using cci::ASTContext;
-using cci::IntegerLiteral;
+using cci::ast::ASTContext;
+using cci::ast::IntegerLiteral;
 using cci::diag::Diag;
 using cci::diag::Diagnostic;
 using cci::syntax::Parser;

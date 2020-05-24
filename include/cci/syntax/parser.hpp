@@ -22,18 +22,22 @@ public:
         : scanner(scanner), sema(sema), diag(scanner.diag_handler)
     {}
 
-    auto parse_expression() -> std::optional<arena_ptr<Expr>>;
+    auto parse_expression() -> std::optional<arena_ptr<ast::Expr>>;
 
 private:
     auto peek_tok(size_t lookahead = 0) -> Token;
+
     auto consume_tok() -> Token;
+
     auto expect_and_consume_tok(TokenKind token_kind) -> std::optional<Token>;
 
-    auto parse_primary_expression() -> std::optional<arena_ptr<Expr>>;
+    auto parse_primary_expression() -> std::optional<arena_ptr<ast::Expr>>;
+
     auto parse_string_literal_expression()
-        -> std::optional<arena_ptr<StringLiteral>>;
-    auto parse_postfix_expression(arena_ptr<Expr>)
-        -> std::optional<arena_ptr<Expr>>;
+        -> std::optional<arena_ptr<ast::StringLiteral>>;
+
+    auto parse_postfix_expression(arena_ptr<ast::Expr>)
+        -> std::optional<arena_ptr<ast::Expr>>;
 
 private:
     small_vector<Token, 8> peeked_toks;

@@ -11,10 +11,27 @@
 #include <memory>
 #include <string_view>
 
-static_assert(2 == sizeof(char16_t),
+static_assert(sizeof(std::uint16_t) == sizeof(char16_t),
               "UTF-16 string literals assume that char16_t is 2 bytes long");
-static_assert(4 == sizeof(char32_t),
+static_assert(sizeof(std::uint32_t) == sizeof(char32_t),
               "UTF-32 string literals assume that char32_t is 4 bytes long");
+
+using cci::ast::ArraySubscriptExpr;
+using cci::ast::AtomicType;
+using cci::ast::CastKind;
+using cci::ast::CharacterConstant;
+using cci::ast::CharacterConstantKind;
+using cci::ast::ConstantArrayType;
+using cci::ast::Expr;
+using cci::ast::ExprValueKind;
+using cci::ast::ImplicitCastExpr;
+using cci::ast::IntegerLiteral;
+using cci::ast::ParenExpr;
+using cci::ast::PointerType;
+using cci::ast::Qualifiers;
+using cci::ast::QualType;
+using cci::ast::StringLiteral;
+using cci::ast::StringLiteralKind;
 
 namespace cci::syntax {
 

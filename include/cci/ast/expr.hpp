@@ -9,7 +9,7 @@
 #include <cstdint>
 #include <type_traits>
 
-namespace cci {
+namespace cci::ast {
 
 // Expression categories.
 enum class ExprValueKind
@@ -309,4 +309,4 @@ static_assert(std::is_trivially_destructible_v<ParenExpr>);
 static_assert(std::is_trivially_destructible_v<ArraySubscriptExpr>);
 static_assert(std::is_trivially_destructible_v<ImplicitCastExpr>);
 
-} // namespace cci
+} // namespace cci::ast

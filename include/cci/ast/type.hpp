@@ -5,7 +5,8 @@
 #include <cstdint>
 #include <type_traits>
 
-namespace cci {
+namespace cci::ast {
+
 enum class TypeClass
 {
     Builtin,
@@ -188,4 +189,4 @@ static_assert(std::is_trivially_destructible_v<ArrayType>);
 static_assert(std::is_trivially_destructible_v<ConstantArrayType>);
 static_assert(std::is_trivially_destructible_v<PointerType>);
 
-} // namespace cci
+} // namespace cci::ast

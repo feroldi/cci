@@ -3,7 +3,7 @@
 #include "cci/ast/arena_types.hpp"
 #include <cstdint>
 
-namespace cci {
+namespace cci::ast {
 
 struct Type;
 
@@ -63,7 +63,7 @@ public:
 
     explicit operator bool() const noexcept { return type; }
     auto operator*() const noexcept -> const Type & { return *type; }
-    auto operator-> () const noexcept { return type; }
+    auto operator->() const noexcept { return type; }
 
     bool has_qualifiers() const { return !qualifiers.empty(); }
     auto get_unqualified_type() const -> QualType
@@ -72,4 +72,4 @@ public:
     }
 };
 
-} // namespace cci
+} // namespace cci::ast

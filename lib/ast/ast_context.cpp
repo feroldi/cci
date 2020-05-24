@@ -1,7 +1,7 @@
 #include "cci/ast/ast_context.hpp"
 #include "cci/ast/type.hpp"
 
-namespace cci {
+namespace cci::ast {
 
 void ASTContext::init_builtin_types()
 {
@@ -30,4 +30,4 @@ void ASTContext::init_builtin_types()
     long_double_ty = make_builtin(BuiltinTypeKind::LongDouble);
 }
 
-} // namespace cci
+} // namespace cci::ast

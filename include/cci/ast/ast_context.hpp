@@ -7,7 +7,7 @@
 #include <cstdint>
 #include <new>
 
-namespace cci {
+namespace cci::ast {
 
 // Side-table and resource manager of the AST.
 struct ASTContext
@@ -70,7 +70,7 @@ private:
     void init_builtin_types();
 };
 
-} // namespace cci
+} // namespace cci::ast
 
 // Placement new for construction of AST objects using the ASTContext's arena
 // memory resource.
@@ -94,7 +94,7 @@ private:
 //     // Custom alignment.
 //     auto e2 = new (context, 4) IntegerLiteral(...);
 [[nodiscard]] inline void *
-operator new(std::size_t bytes, const cci::ASTContext &c,
+operator new(std::size_t bytes, const cci::ast::ASTContext &c,
              std::size_t alignment = alignof(std::max_align_t))
 {
     return c.allocate(bytes, alignment);
@@ -116,7 +116,7 @@ operator new(std::size_t bytes, const cci::ASTContext &c,
 //     // Custom alignment.
 //     auto data = new (context, 4) std::byte[4096];
 [[nodiscard]] inline void *
-operator new[](std::size_t bytes, const cci::ASTContext &c,
+operator new[](std::size_t bytes, const cci::ast::ASTContext &c,
                std::size_t alignment = alignof(std::max_align_t))
 {
     return c.allocate(bytes, alignment);

@@ -9,6 +9,9 @@
 #include <algorithm>
 #include <string_view>
 
+using cci::ast::Expr;
+using cci::ast::StringLiteral;
+
 namespace cci::syntax {
 
 auto Parser::peek_tok(size_t lookahead) -> Token
