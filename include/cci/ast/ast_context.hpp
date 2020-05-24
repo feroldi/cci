@@ -109,8 +109,10 @@ operator new(std::size_t bytes, const cci::ASTContext &c,
 // Example of usage:
 //
 //     ASTContext context(...);
+//
 //     // Default alignment.
-//     auto locs = new (context) srcmap::ByteLoc[length];
+//     auto locs = new (context) ByteLoc[length];
+//
 //     // Custom alignment.
 //     auto data = new (context, 4) std::byte[4096];
 [[nodiscard]] inline void *

@@ -1,7 +1,7 @@
 #include "cci/syntax/source_map.hpp"
 #include "gtest/gtest.h"
 
-using namespace cci::srcmap;
+using namespace cci::syntax;
 
 namespace {
 

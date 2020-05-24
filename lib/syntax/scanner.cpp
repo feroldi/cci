@@ -11,8 +11,7 @@
 #include <memory>
 #include <utility>
 
-namespace cci {
-namespace {
+namespace cci::syntax {
 
 constexpr auto is_newline(char C) -> bool { return C == '\n' || C == '\r'; }
 
@@ -55,7 +54,7 @@ constexpr auto is_whitespace(char C) -> bool
 //
 /// \return The distance between `ptr` and the first character after the escaped
 ///         newline.
-auto size_for_escaped_newline(const char *after_backslash) -> int64_t
+static auto size_for_escaped_newline(const char *after_backslash) -> int64_t
 {
     const char *ptr = after_backslash;
     if (is_newline(*ptr))
@@ -107,8 +106,8 @@ constexpr auto decode_trigraph_letter(char letter)
 ///
 /// \return The character pointed by `ptr`, or a character after escaped
 ///         new-line, or a decoded trigraph, all along with the character's size.
-auto peek_char_and_size_nontrivial(const char *ptr, int64_t size,
-                                   Token *tok = nullptr)
+static auto peek_char_and_size_nontrivial(const char *ptr, int64_t size,
+                                          Token *tok = nullptr)
     -> std::pair<char, int64_t>
 {
     if (*ptr == '\\')
@@ -162,7 +161,7 @@ auto peek_char_and_size_nontrivial(const char *ptr, int64_t size,
 /// \param tok Token being formed.
 ///
 /// \return The character pointed by `ptr` before advancing.
-auto peek_char_advance(const char *&ptr, Token &tok) -> char
+static auto peek_char_advance(const char *&ptr, Token &tok) -> char
 {
     if (is_trivial_character(*ptr))
         return *ptr++;
@@ -181,7 +180,7 @@ auto peek_char_advance(const char *&ptr, Token &tok) -> char
 ///
 /// \return The character pointed by `ptr`, and the size to get to the next
 ///         consumable character.
-auto peek_char_and_size(const char *ptr) -> std::pair<char, int64_t>
+static auto peek_char_and_size(const char *ptr) -> std::pair<char, int64_t>
 {
     if (is_trivial_character(*ptr))
         return {*ptr, 1};
@@ -200,7 +199,8 @@ auto peek_char_and_size(const char *ptr) -> std::pair<char, int64_t>
 /// \param tok Token being formed.
 ///
 /// \return A buffer pointer past the peeked (non-)trivial character.
-auto consume_char(const char *ptr, int64_t size, Token &tok) -> const char *
+static auto consume_char(const char *ptr, int64_t size, Token &tok) -> const
+    char *
 {
     // Consumes a simple character.
     if (size == 1)
@@ -209,8 +209,6 @@ auto consume_char(const char *ptr, int64_t size, Token &tok) -> const char *
     size = peek_char_and_size_nontrivial(ptr, 0, &tok).second;
     return ptr + size;
 }
-
-} // namespace
 
 // universal-character-name: [C11 6.4.3/1]
 //     '\u' hex-quad
@@ -447,12 +445,12 @@ auto Scanner::lex_identifier(const char *cur_ptr, Token &result) -> bool
             TokenKind::kw__Static_assert, TokenKind::kw__Thread_local,
         };
 
-        // FIXME: This is rather slow.
-        for (const TokenKind cat : keyword_kinds)
+        // FIXME: This is far from ideal. Maybe use some trie?
+        for (const TokenKind kind : keyword_kinds)
         {
-            if (spelling == to_string(cat))
+            if (spelling == to_string(kind))
             {
-                result.category = cat;
+                result.kind = kind;
                 break;
             }
         }
@@ -625,19 +623,19 @@ auto Scanner::skip_block_comment(const char *cur_ptr) -> const char *
 //
 /// \param cur_ptr Buffer pointer that points past the ' character.
 /// \param result Token being formed.
-/// \param char_category Token category of this character constant. This is
-///                      given by the character constant's prefix (or the lack
-///                      thereof).
+/// \param char_token_kind Token category of this character constant. This is
+///                        given by the character constant's prefix (or the lack
+///                        thereof).
 ///
 /// \return true if character constant is successfully lexed.
 auto Scanner::lex_character_constant(const char *cur_ptr, Token &result,
-                                     const TokenKind char_category) -> bool
+                                     const TokenKind char_token_kind) -> bool
 {
-    cci_expects(char_category == TokenKind::char_constant ||
-                char_category == TokenKind::utf8_char_constant ||
-                char_category == TokenKind::utf16_char_constant ||
-                char_category == TokenKind::utf32_char_constant ||
-                char_category == TokenKind::wide_char_constant);
+    cci_expects(char_token_kind == TokenKind::char_constant ||
+                char_token_kind == TokenKind::utf8_char_constant ||
+                char_token_kind == TokenKind::utf16_char_constant ||
+                char_token_kind == TokenKind::utf32_char_constant ||
+                char_token_kind == TokenKind::wide_char_constant);
 
     char c = peek_char_advance(cur_ptr, result);
 
@@ -665,7 +663,7 @@ auto Scanner::lex_character_constant(const char *cur_ptr, Token &result,
         c = peek_char_advance(cur_ptr, result);
     }
 
-    form_token(result, cur_ptr, char_category);
+    form_token(result, cur_ptr, char_token_kind);
     result.set_flags(Token::IsLiteral);
     return true;
 }
@@ -1190,12 +1188,11 @@ auto Scanner::next_token() -> Token
 {
     if (Token result; lex_token(buffer_ptr, result))
         return result;
-    return Token(TokenKind::eof, srcmap::ByteSpan{});
+    return Token(TokenKind::eof, ByteSpan{});
 }
 
-auto Scanner::character_location(srcmap::ByteLoc tok_loc,
-                                 const char *spelling_begin,
-                                 const char *char_pos) const -> srcmap::ByteLoc
+auto Scanner::character_location(ByteLoc tok_loc, const char *spelling_begin,
+                                 const char *char_pos) const -> ByteLoc
 {
     const auto [file, offset] = this->source_map.lookup_byte_offset(tok_loc);
     const char *cur_ptr = this->buffer_begin + static_cast<size_t>(offset);
@@ -1210,9 +1207,9 @@ auto Scanner::character_location(srcmap::ByteLoc tok_loc,
 }
 
 auto Scanner::get_spelling_to_buffer(const Token &tok, char *spelling_buf,
-                                     const srcmap::SourceMap &map) -> size_t
+                                     const SourceMap &map) -> size_t
 {
-    std::string_view spelling = map.span_to_snippet(tok.source_range);
+    std::string_view spelling = map.span_to_snippet(tok.source_span);
     const auto spell_start = spelling.begin();
     const auto spell_end = spelling.end();
 
@@ -1353,4 +1350,4 @@ auto to_string(TokenKind k) -> std::string_view
     cci_unreachable();
 }
 
-} // namespace cci
+} // namespace cci::syntax

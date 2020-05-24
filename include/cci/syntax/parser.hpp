@@ -8,7 +8,7 @@
 #include "cci/syntax/source_map.hpp"
 #include <optional>
 
-namespace cci {
+namespace cci::syntax {
 
 struct Parser
 {
@@ -27,7 +27,7 @@ public:
 private:
     auto peek_tok(size_t lookahead = 0) -> Token;
     auto consume_tok() -> Token;
-    auto expect_and_consume_tok(TokenKind category) -> std::optional<Token>;
+    auto expect_and_consume_tok(TokenKind token_kind) -> std::optional<Token>;
 
     auto parse_primary_expression() -> std::optional<arena_ptr<Expr>>;
     auto parse_string_literal_expression()
@@ -39,4 +39,4 @@ private:
     small_vector<Token, 8> peeked_toks;
 };
 
-} // namespace cci
+} // namespace cci::syntax

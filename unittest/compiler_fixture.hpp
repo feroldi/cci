@@ -15,7 +15,7 @@ namespace cci::test {
 struct CompilerFixture : ::testing::Test
 {
 protected:
-    srcmap::SourceMap source_map;
+    syntax::SourceMap source_map;
     diag::Handler diag_handler;
     std::queue<diag::Diagnostic> diags;
     pmr::monotonic_buffer_resource arena;
@@ -33,33 +33,33 @@ protected:
     }
 
     auto create_filemap(std::string name, std::string source)
-        -> const cci::srcmap::FileMap &
+        -> const syntax::FileMap &
     {
         return source_map.create_owned_filemap(std::move(name),
                                                std::move(source));
     }
 
-    auto get_source_text(const cci::Token &tok) const -> std::string_view
+    auto get_source_text(const syntax::Token &tok) const -> std::string_view
     {
-        return source_map.span_to_snippet(tok.source_range);
+        return source_map.span_to_snippet(tok.source_span);
     }
 
-    auto get_lexeme_view(const Token &tok) -> std::string_view
+    auto get_lexeme_view(const syntax::Token &tok) -> std::string_view
     {
         char *lexeme_buffer = new (this->arena.allocate(
             tok.size(), alignof(char))) char[tok.size() + 1];
-        const size_t lexeme_len = Scanner::get_spelling_to_buffer(
+        const size_t lexeme_len = syntax::Scanner::get_spelling_to_buffer(
             tok, lexeme_buffer, this->source_map);
         lexeme_buffer[lexeme_len] = '\0';
         return {lexeme_buffer, lexeme_len};
     }
 
-    auto get_lexeme(const cci::Token &tok) const -> std::string
+    auto get_lexeme(const syntax::Token &tok) const -> std::string
     {
         std::string lexeme;
         lexeme.resize(tok.size());
-        const size_t len =
-            Scanner::get_spelling_to_buffer(tok, lexeme.data(), source_map);
+        const size_t len = syntax::Scanner::get_spelling_to_buffer(
+            tok, lexeme.data(), source_map);
         lexeme.resize(len);
         return lexeme;
     }
@@ -81,9 +81,10 @@ protected:
 } // namespace cci::test
 
 namespace cci {
-inline void PrintTo(const TokenKind category, std::ostream *os) noexcept
+inline void PrintTo(const syntax::TokenKind token_kind,
+                    std::ostream *os) noexcept
 {
-    *os << to_string(category);
+    *os << to_string(token_kind);
 }
 
 namespace diag {

@@ -8,7 +8,7 @@
 #include <string>
 #include <string_view>
 
-namespace cci::srcmap {
+namespace cci::syntax {
 
 FileMap::FileMap(std::string n, std::string s, ByteLoc sl)
     : name(std::move(n)), src(std::move(s)), start_loc(sl)
@@ -174,4 +174,4 @@ auto SourceMap::byteloc_to_filemap_charloc(ByteLoc loc) const
     cci_ensures(filemap.start_loc + ByteLoc(extra_bytes) <= loc);
     return {filemap, CharPos(loc - filemap.start_loc - ByteLoc(extra_bytes))};
 }
-} // namespace cci::srcmap
+} // namespace cci::syntax

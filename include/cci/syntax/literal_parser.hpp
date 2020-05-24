@@ -2,10 +2,11 @@
 
 #include "cci/langopts.hpp"
 #include "cci/syntax/scanner.hpp"
+#include "cci/syntax/token.hpp"
 #include "cci/util/span.hpp"
 #include <vector>
 
-namespace cci {
+namespace cci::syntax {
 
 struct NumericConstantParser
 {
@@ -25,7 +26,7 @@ public:
     int32_t radix = 0;
 
     NumericConstantParser(Scanner &, std::string_view tok_spelling,
-                          srcmap::ByteLoc tok_loc);
+                          ByteLoc tok_loc);
 
     // Evaluates and returns the numeric constant to an integer constant value,
     // as well as whether the evaluation overflowed.
@@ -38,12 +39,12 @@ public:
 struct CharConstantParser
 {
     uint32_t value;
-    TokenKind category;
+    TokenKind char_token_kind;
     bool is_multibyte;
     bool has_error = false;
 
     CharConstantParser(Scanner &, std::string_view tok_spelling,
-                       srcmap::ByteLoc tok_loc, TokenKind char_category,
+                       ByteLoc tok_loc, TokenKind char_token_kind,
                        const TargetInfo &);
 };
 
@@ -54,7 +55,7 @@ private:
     char *result_ptr;
 
 public:
-    TokenKind category;
+    TokenKind token_kind;
     size_t char_byte_width;
     bool has_error = false;
 
@@ -92,4 +93,4 @@ public:
     }
 };
 
-} // namespace cci
+} // namespace cci::syntax

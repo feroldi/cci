@@ -1,10 +1,24 @@
 #include "cci/syntax/diagnostics_new.hpp"
 #include "cci/syntax/source_map.hpp"
+#include "cci/syntax/token.hpp"
 #include "gtest/gtest.h"
 #include <string_view>
 
 using namespace std::string_view_literals;
-using namespace cci::syntax;
+
+using cci::diag2::Diagnostic;
+using cci::diag2::DiagnosticArg;
+using cci::diag2::DiagnosticBag;
+using cci::diag2::DiagnosticBuilder;
+using cci::diag2::DiagnosticDescriptor;
+using cci::diag2::DiagnosticParam;
+using cci::diag2::DiagnosticParamKind;
+using cci::diag2::IntArg;
+using cci::diag2::StrArg;
+using cci::diag2::TokenKindArg;
+using cci::syntax::ByteLoc;
+using cci::syntax::ByteSpan;
+using cci::syntax::TokenKind;
 
 namespace {
 
@@ -123,7 +137,7 @@ TEST_F(DiagnosticsTest, builderWithArgs)
     auto diag = DiagnosticBuilder(descriptor)
                     .with_arg("a", 42)
                     .with_arg("b", "foo")
-                    .with_arg("c", cci::TokenKind::comma)
+                    .with_arg("c", TokenKind::comma)
                     .build();
 
     EXPECT_EQ(&descriptor, diag.descriptor);
@@ -137,9 +151,8 @@ TEST_F(DiagnosticsTest, builderWithArgs)
     EXPECT_EQ(DiagnosticArg(StrArg("foo")), diag.args[1].second);
 
     EXPECT_EQ("c", diag.args[2].first);
-    EXPECT_EQ(DiagnosticArg(TokenKindArg(cci::TokenKind::comma)),
+    EXPECT_EQ(DiagnosticArg(TokenKindArg(TokenKind::comma)),
               diag.args[2].second);
 }
 
 } // namespace
-

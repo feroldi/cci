@@ -9,7 +9,7 @@
 #include <type_traits>
 #include <vector>
 
-namespace cci::srcmap {
+namespace cci::syntax {
 
 struct FileMap;
 
@@ -207,4 +207,4 @@ public:
     }
 };
 
-} // namespace cci::srcmap
+} // namespace cci::syntax

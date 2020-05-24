@@ -7,21 +7,21 @@
 #include <string>
 #include <string_view>
 
-namespace cci {
+namespace cci::syntax {
 
 /// The scanner transforms a character input stream into a token stream.
 struct Scanner
 {
 private:
-    srcmap::ByteLoc file_loc; ///< Start location of the file map being scanned.
+    ByteLoc file_loc; ///< Start location of the file map being scanned.
 
     const char *buffer_begin; ///< Iterator into the start of the buffer.
     const char *buffer_end; ///< Iterator into the end of the buffer.
     const char *buffer_ptr; ///< Current position into the buffer to be analyzed.
 
 public:
-    const srcmap::SourceMap &source_map; ///< Source map containing the file map
-                                         ///< being scanned.
+    const SourceMap &source_map; ///< Source map containing the file map
+                                 ///< being scanned.
     diag::Handler &diag_handler;
 
     /// Constructs a scanner for a `FileMap` given by `file_loc`, which will
@@ -35,8 +35,8 @@ public:
     /// \param buf_end Iterator to the end of the are to be scanned.
     /// \param diag The diagnostics handler that will be used to report any
     /// errors.
-    Scanner(srcmap::ByteLoc file_loc, const char *buf_begin,
-            const char *buf_end, diag::Handler &diag)
+    Scanner(ByteLoc file_loc, const char *buf_begin, const char *buf_end,
+            diag::Handler &diag)
         : file_loc(file_loc)
         , buffer_begin(buf_begin)
         , buffer_end(buf_end)
@@ -54,7 +54,7 @@ public:
     /// \param file The file map to be scanned.
     /// \param diag The diagnostics handler that will be used to report any
     /// errors.
-    Scanner(const srcmap::FileMap &file, diag::Handler &diag)
+    Scanner(const FileMap &file, diag::Handler &diag)
         : Scanner(file.start_loc, file.src_begin(), file.src_end(), diag)
     {}
 
@@ -67,17 +67,17 @@ public:
     /// of tokens, and can be used concurrently.
     ///
     /// When character stream's end of input is reached, this returns a token
-    /// whose category is `Category::eof`, and range is empty.
+    /// whose token-kind is `TokenKind::eof`, and range is empty.
     ///
     /// Lexical errors aren't fatal, and when they occur, this returns a token
-    /// whose category is `Category::invalid`. The next call to this function
+    /// whose token-kind is `TokenKind::invalid`. The next call to this function
     /// will continue after the lexically invalid area.
     ///
     /// \return The next token in the stream.
     auto next_token() -> Token;
 
     /// Translates a file map's source content iterator into an absolute ByteLoc.
-    auto location_for_ptr(const char *ptr) const -> srcmap::ByteLoc
+    auto location_for_ptr(const char *ptr) const -> ByteLoc
     {
         return this->source_map.ptr_to_byteloc(this->file_loc, ptr);
     }
@@ -104,8 +104,8 @@ public:
     /// \return An abosulte ByteLoc corresponding to the source representation
     /// of
     ///         that character position in the lexeme.
-    auto character_location(srcmap::ByteLoc tok_loc, const char *lexeme_begin,
-                            const char *char_pos) const -> srcmap::ByteLoc;
+    auto character_location(ByteLoc tok_loc, const char *lexeme_begin,
+                            const char *char_pos) const -> ByteLoc;
 
     /// Converts the source range of a token to its correspoding lexeme.
     //
@@ -121,7 +121,7 @@ public:
     ///
     /// \return The length of the converted lexeme.
     static auto get_spelling_to_buffer(const Token &tok, char *spelling_buf,
-                                       const srcmap::SourceMap &map) -> size_t;
+                                       const SourceMap &map) -> size_t;
 
     /// Converts the source range of a token to its correspoding lexeme.
     //
@@ -163,11 +163,11 @@ private:
 
     /// Fitly finalizes the scanning of a token, advancing the buffer pointer
     /// past it. This is used only by the internals of the lexical analysis.
-    void form_token(Token &tok, const char *tok_end, TokenKind category)
+    void form_token(Token &tok, const char *tok_end, TokenKind kind)
     {
-        tok.category = category;
-        tok.source_range = {location_for_ptr(buffer_ptr),
-                            location_for_ptr(tok_end)};
+        tok.kind = kind;
+        tok.source_span = {location_for_ptr(buffer_ptr),
+                           location_for_ptr(tok_end)};
         buffer_ptr = tok_end;
     }
 
@@ -191,4 +191,4 @@ inline constexpr auto hexdigit_value(char C) -> uint32_t
     return -1U;
 }
 
-} // namespace cci
+} // namespace cci::syntax

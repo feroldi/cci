@@ -3,7 +3,7 @@
 #include "cci/syntax/source_map.hpp"
 #include <string_view>
 
-namespace cci {
+namespace cci::syntax {
 
 // A token kind represents the category of a token, e.g. identifier,
 // keyword etc.
@@ -171,28 +171,29 @@ constexpr auto is_char_constant(TokenKind k) -> bool
 struct Token
 {
     // Token's syntactic category, e.g. kw_return, identifier etc.
-    TokenKind category = TokenKind::unknown;
+    TokenKind kind = TokenKind::unknown;
     // Token's start and end locations on the source file (lexeme).
-    srcmap::ByteSpan source_range;
+    ByteSpan source_span;
 
     enum TokenFlags
     {
         None = 0,
-        HasUCN = 1 << 0, ///< Contains universal character names.
-        IsDirty = 1 << 1, ///< Contains escaped new lines or trigraphs.
-        IsLiteral = 1 << 2, ///< Is a string/char literal, or numeric constant.
+        /// Contains universal character names.
+        HasUCN = 1 << 0,
+        /// Contains escaped new lines or trigraphs.
+        IsDirty = 1 << 1,
+        /// Is a string/char literal, or numeric constant.
+        IsLiteral = 1 << 2,
     };
 
     Token() = default;
-    Token(TokenKind c, srcmap::ByteSpan r) noexcept
-        : category(c), source_range(r)
-    {}
+    Token(TokenKind c, ByteSpan r) noexcept : kind(c), source_span(r) {}
 
     // Checks whether this token is of category `k`.
-    bool is(TokenKind k) const { return category == k; }
+    bool is(TokenKind k) const { return kind == k; }
 
     // Checks whether this token is not of category `k`.
-    bool is_not(TokenKind k) const { return category != k; }
+    bool is_not(TokenKind k) const { return kind != k; }
 
     // Checks wether this token is of any category in `ks`.
     template <typename... Kinds>
@@ -203,12 +204,12 @@ struct Token
     }
 
     // Returns the source location at which this token starts.
-    auto location() const -> srcmap::ByteLoc { return source_range.start; }
+    auto location() const -> ByteLoc { return source_span.start; }
 
     // Returns the size of the token spelling in source.
     auto size() const
     {
-        return static_cast<size_t>(source_range.end - source_range.start);
+        return static_cast<size_t>(source_span.end - source_span.start);
     }
 
     void set_flags(TokenFlags fs) { flags |= fs; }
@@ -223,4 +224,4 @@ private:
     uint8_t flags = TokenFlags::None;
 };
 
-} // namespace cci
+} // namespace cci::syntax

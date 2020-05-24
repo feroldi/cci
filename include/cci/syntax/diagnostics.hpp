@@ -45,27 +45,27 @@ enum class Diag
 /// Information about a diagnostic.
 struct Diagnostic
 {
-    using Arg = std::variant<TokenKind, char>;
+    using Arg = std::variant<syntax::TokenKind, char>;
 
     /// Location from where the diagnostic was reported.
-    srcmap::SourceLoc loc;
+    syntax::SourceLoc loc;
 
     /// The diagnostic message.
     Diag msg;
 
     /// Location ranges that are related to this diagnostic.
-    std::vector<srcmap::ByteSpan> ranges;
+    std::vector<syntax::ByteSpan> ranges;
 
     /// Arguments for the format message.
     std::vector<Arg> args;
 
-    Diagnostic(srcmap::SourceLoc loc, Diag msg) : loc(loc), msg(msg) {}
+    Diagnostic(syntax::SourceLoc loc, Diag msg) : loc(loc), msg(msg) {}
 };
 
 /// Helper class to construct a `Diagnostic`.
 struct DiagnosticBuilder
 {
-    DiagnosticBuilder(srcmap::SourceLoc loc, Diag msg, Handler &handler)
+    DiagnosticBuilder(syntax::SourceLoc loc, Diag msg, Handler &handler)
         : handler(&handler), diag(std::make_unique<Diagnostic>(loc, msg))
     {}
 
@@ -73,10 +73,10 @@ struct DiagnosticBuilder
     DiagnosticBuilder &operator=(DiagnosticBuilder &&) = default;
 
     /// Adds a source range to give more context to the diagnostic.
-    auto ranges(std::initializer_list<srcmap::ByteSpan> ranges)
+    auto ranges(std::initializer_list<syntax::ByteSpan> ranges)
         -> DiagnosticBuilder &
     {
-        for (const srcmap::ByteSpan r : ranges)
+        for (const syntax::ByteSpan r : ranges)
             this->diag->ranges.push_back(r);
         return *this;
     }
@@ -108,14 +108,14 @@ private:
 /// completely ignore diagnostics.
 struct Handler
 {
-    const srcmap::SourceMap &source_map;
+    const syntax::SourceMap &source_map;
 
     /// The emitter type.
     using Emitter = std::function<void(const Diagnostic &)>;
 
     /// Constructs a handler with a given `Emitter` and the `SourceMap`
     /// associated with it.
-    Handler(Emitter emitter, const srcmap::SourceMap &source_map)
+    Handler(Emitter emitter, const syntax::SourceMap &source_map)
         : source_map(source_map), emitter(std::move(emitter))
     {}
 
@@ -123,7 +123,7 @@ struct Handler
     Handler &operator=(Handler &&other) = delete;
 
     /// Helper function to facilitate the construction of a `DiagnosticBuilder`.
-    auto report(srcmap::ByteLoc loc, Diag msg) -> DiagnosticBuilder
+    auto report(syntax::ByteLoc loc, Diag msg) -> DiagnosticBuilder
     {
         DiagnosticBuilder builder(source_map.lookup_source_location(loc), msg,
                                   *this);

@@ -9,10 +9,10 @@
 #include <string>
 #include <string_view>
 
-using cci::Scanner;
-using cci::Token;
-using cci::TokenKind;
 using cci::diag::Diag;
+using cci::syntax::Scanner;
+using cci::syntax::Token;
+using cci::syntax::TokenKind;
 
 namespace {
 
@@ -50,8 +50,7 @@ protected:
         EXPECT_EQ(expected_toks.size(), toks.size());
         for (ptrdiff_t i = 0; i != expected_toks.size(); ++i)
         {
-            EXPECT_EQ(expected_toks[i].first, toks[i].category)
-                << "index: " << i;
+            EXPECT_EQ(expected_toks[i].first, toks[i].kind) << "index: " << i;
             EXPECT_EQ(expected_toks[i].second, this->get_lexeme(toks[i]))
                 << "index: " << i;
         }
@@ -130,8 +129,8 @@ TEST_F(ScannerTest, eofToken)
 {
     auto scanner = create_lex("foo\n");
     scanner.next_token();
-    EXPECT_EQ(TokenKind::eof, scanner.next_token().category);
-    EXPECT_EQ(TokenKind::eof, scanner.next_token().category);
+    EXPECT_EQ(TokenKind::eof, scanner.next_token().kind);
+    EXPECT_EQ(TokenKind::eof, scanner.next_token().kind);
 }
 
 TEST_F(ScannerTest, maximallyMunchPunctuation)

@@ -9,7 +9,7 @@
 #include "cci/util/memory_resource.hpp"
 #include <optional>
 
-namespace cci {
+namespace cci::syntax {
 
 // Semantic analyses.
 struct Sema
@@ -30,11 +30,10 @@ public:
         -> std::optional<arena_ptr<CharacterConstant>>;
     auto act_on_string_literal(span<const Token> string_toks)
         -> std::optional<arena_ptr<StringLiteral>>;
-    auto act_on_paren_expr(arena_ptr<Expr> expr, srcmap::ByteLoc left,
-                           srcmap::ByteLoc right)
+    auto act_on_paren_expr(arena_ptr<Expr> expr, ByteLoc left, ByteLoc right)
         -> std::optional<arena_ptr<ParenExpr>>;
     auto act_on_array_subscript(arena_ptr<Expr> base, arena_ptr<Expr> idx,
-                                srcmap::ByteLoc left, srcmap::ByteLoc right)
+                                ByteLoc left, ByteLoc right)
         -> std::optional<arena_ptr<ArraySubscriptExpr>>;
     auto function_array_lvalue_conversion(arena_ptr<Expr> expr)
         -> std::optional<arena_ptr<Expr>>;
@@ -44,4 +43,4 @@ public:
         -> std::optional<arena_ptr<Expr>>;
 };
 
-} // namespace cci
+} // namespace cci::syntax

@@ -12,11 +12,10 @@
 #include <utility>
 #include <vector>
 
-using namespace cci;
+namespace cci::syntax {
 
-static void report(Scanner &scanner, const char *char_ptr,
-                   srcmap::ByteLoc tok_loc, const char *tok_begin,
-                   diag::Diag msg)
+static void report(Scanner &scanner, const char *char_ptr, ByteLoc tok_loc,
+                   const char *tok_begin, diag::Diag msg)
 {
     auto &diag = scanner.diag_handler;
     diag.report(scanner.character_location(tok_loc, tok_begin, char_ptr), msg);
@@ -24,11 +23,11 @@ static void report(Scanner &scanner, const char *char_ptr,
 
 // Returns the respective character type width for a given string literal or
 // character constant token.
-static auto map_char_width(TokenKind category, const TargetInfo &target)
+static auto map_char_width(TokenKind token_kind, const TargetInfo &target)
     -> size_t
 {
-    cci_expects(is_char_constant(category) || is_string_literal(category));
-    switch (category)
+    cci_expects(is_char_constant(token_kind) || is_string_literal(token_kind));
+    switch (token_kind)
     {
         case TokenKind::char_constant:
         case TokenKind::string_literal:
@@ -46,7 +45,7 @@ static auto map_char_width(TokenKind category, const TargetInfo &target)
 
 NumericConstantParser::NumericConstantParser(Scanner &scanner,
                                              std::string_view tok_lexeme,
-                                             srcmap::ByteLoc tok_loc)
+                                             ByteLoc tok_loc)
 {
     cci_expects(tok_lexeme.end()[0] == '\0');
     const char *const tok_begin = tok_lexeme.begin();
@@ -286,7 +285,7 @@ auto NumericConstantParser::to_integer() const -> std::pair<uint64_t, bool>
 // This function reads similar to the one used in the main scanning phase. So
 // here's some homework:
 // TODO: Merge this function with scanner's, and put it in a dedicated API.
-static auto parse_ucn_escape(Scanner &scanner, srcmap::ByteLoc tok_loc,
+static auto parse_ucn_escape(Scanner &scanner, ByteLoc tok_loc,
                              const char *tok_begin, const char *&tok_ptr,
                              const char *tok_end, uint32_t *code_point) -> bool
 {
@@ -386,7 +385,7 @@ static void encode_ucn_to_buffer(uint32_t ucn_val, char **result_buf,
 }
 
 // Returns the value representation of an escape sequence.
-static auto parse_escape_sequence(Scanner &scanner, srcmap::ByteLoc tok_loc,
+static auto parse_escape_sequence(Scanner &scanner, ByteLoc tok_loc,
                                   const char *tok_begin, const char *&tok_ptr,
                                   const char *tok_end, size_t char_width,
                                   bool *has_error) -> uint32_t
@@ -513,20 +512,21 @@ static auto parse_escape_sequence(Scanner &scanner, srcmap::ByteLoc tok_loc,
 
 CharConstantParser::CharConstantParser(Scanner &scanner,
                                        std::string_view tok_lexeme,
-                                       srcmap::ByteLoc tok_loc,
-                                       TokenKind char_category,
+                                       ByteLoc tok_loc,
+                                       TokenKind char_token_kind,
                                        const TargetInfo &target)
-    : value(0), category(char_category)
+    : value(0), char_token_kind(char_token_kind)
 {
-    cci_expects(is_char_constant(char_category));
+    cci_expects(is_char_constant(char_token_kind));
     cci_expects(tok_lexeme.end()[0] == '\0');
+
     const char *const tok_begin = tok_lexeme.begin();
     const char *tok_end = tok_lexeme.end();
     const char *tok_ptr = tok_begin;
     auto &diag = scanner.diag_handler;
 
     // Skips either L, u or U.
-    if (char_category != TokenKind::char_constant)
+    if (char_token_kind != TokenKind::char_constant)
     {
         cci_expects(*tok_ptr == 'L' || *tok_ptr == 'u' || *tok_ptr == 'U');
         ++tok_ptr;
@@ -538,22 +538,22 @@ CharConstantParser::CharConstantParser(Scanner &scanner,
     --tok_end; // Trims ending quote.
     cci_expects(*tok_end == '\'');
 
-    size_t char_byte_width = map_char_width(category, target);
+    size_t char_byte_width = map_char_width(char_token_kind, target);
     // Assumes that the char width for this target is a multiple of 8.
     cci_expects((target.char_width & 0b0111) == 0);
     char_byte_width /= 8;
 
     // Sometimes Unicode characters can't be represented in a single code unit,
     // so this constant represents the maximum code point a character constant
-    // may hold, depending on its category. Code points bigger than
-    // `largest_value_for_category` results in an error.
-    const uint32_t largest_value_for_category = [&] {
-        if (char_category == TokenKind::char_constant ||
-            char_category == TokenKind::utf8_char_constant)
+    // may hold, depending on its token-kind. Code points bigger than
+    // `largest_value_for_token_kind` results in an error.
+    const uint32_t largest_value_for_token_kind = [&] {
+        if (char_token_kind == TokenKind::char_constant ||
+            char_token_kind == TokenKind::utf8_char_constant)
             return 0x7F;
-        if (char_category == TokenKind::utf16_char_constant)
+        if (char_token_kind == TokenKind::utf16_char_constant)
             return 0xFFFF;
-        cci_expects(char_category == TokenKind::utf32_char_constant);
+        cci_expects(char_token_kind == TokenKind::utf32_char_constant);
         return 0x10FFFFFF;
     }();
 
@@ -580,7 +580,7 @@ CharConstantParser::CharConstantParser(Scanner &scanner,
             {
                 for (; save_buf_begin != buf_begin; ++save_buf_begin)
                 {
-                    if (*save_buf_begin > largest_value_for_category)
+                    if (*save_buf_begin > largest_value_for_token_kind)
                     {
                         diag.report(tok_loc,
                                     diag::Diag::unicode_too_large_for_unit);
@@ -605,7 +605,7 @@ CharConstantParser::CharConstantParser(Scanner &scanner,
             if (!parse_ucn_escape(scanner, tok_loc, tok_begin, tok_ptr, tok_end,
                                   buf_begin))
                 has_error = true;
-            else if (*buf_begin > largest_value_for_category)
+            else if (*buf_begin > largest_value_for_token_kind)
             {
                 diag.report(tok_loc, diag::Diag::unicode_too_large_for_unit);
                 has_error = true;
@@ -636,7 +636,7 @@ CharConstantParser::CharConstantParser(Scanner &scanner,
     is_multibyte = num_of_chars > 1;
     uint32_t result_value = 0;
 
-    if (category == TokenKind::char_constant && is_multibyte)
+    if (char_token_kind == TokenKind::char_constant && is_multibyte)
     {
         cci_expects(char_byte_width == 1);
         bool overflowed = false;
@@ -668,7 +668,7 @@ CharConstantParser::CharConstantParser(Scanner &scanner,
     // type char has the same range of values as unsigned char, the character
     // constant
     // '\xFF' has the value +255.
-    if (category == TokenKind::char_constant && num_of_chars == 1 &&
+    if (char_token_kind == TokenKind::char_constant && num_of_chars == 1 &&
         target.is_char_signed)
         result_value = static_cast<signed char>(result_value);
 
@@ -687,7 +687,7 @@ StringLiteralParser::StringLiteralParser(Scanner &scanner,
     // size.
 
     cci_expects(!string_toks.empty());
-    cci_expects(is_string_literal(string_toks[0].category));
+    cci_expects(is_string_literal(string_toks[0].kind));
     cci_expects(string_toks[0].size() >= 2);
     size_t size_bound = string_toks[0].size() - 2; // removes ""
 
@@ -695,18 +695,19 @@ StringLiteralParser::StringLiteralParser(Scanner &scanner,
     // memory for a temporary buffer to hold the processed strings.
     size_t max_token_size = size_bound;
 
-    cci_expects(is_string_literal(string_toks[0].category));
-    category = string_toks[0].category;
+    cci_expects(is_string_literal(string_toks[0].kind));
+    token_kind = string_toks[0].kind;
 
     // Performs [C11 5.1.1.2p6]: Adjacent string literal tokens are concatenated.
     for (ptrdiff_t i = 1; i != string_toks.size(); ++i)
     {
-        cci_expects(is_string_literal(string_toks[i].category));
-        if (string_toks[i].is_not(category) &&
+        cci_expects(is_string_literal(string_toks[i].kind));
+
+        if (string_toks[i].is_not(token_kind) &&
             string_toks[i].is_not(TokenKind::string_literal))
         {
-            if (category == TokenKind::string_literal)
-                category = string_toks[i].category;
+            if (token_kind == TokenKind::string_literal)
+                token_kind = string_toks[i].kind;
             else
             {
                 // Concatenation of different categories of strings could be
@@ -734,7 +735,7 @@ StringLiteralParser::StringLiteralParser(Scanner &scanner,
     // Allows an space for the null terminator.
     ++size_bound;
 
-    char_byte_width = map_char_width(category, target);
+    char_byte_width = map_char_width(token_kind, target);
     // Assumes that the char width for this target is a multiple of 8.
     cci_expects((target.char_width & 0b0111) == 0);
     char_byte_width /= 8;
@@ -888,3 +889,5 @@ StringLiteralParser::StringLiteralParser(Scanner &scanner,
                 this->result_ptr <=
                     this->result_buf.data() + this->result_buf.size());
 }
+
+} // namespace cci::syntax

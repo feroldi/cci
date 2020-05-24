@@ -11,7 +11,12 @@
 #include <memory>
 #include <string_view>
 
-using namespace cci;
+static_assert(2 == sizeof(char16_t),
+              "UTF-16 string literals assume that char16_t is 2 bytes long");
+static_assert(4 == sizeof(char32_t),
+              "UTF-32 string literals assume that char32_t is 4 bytes long");
+
+namespace cci::syntax {
 
 auto Sema::act_on_numeric_constant(const Token &tok)
     -> std::optional<arena_ptr<Expr>>
@@ -21,9 +26,9 @@ auto Sema::act_on_numeric_constant(const Token &tok)
     if (tok.size() == 1)
     {
         const char digit =
-            scanner.source_map.span_to_snippet(tok.source_range)[0];
+            scanner.source_map.span_to_snippet(tok.source_span)[0];
         return IntegerLiteral::create(context, digit - '0', context.int_ty,
-                                      tok.source_range);
+                                      tok.source_span);
     }
 
     small_string<64> spell_buffer;
@@ -114,7 +119,7 @@ auto Sema::act_on_numeric_constant(const Token &tok)
         val &= -1U >> (64 - width);
 
         return IntegerLiteral::create(context, val, integer_ty,
-                                      tok.source_range);
+                                      tok.source_span);
     }
     else if (literal.is_floating_literal())
     {
@@ -134,7 +139,7 @@ auto Sema::act_on_char_constant(const Token &tok)
     small_string<8> spell_buffer;
     std::string_view spelling = scanner.get_spelling(tok, spell_buffer);
     spell_buffer.push_back('\0');
-    CharConstantParser literal(scanner, spelling, tok.location(), tok.category,
+    CharConstantParser literal(scanner, spelling, tok.location(), tok.kind,
                                context.target_info);
 
     if (literal.has_error)
@@ -144,7 +149,7 @@ auto Sema::act_on_char_constant(const Token &tok)
     QualType char_type = context.int_ty;
     auto char_kind = CharacterConstantKind::Ascii;
 
-    switch (literal.category)
+    switch (literal.char_token_kind)
     {
         case TokenKind::utf16_char_constant:
             char_type = context.char16_t_ty;
@@ -158,11 +163,12 @@ auto Sema::act_on_char_constant(const Token &tok)
             char_type = context.wchar_ty;
             char_kind = CharacterConstantKind::Wide;
             break;
-        default: cci_expects(TokenKind::char_constant == literal.category);
+        default:
+            cci_expects(TokenKind::char_constant == literal.char_token_kind);
     }
 
     return CharacterConstant::create(context, literal.value, char_kind,
-                                     char_type, tok.source_range);
+                                     char_type, tok.source_span);
 }
 
 auto Sema::act_on_string_literal(span<const Token> string_toks)
@@ -179,7 +185,7 @@ auto Sema::act_on_string_literal(span<const Token> string_toks)
     QualType elem_type = context.char_ty;
     auto str_kind = StringLiteralKind::Ascii;
 
-    switch (literal.category)
+    switch (literal.token_kind)
     {
         case TokenKind::utf8_string_literal:
             str_kind = StringLiteralKind::UTF8;
@@ -196,7 +202,7 @@ auto Sema::act_on_string_literal(span<const Token> string_toks)
             elem_type = context.wchar_ty;
             str_kind = StringLiteralKind::Wide;
             break;
-        default: cci_expects(TokenKind::string_literal == literal.category);
+        default: cci_expects(TokenKind::string_literal == literal.token_kind);
     }
 
     // Length of string literal including null character.
@@ -223,31 +229,28 @@ auto Sema::act_on_string_literal(span<const Token> string_toks)
     std::memcpy(str_data, literal.string().data(), bytes_count);
 
     const size_t num_concatenated = string_toks.size();
-    arena_ptr<srcmap::ByteLoc> tok_locs =
-        new (context) srcmap::ByteLoc[num_concatenated];
+    arena_ptr<ByteLoc> tok_locs = new (context) ByteLoc[num_concatenated];
 
     auto locs_ptr = tok_locs;
     for (const Token &tok : string_toks)
         *locs_ptr++ = tok.location();
     cci_ensures(locs_ptr == tok_locs + num_concatenated);
 
-    const srcmap::ByteLoc rquote_loc = string_toks.end()[-1].location();
+    const ByteLoc rquote_loc = string_toks.end()[-1].location();
 
     return StringLiteral::create(context, str_ty, span(str_data, bytes_count),
                                  str_kind, literal.char_byte_width,
                                  span(tok_locs, num_concatenated), rquote_loc);
 }
 
-auto Sema::act_on_paren_expr(arena_ptr<Expr> expr, srcmap::ByteLoc left,
-                             srcmap::ByteLoc right)
+auto Sema::act_on_paren_expr(arena_ptr<Expr> expr, ByteLoc left, ByteLoc right)
     -> std::optional<arena_ptr<ParenExpr>>
 {
     return ParenExpr::create(context, expr, left, right);
 }
 
 auto Sema::act_on_array_subscript(arena_ptr<Expr> base, arena_ptr<Expr> idx,
-                                  srcmap::ByteLoc left_loc,
-                                  srcmap::ByteLoc right_loc)
+                                  ByteLoc left_loc, ByteLoc right_loc)
     -> std::optional<arena_ptr<ArraySubscriptExpr>>
 {
     const auto lhs_expr = function_array_lvalue_conversion(base);
@@ -284,7 +287,7 @@ auto Sema::act_on_array_subscript(arena_ptr<Expr> base, arena_ptr<Expr> idx,
         // complete object type", the other expression shall have integer type,
         // and the result has type "type".
         diag_handler.report(left_loc, diag::Diag::typecheck_subscript_value)
-            .ranges({(*lhs_expr)->source_range(), (*rhs_expr)->source_range()});
+            .ranges({(*lhs_expr)->source_span(), (*rhs_expr)->source_span()});
         return std::nullopt;
     }
 
@@ -294,7 +297,7 @@ auto Sema::act_on_array_subscript(arena_ptr<Expr> base, arena_ptr<Expr> idx,
         diag_handler
             .report(index_expr->begin_loc(),
                     diag::Diag::typecheck_subscript_not_integer)
-            .ranges({index_expr->source_range()});
+            .ranges({index_expr->source_span()});
     }
 
     return ArraySubscriptExpr::create(context, base_expr, index_expr,
@@ -357,7 +360,4 @@ auto Sema::lvalue_conversion(arena_ptr<Expr> expr)
     return res;
 }
 
-static_assert(2 == sizeof(char16_t),
-              "UTF-16 string literals assume that char16_t is 2 bytes long");
-static_assert(4 == sizeof(char32_t),
-              "UTF-32 string literals assume that char32_t is 4 bytes long");
+} // namespace cci::syntax

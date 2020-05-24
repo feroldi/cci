@@ -9,7 +9,7 @@
 #include <algorithm>
 #include <string_view>
 
-using namespace cci;
+namespace cci::syntax {
 
 auto Parser::peek_tok(size_t lookahead) -> Token
 {
@@ -33,13 +33,14 @@ auto Parser::consume_tok() -> Token
     return consumed;
 }
 
-auto Parser::expect_and_consume_tok(TokenKind category) -> std::optional<Token>
+auto Parser::expect_and_consume_tok(TokenKind token_kind)
+    -> std::optional<Token>
 {
-    if (peek_tok().is(category))
+    if (peek_tok().is(token_kind))
         return consume_tok();
 
     diag.report(peek_tok().location(), diag::Diag::expected_but_got)
-        .args(category, peek_tok().category);
+        .args(token_kind, peek_tok().kind);
     return std::nullopt;
 }
 
@@ -52,7 +53,7 @@ auto Parser::parse_primary_expression() -> std::optional<arena_ptr<Expr>>
 {
     std::optional<arena_ptr<Expr>> res;
 
-    switch (peek_tok().category)
+    switch (peek_tok().kind)
     {
         default: cci_unreachable();
         case TokenKind::numeric_constant:
@@ -96,10 +97,10 @@ auto Parser::parse_primary_expression() -> std::optional<arena_ptr<Expr>>
 auto Parser::parse_string_literal_expression()
     -> std::optional<arena_ptr<StringLiteral>>
 {
-    cci_expects(is_string_literal(peek_tok().category));
+    cci_expects(is_string_literal(peek_tok().kind));
 
     small_vector<Token, 4> string_toks{consume_tok()};
-    while (is_string_literal(peek_tok().category))
+    while (is_string_literal(peek_tok().kind))
         string_toks.push_back(consume_tok());
 
     return sema.act_on_string_literal(string_toks);
@@ -108,7 +109,7 @@ auto Parser::parse_string_literal_expression()
 auto Parser::parse_postfix_expression(arena_ptr<Expr> expr)
     -> std::optional<arena_ptr<Expr>>
 {
-    switch (peek_tok().category)
+    switch (peek_tok().kind)
     {
         case TokenKind::l_bracket: {
             const Token lbracket_tok = consume_tok();
@@ -129,3 +130,5 @@ auto Parser::parse_postfix_expression(arena_ptr<Expr> expr)
 
     return std::nullopt;
 }
+
+} // namespace cci::syntax

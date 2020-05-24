@@ -11,9 +11,7 @@
 #include <string>
 #include <variant>
 
-namespace cci::syntax {
-
-using namespace cci::srcmap;
+namespace cci::diag2 {
 
 enum class DiagnosticParamKind
 {
@@ -81,9 +79,9 @@ struct IntArg final : Arg
 
 struct TokenKindArg final : Arg
 {
-    TokenKind value;
+    syntax::TokenKind value;
 
-    TokenKindArg(TokenKind value)
+    TokenKindArg(syntax::TokenKind value)
         : Arg(DiagnosticParamKind::TokenKind), value(value)
     {}
 
@@ -118,16 +116,16 @@ struct Diagnostic
     const DiagnosticDescriptor *descriptor;
 
     /// Location from where the diagnostic was reported.
-    std::optional<ByteLoc> caret_location;
+    std::optional<syntax::ByteLoc> caret_location;
 
     /// Location spans that are related to this diagnostic.
-    std::vector<ByteSpan> spans;
+    std::vector<syntax::ByteSpan> spans;
 
     /// Arguments for the format message.
     std::vector<std::pair<std::string_view, DiagnosticArg>> args;
 
     Diagnostic(const DiagnosticDescriptor *descriptor,
-               std::optional<ByteLoc> caret_loc)
+               std::optional<syntax::ByteLoc> caret_loc)
         : descriptor(descriptor), caret_location(caret_loc)
     {}
 
@@ -157,8 +155,8 @@ public:
 class DiagnosticBuilder
 {
     const DiagnosticDescriptor *descriptor;
-    std::optional<ByteLoc> caret_loc;
-    std::vector<ByteSpan> spans;
+    std::optional<syntax::ByteLoc> caret_loc;
+    std::vector<syntax::ByteSpan> spans;
     std::vector<std::pair<std::string_view, DiagnosticArg>> args;
 
 public:
@@ -177,14 +175,14 @@ public:
         return diag;
     }
 
-    auto caret_at(ByteLoc caret_loc) -> DiagnosticBuilder &
+    auto caret_at(syntax::ByteLoc caret_loc) -> DiagnosticBuilder &
     {
         cci_expects(!this->caret_loc.has_value());
         this->caret_loc = caret_loc;
         return *this;
     }
 
-    auto with_span(ByteSpan span) -> DiagnosticBuilder &
+    auto with_span(syntax::ByteSpan span) -> DiagnosticBuilder &
     {
         this->spans.push_back(span);
         return *this;
@@ -206,7 +204,10 @@ public:
 private:
     auto make_arg(int value) -> IntArg { return value; }
     auto make_arg(std::string value) -> StrArg { return value; }
-    auto make_arg(TokenKind token_kind) -> TokenKindArg { return token_kind; }
+    auto make_arg(syntax::TokenKind token_kind) -> TokenKindArg
+    {
+        return token_kind;
+    }
 
     auto check_arg_kind_matches_param_kind(std::string_view param_name,
                                            DiagnosticArg &arg) const -> bool
@@ -225,4 +226,4 @@ private:
     }
 };
 
-} // namespace cci::syntax
+} // namespace cci::diag2

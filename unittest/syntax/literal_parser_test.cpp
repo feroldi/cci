@@ -11,6 +11,7 @@
 #include <string_view>
 
 using namespace cci::diag;
+using namespace cci::syntax;
 using namespace cci;
 
 namespace {
@@ -59,7 +60,7 @@ protected:
         EXPECT_EQ(1, lexed_toks.size());
         Token tok = lexed_toks.front();
         CharConstantParser parser(*this->scanner, get_lexeme_view(tok),
-                                  tok.location(), tok.category, target);
+                                  tok.location(), tok.kind, target);
         return parser;
     }
 
@@ -318,7 +319,7 @@ TEST_F(LiteralParserTest, charConstBasic)
     EXPECT_FALSE(parsed_char.has_error);
     EXPECT_FALSE(parsed_char.is_multibyte);
 
-    EXPECT_EQ(TokenKind::char_constant, parsed_char.category);
+    EXPECT_EQ(TokenKind::char_constant, parsed_char.char_token_kind);
     EXPECT_EQ(65, parsed_char.value);
 }
 
@@ -337,7 +338,7 @@ TEST_F(LiteralParserTest, charConstUtf16)
     EXPECT_FALSE(parsed_char.has_error);
     EXPECT_FALSE(parsed_char.is_multibyte);
 
-    EXPECT_EQ(TokenKind::utf16_char_constant, parsed_char.category);
+    EXPECT_EQ(TokenKind::utf16_char_constant, parsed_char.char_token_kind);
     EXPECT_EQ(168, parsed_char.value);
 }
 
@@ -356,7 +357,7 @@ TEST_F(LiteralParserTest, charConstMultibyte)
     EXPECT_FALSE(parsed_char.has_error);
     EXPECT_TRUE(parsed_char.is_multibyte);
 
-    EXPECT_EQ(TokenKind::char_constant, parsed_char.category);
+    EXPECT_EQ(TokenKind::char_constant, parsed_char.char_token_kind);
     EXPECT_EQ(1633837924u, parsed_char.value);
 }
 
@@ -377,7 +378,7 @@ TEST_F(LiteralParserTest, charConstOctalEscapeSequence)
     EXPECT_FALSE(parsed_char.has_error);
     EXPECT_FALSE(parsed_char.is_multibyte);
 
-    EXPECT_EQ(TokenKind::char_constant, parsed_char.category);
+    EXPECT_EQ(TokenKind::char_constant, parsed_char.char_token_kind);
     EXPECT_EQ(83, parsed_char.value);
 }
 
@@ -394,7 +395,7 @@ TEST_F(LiteralParserTest, strLitAsciiChars)
     auto parsed_str = parse_string_literal(R"("foo bar")");
 
     EXPECT_FALSE(parsed_str.has_error);
-    EXPECT_EQ(TokenKind::string_literal, parsed_str.category);
+    EXPECT_EQ(TokenKind::string_literal, parsed_str.token_kind);
 
     EXPECT_EQ(1, parsed_str.char_byte_width);
     EXPECT_EQ(7, parsed_str.byte_length());
@@ -408,7 +409,7 @@ TEST_F(LiteralParserTest, strLitUTF8)
     auto parsed_str = parse_string_literal(R"(u8"foo")");
 
     EXPECT_FALSE(parsed_str.has_error);
-    EXPECT_EQ(TokenKind::utf8_string_literal, parsed_str.category);
+    EXPECT_EQ(TokenKind::utf8_string_literal, parsed_str.token_kind);
 
     EXPECT_EQ(1, parsed_str.char_byte_width);
     EXPECT_EQ(3, parsed_str.byte_length());
@@ -422,7 +423,7 @@ TEST_F(LiteralParserTest, strLitUTF16)
     auto parsed_str = parse_string_literal(R"(u"foo")");
 
     EXPECT_FALSE(parsed_str.has_error);
-    EXPECT_EQ(TokenKind::utf16_string_literal, parsed_str.category);
+    EXPECT_EQ(TokenKind::utf16_string_literal, parsed_str.token_kind);
 
     EXPECT_EQ(2, parsed_str.char_byte_width);
     EXPECT_EQ(2 * 3, parsed_str.byte_length());
@@ -445,7 +446,7 @@ TEST_F(LiteralParserTest, strLitUTF32)
     auto parsed_str = parse_string_literal(R"(U"foo")");
 
     EXPECT_FALSE(parsed_str.has_error);
-    EXPECT_EQ(TokenKind::utf32_string_literal, parsed_str.category);
+    EXPECT_EQ(TokenKind::utf32_string_literal, parsed_str.token_kind);
 
     EXPECT_EQ(4, parsed_str.char_byte_width);
     EXPECT_EQ(4 * 3, parsed_str.byte_length());
@@ -468,7 +469,7 @@ TEST_F(LiteralParserTest, strLitContatenation)
     auto parsed_str = parse_string_literal(R"("foo" "bar")");
 
     EXPECT_FALSE(parsed_str.has_error);
-    EXPECT_EQ(TokenKind::string_literal, parsed_str.category);
+    EXPECT_EQ(TokenKind::string_literal, parsed_str.token_kind);
 
     EXPECT_EQ(1, parsed_str.char_byte_width);
     EXPECT_EQ(6, parsed_str.byte_length());
@@ -482,7 +483,7 @@ TEST_F(LiteralParserTest, strLitEmpty)
     auto parsed_str = parse_string_literal(R"("")");
 
     EXPECT_FALSE(parsed_str.has_error);
-    EXPECT_EQ(TokenKind::string_literal, parsed_str.category);
+    EXPECT_EQ(TokenKind::string_literal, parsed_str.token_kind);
 
     EXPECT_EQ(1, parsed_str.char_byte_width);
     EXPECT_EQ(0, parsed_str.byte_length());
@@ -496,7 +497,7 @@ TEST_F(LiteralParserTest, strLitConcatAsciiAndOtherKind)
     auto parsed_str = parse_string_literal(R"("good" u8" foo")");
 
     EXPECT_FALSE(parsed_str.has_error);
-    EXPECT_EQ(TokenKind::utf8_string_literal, parsed_str.category);
+    EXPECT_EQ(TokenKind::utf8_string_literal, parsed_str.token_kind);
 
     EXPECT_EQ(1, parsed_str.char_byte_width);
     EXPECT_EQ(8, parsed_str.byte_length());
@@ -519,7 +520,7 @@ TEST_F(LiteralParserTest, strLitUCNs)
     auto parsed_str = parse_string_literal(R"(U"\U00010437")");
 
     EXPECT_FALSE(parsed_str.has_error);
-    EXPECT_EQ(TokenKind::utf32_string_literal, parsed_str.category);
+    EXPECT_EQ(TokenKind::utf32_string_literal, parsed_str.token_kind);
 
     EXPECT_EQ(4, parsed_str.char_byte_width);
     EXPECT_EQ(4, parsed_str.byte_length());
@@ -536,7 +537,7 @@ TEST_F(LiteralParserTest, strLitWithUnicodeChars)
     auto parsed_str = parse_string_literal(R"(u8"𐐷")");
 
     EXPECT_FALSE(parsed_str.has_error);
-    EXPECT_EQ(TokenKind::utf8_string_literal, parsed_str.category);
+    EXPECT_EQ(TokenKind::utf8_string_literal, parsed_str.token_kind);
 
     EXPECT_EQ(1, parsed_str.char_byte_width);
     EXPECT_EQ(4, parsed_str.byte_length());
