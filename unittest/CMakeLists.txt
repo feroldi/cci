@@ -1,5 +1,6 @@
 find_package(GTest REQUIRED)
 include(GoogleTest)
+
 add_subdirectory(syntax)
 
 if (CCI_COVERAGE)
@@ -13,5 +14,5 @@ else()
     COMMAND ctest --output-on-failure
     WORKING_DIRECTORY ${PROJECT_BINARY_DIR}
     DEPENDS cci_syntax_test
-    COMMENT "Project generated with no coverage suport. Skipping...") 
+    COMMENT "Project generated without coverage support. Skipping...")
 endif()
