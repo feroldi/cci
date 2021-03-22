@@ -10,7 +10,8 @@
 #include <queue>
 #include <type_traits>
 
-namespace cci::test {
+namespace cci::test
+{
 
 struct CompilerFixture : ::testing::Test
 {
@@ -80,18 +81,20 @@ protected:
 };
 } // namespace cci::test
 
-namespace cci {
+namespace cci
+{
 inline void PrintTo(const syntax::TokenKind token_kind,
                     std::ostream *os) noexcept
 {
     *os << to_string(token_kind);
 }
 
-namespace diag {
-inline void PrintTo(const Diag msg, std::ostream *os) noexcept
+namespace diag
 {
-    *os << "Diag(" << static_cast<std::underlying_type_t<diag::Diag>>(msg)
-        << ")";
-}
+    inline void PrintTo(const Diag msg, std::ostream *os) noexcept
+    {
+        *os << "Diag(" << static_cast<std::underlying_type_t<diag::Diag>>(msg)
+            << ")";
+    }
 } // namespace diag
 } // namespace cci
