@@ -4,12 +4,13 @@
 #include "cci/ast/type.hpp"
 #include "cci/langopts.hpp"
 #include "cci/syntax/source_map.hpp"
-#include "cci/util/span.hpp"
 #include <cstddef>
 #include <cstdint>
+#include <span>
 #include <type_traits>
 
-namespace cci::ast {
+namespace cci::ast
+{
 
 // Expression categories.
 enum class ExprValueKind
@@ -138,14 +139,14 @@ enum class StringLiteralKind
 struct StringLiteral : Expr
 {
 private:
-    span<std::byte> str_data; ///< String content.
+    std::span<std::byte> str_data; ///< String content.
     StringLiteralKind sk;
     size_t char_byte_width; ///< Character's size in bytes.
-    span<syntax::ByteLoc> tok_locs; ///< Sequence of each string location
+    std::span<syntax::ByteLoc> tok_locs; ///< Sequence of each string location
 
-    StringLiteral(QualType ty, span<std::byte> str_data, StringLiteralKind sk,
-                  size_t cbw, span<syntax::ByteLoc> locs,
-                  syntax::ByteLoc rquote_loc)
+    StringLiteral(QualType ty, std::span<std::byte> str_data,
+                  StringLiteralKind sk, size_t cbw,
+                  std::span<syntax::ByteLoc> locs, syntax::ByteLoc rquote_loc)
         : Expr(ExprClass::StringLiteral, ExprValueKind::LValue, ty,
                syntax::ByteSpan(locs[0], rquote_loc + syntax::ByteLoc(1)))
         , str_data(str_data)
@@ -165,7 +166,7 @@ public:
         return {ptr, len};
     }
 
-    auto string_as_bytes() const -> span<const std::byte>
+    auto string_as_bytes() const -> std::span<const std::byte>
     {
         return as_bytes(str_data);
     }
@@ -174,8 +175,8 @@ public:
     auto length() const -> size_t { return byte_length() / char_byte_width; }
 
     static auto create(const ASTContext &ctx, QualType ty,
-                       span<std::byte> str_data, StringLiteralKind sk,
-                       size_t cbw, span<syntax::ByteLoc> locs,
+                       std::span<std::byte> str_data, StringLiteralKind sk,
+                       size_t cbw, std::span<syntax::ByteLoc> locs,
                        syntax::ByteLoc rquote_loc) -> arena_ptr<StringLiteral>
     {
         cci_expects(!locs.empty());

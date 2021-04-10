@@ -4,8 +4,8 @@
 #include "cci/syntax/scanner.hpp"
 #include "cci/syntax/source_map.hpp"
 #include "cci/syntax/token.hpp"
-#include "cci/util/memory_resource.hpp"
 #include "gtest/gtest.h"
+#include <memory_resource>
 #include <ostream>
 #include <queue>
 #include <type_traits>
@@ -19,7 +19,7 @@ protected:
     syntax::SourceMap source_map;
     diag::Handler diag_handler;
     std::queue<diag::Diagnostic> diags;
-    pmr::monotonic_buffer_resource arena;
+    std::pmr::monotonic_buffer_resource arena;
 
     CompilerFixture()
         : source_map()

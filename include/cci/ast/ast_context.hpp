@@ -2,12 +2,12 @@
 #include "cci/ast/arena_types.hpp"
 #include "cci/ast/qual_type.hpp"
 #include "cci/langopts.hpp"
-#include "cci/util/memory_resource.hpp"
-#include "cci/util/span.hpp"
 #include <cstdint>
+#include <memory_resource>
 #include <new>
 
-namespace cci::ast {
+namespace cci::ast
+{
 
 // Side-table and resource manager of the AST.
 struct ASTContext
@@ -65,7 +65,7 @@ private:
     //
     // This is mutable because ASTContext is passed around as a constant
     // reference.
-    mutable pmr::monotonic_buffer_resource arena_resource;
+    mutable std::pmr::monotonic_buffer_resource arena_resource;
 
     void init_builtin_types();
 };

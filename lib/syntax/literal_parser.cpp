@@ -5,14 +5,15 @@
 #include "cci/syntax/scanner.hpp"
 #include "cci/syntax/source_map.hpp"
 #include "cci/util/small_vector.hpp"
-#include "cci/util/span.hpp"
 #include "cci/util/unicode.hpp"
 #include <algorithm>
 #include <climits>
+#include <span>
 #include <utility>
 #include <vector>
 
-namespace cci::syntax {
+namespace cci::syntax
+{
 
 static void report(Scanner &scanner, const char *char_ptr, ByteLoc tok_loc,
                    const char *tok_begin, diag::Diag msg)
@@ -676,7 +677,7 @@ CharConstantParser::CharConstantParser(Scanner &scanner,
 }
 
 StringLiteralParser::StringLiteralParser(Scanner &scanner,
-                                         span<const Token> string_toks,
+                                         std::span<const Token> string_toks,
                                          const TargetInfo &target)
 {
     auto &diag = scanner.diag_handler;
@@ -699,7 +700,7 @@ StringLiteralParser::StringLiteralParser(Scanner &scanner,
     token_kind = string_toks[0].kind;
 
     // Performs [C11 5.1.1.2p6]: Adjacent string literal tokens are concatenated.
-    for (ptrdiff_t i = 1; i != string_toks.size(); ++i)
+    for (std::size_t i = 1; i != string_toks.size(); ++i)
     {
         cci_expects(is_string_literal(string_toks[i].kind));
 

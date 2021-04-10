@@ -3,9 +3,9 @@
 #include "cci/syntax/scanner.hpp"
 #include "cci/syntax/source_map.hpp"
 #include "cci/util/contracts.hpp"
-#include "cci/util/span.hpp"
 #include "gtest/gtest.h"
 #include <ostream>
+#include <span>
 #include <string>
 #include <string_view>
 
@@ -14,7 +14,8 @@ using cci::syntax::Scanner;
 using cci::syntax::Token;
 using cci::syntax::TokenKind;
 
-namespace {
+namespace
+{
 
 struct ScannerTest : cci::test::CompilerFixture
 {
@@ -43,12 +44,12 @@ protected:
     }
 
     auto check_lex(std::string_view source,
-                   span<std::pair<TokenKind, std::string>> expected_toks)
+                   std::span<std::pair<TokenKind, std::string>> expected_toks)
         -> std::vector<Token>
     {
         auto toks = this->scan(source);
         EXPECT_EQ(expected_toks.size(), toks.size());
-        for (ptrdiff_t i = 0; i != expected_toks.size(); ++i)
+        for (std::size_t i = 0; i != expected_toks.size(); ++i)
         {
             EXPECT_EQ(expected_toks[i].first, toks[i].kind) << "index: " << i;
             EXPECT_EQ(expected_toks[i].second, this->get_lexeme(toks[i]))

@@ -4,7 +4,6 @@
 #include "cci/syntax/scanner.hpp"
 #include "cci/syntax/source_map.hpp"
 #include "cci/util/contracts.hpp"
-#include "cci/util/span.hpp"
 #include "cci/util/unicode.hpp"
 #include "gtest/gtest.h"
 #include <string>
@@ -14,7 +13,8 @@ using namespace cci::diag;
 using namespace cci::syntax;
 using namespace cci;
 
-namespace {
+namespace
+{
 
 struct LiteralParserTest : cci::test::CompilerFixture
 {

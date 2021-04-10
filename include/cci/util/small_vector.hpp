@@ -62,7 +62,6 @@
 #ifndef LLVM_VECSMALL_ADT_SMALLVECTOR_H
 #define LLVM_VECSMALL_ADT_SMALLVECTOR_H
 
-#include "cci/util/span.hpp"
 #include <algorithm>
 #include <cassert>
 #include <cstddef>
@@ -71,6 +70,7 @@
 #include <initializer_list>
 #include <iterator>
 #include <memory>
+#include <span>
 
 // LLVM Macros
 #define LLVM_VECSMALL_NODISCARD [[nodiscard]]
@@ -78,24 +78,27 @@
 #define LLVM_VECSMALL_UNLIKELY(x) __builtin_expect((x), 0)
 
 // LLVM External Functions
-namespace llvm_vecsmall {
-namespace detail {
-/// NextPowerOf2 - Returns the next power of two (in 64-bits)
-/// that is strictly greater than A.  Returns zero on overflow.
-inline uint64_t NextPowerOf2(uint64_t A)
+namespace llvm_vecsmall
 {
-    A |= (A >> 1);
-    A |= (A >> 2);
-    A |= (A >> 4);
-    A |= (A >> 8);
-    A |= (A >> 16);
-    A |= (A >> 32);
-    return A + 1;
-}
+namespace detail
+{
+    /// NextPowerOf2 - Returns the next power of two (in 64-bits)
+    /// that is strictly greater than A.  Returns zero on overflow.
+    inline uint64_t NextPowerOf2(uint64_t A)
+    {
+        A |= (A >> 1);
+        A |= (A >> 2);
+        A |= (A >> 4);
+        A |= (A >> 8);
+        A |= (A >> 16);
+        A |= (A >> 32);
+        return A + 1;
+    }
 } // namespace detail
 } // namespace llvm_vecsmall
 
-namespace llvm_vecsmall {
+namespace llvm_vecsmall
+{
 
 // std::is_pod has been deprecated in C++20.
 template <typename T>
@@ -775,7 +778,7 @@ public:
     }
 
     template <typename... ArgTypes>
-    void emplace_back(ArgTypes &&... Args)
+    void emplace_back(ArgTypes &&...Args)
     {
         if (LLVM_VECSMALL_UNLIKELY(this->EndX >= this->CapacityX))
             this->grow();
@@ -1053,8 +1056,7 @@ public:
     template <typename U,
               ::std::enable_if_t<std::is_same_v<T, ::std::remove_cv_t<U>>> * =
                   nullptr>
-    SmallVector(const ::nonstd::span<U> &RHS)
-        : SmallVector(RHS.begin(), RHS.end())
+    SmallVector(const ::std::span<U> &RHS) : SmallVector(RHS.begin(), RHS.end())
     {}
 
     SmallVector(const SmallVector &RHS) : SmallVectorImpl<T>(N)
@@ -1072,7 +1074,7 @@ public:
     template <typename U,
               ::std::enable_if_t<std::is_same_v<T, ::std::remove_cv_t<U>>> * =
                   nullptr>
-    SmallVector &operator=(const ::nonstd::span<U> &RHS)
+    SmallVector &operator=(const ::std::span<U> &RHS)
     {
         SmallVectorImpl<T>::operator=(static_cast<SmallVector>(RHS));
         return *this;
@@ -1111,7 +1113,7 @@ public:
     template <typename U,
               ::std::enable_if_t<std::is_same_v<T, ::std::remove_cv_t<U>>> * =
                   nullptr>
-    const SmallVector &operator=(::nonstd::span<U> &&RHS)
+    const SmallVector &operator=(::std::span<U> &&RHS)
     {
         SmallVectorImpl<T>::operator=(
             static_cast<SmallVector>(::std::move(RHS)));
@@ -1127,7 +1129,8 @@ static inline size_t capacity_in_bytes(const SmallVector<T, N> &X)
 
 } // namespace llvm_vecsmall
 
-namespace std {
+namespace std
+{
 /// Implement std::swap in terms of SmallVector swap.
 template <typename T>
 inline void swap(llvm_vecsmall::SmallVectorImpl<T> &LHS,
@@ -1145,7 +1148,8 @@ inline void swap(llvm_vecsmall::SmallVector<T, N> &LHS,
 }
 } // namespace std
 
-namespace llvm_vecsmall {
+namespace llvm_vecsmall
+{
 /// grow_pod - This is an implementation of the grow() method which only works
 /// on POD-like datatypes and is out of line to reduce code duplication.
 inline void SmallVectorBase::grow_pod(void *FirstEl, size_t MinSizeInBytes,

@@ -6,10 +6,11 @@
 #include "cci/syntax/diagnostics.hpp"
 #include "cci/syntax/scanner.hpp"
 #include "cci/syntax/source_map.hpp"
-#include "cci/util/memory_resource.hpp"
 #include <optional>
+#include <span>
 
-namespace cci::syntax {
+namespace cci::syntax
+{
 
 // Semantic analyses.
 struct Sema
@@ -30,7 +31,7 @@ public:
     auto act_on_char_constant(const Token &)
         -> std::optional<arena_ptr<ast::CharacterConstant>>;
 
-    auto act_on_string_literal(span<const Token> string_toks)
+    auto act_on_string_literal(std::span<const Token> string_toks)
         -> std::optional<arena_ptr<ast::StringLiteral>>;
 
     auto act_on_paren_expr(arena_ptr<ast::Expr> expr, ByteLoc left,

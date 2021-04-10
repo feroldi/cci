@@ -8,7 +8,8 @@
 #include "cci/syntax/scanner.hpp"
 #include "cci/syntax/source_map.hpp"
 #include "cci/util/small_vector.hpp"
-#include <memory>
+#include <optional>
+#include <span>
 #include <string_view>
 
 static_assert(sizeof(std::uint16_t) == sizeof(char16_t),
@@ -33,7 +34,8 @@ using cci::ast::QualType;
 using cci::ast::StringLiteral;
 using cci::ast::StringLiteralKind;
 
-namespace cci::syntax {
+namespace cci::syntax
+{
 
 auto Sema::act_on_numeric_constant(const Token &tok)
     -> std::optional<arena_ptr<Expr>>
@@ -188,7 +190,7 @@ auto Sema::act_on_char_constant(const Token &tok)
                                      char_type, tok.source_span);
 }
 
-auto Sema::act_on_string_literal(span<const Token> string_toks)
+auto Sema::act_on_string_literal(std::span<const Token> string_toks)
     -> std::optional<arena_ptr<StringLiteral>>
 {
     cci_expects(!string_toks.empty());
@@ -255,9 +257,10 @@ auto Sema::act_on_string_literal(span<const Token> string_toks)
 
     const ByteLoc rquote_loc = string_toks.end()[-1].location();
 
-    return StringLiteral::create(context, str_ty, span(str_data, bytes_count),
-                                 str_kind, literal.char_byte_width,
-                                 span(tok_locs, num_concatenated), rquote_loc);
+    return StringLiteral::create(
+        context, str_ty, std::span(str_data, bytes_count), str_kind,
+        literal.char_byte_width, std::span(tok_locs, num_concatenated),
+        rquote_loc);
 }
 
 auto Sema::act_on_paren_expr(arena_ptr<Expr> expr, ByteLoc left, ByteLoc right)

@@ -3,10 +3,11 @@
 #include "cci/langopts.hpp"
 #include "cci/syntax/scanner.hpp"
 #include "cci/syntax/token.hpp"
-#include "cci/util/span.hpp"
+#include <span>
 #include <vector>
 
-namespace cci::syntax {
+namespace cci::syntax
+{
 
 struct NumericConstantParser
 {
@@ -59,7 +60,7 @@ public:
     size_t char_byte_width;
     bool has_error = false;
 
-    StringLiteralParser(Scanner &, span<const Token> string_toks,
+    StringLiteralParser(Scanner &, std::span<const Token> string_toks,
                         const TargetInfo &);
 
     // Returns the size in bytes of the string, excluding the null character.
