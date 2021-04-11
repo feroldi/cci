@@ -27,9 +27,7 @@ auto write_stream(std::vector<std::byte> &stream, const std::byte *data,
     return std::copy(data, data + length, stream.begin()) == stream.end();
 }
 
-// `Container` must meet the requirements of `ContiguousContainer`
 template <typename Container>
-//  requires ContiguousContainer<Container>
 static auto read_stream(const fs::path &file_path) -> std::optional<Container>
 {
     std::optional<Container> data;
