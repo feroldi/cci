@@ -5,7 +5,8 @@
 #include <memory>
 #include <optional>
 
-namespace cci {
+namespace cci
+{
 
 auto write_stream(const fs::path &file_path, const std::byte *data,
                   size_t length) -> bool

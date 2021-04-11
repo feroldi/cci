@@ -1,6 +1,7 @@
 #include "cci/syntax/diagnostics.hpp"
 
-namespace cci::diag {
+namespace cci::diag
+{
 
 DiagnosticBuilder::~DiagnosticBuilder() noexcept(!CCI_CONTRACTS)
 {

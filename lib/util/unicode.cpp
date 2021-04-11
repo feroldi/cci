@@ -25,7 +25,8 @@
 #include <cstdint>
 #include <iterator>
 
-namespace cci::uni {
+namespace cci::uni
+{
 
 constexpr int halfShift = 10; /* used for shifting by 10 bits */
 constexpr UTF32 halfBase = 0x0010000UL;

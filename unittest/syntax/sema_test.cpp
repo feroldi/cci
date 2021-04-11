@@ -3,6 +3,7 @@
 #include "cci/syntax/source_map.hpp"
 #include "gtest/gtest.h"
 
-namespace {
+namespace
+{
 
 }

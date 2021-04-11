@@ -11,7 +11,8 @@
 #include <memory>
 #include <utility>
 
-namespace cci::syntax {
+namespace cci::syntax
+{
 
 constexpr auto is_newline(char C) -> bool { return C == '\n' || C == '\r'; }
 

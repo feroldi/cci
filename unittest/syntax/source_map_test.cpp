@@ -3,7 +3,8 @@
 
 using namespace cci::syntax;
 
-namespace {
+namespace
+{
 
 struct SourceMapTest : ::testing::Test
 {

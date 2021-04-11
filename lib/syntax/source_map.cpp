@@ -8,7 +8,8 @@
 #include <string>
 #include <string_view>
 
-namespace cci::syntax {
+namespace cci::syntax
+{
 
 FileMap::FileMap(std::string n, std::string s, ByteLoc sl)
     : name(std::move(n)), src(std::move(s)), start_loc(sl)

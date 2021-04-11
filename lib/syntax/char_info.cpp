@@ -1,7 +1,8 @@
 #include "cci/syntax/char_info.hpp"
 #include <cstdint>
 
-namespace cci::charinfo {
+namespace cci::charinfo
+{
 
 // ASCII table based off on http://en.cppreference.com/w/cpp/language/ascii
 const uint8_t ASCIITable[256] = {

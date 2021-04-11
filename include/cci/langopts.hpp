@@ -3,7 +3,8 @@
 #include <cstddef>
 #include <cstdint>
 
-namespace cci {
+namespace cci
+{
 
 // TargetInfo - Holds information about the target architecture.
 struct TargetInfo

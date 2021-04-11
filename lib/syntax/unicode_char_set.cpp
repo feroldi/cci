@@ -94,7 +94,8 @@ static constexpr UnicodeCharRange DISALLOWED_INITIALLY_IDENT_CHARS_SET[]{
     {0xFE20, 0xFE2F},
 };
 
-namespace cci {
+namespace cci
+{
 
 auto is_allowed_id_char(uint32_t cp) -> bool
 {

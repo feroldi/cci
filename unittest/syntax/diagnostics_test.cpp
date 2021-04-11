@@ -20,7 +20,8 @@ using cci::syntax::ByteLoc;
 using cci::syntax::ByteSpan;
 using cci::syntax::TokenKind;
 
-namespace {
+namespace
+{
 
 struct DiagnosticsTest : ::testing::Test
 {

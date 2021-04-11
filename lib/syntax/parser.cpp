@@ -12,7 +12,8 @@
 using cci::ast::Expr;
 using cci::ast::StringLiteral;
 
-namespace cci::syntax {
+namespace cci::syntax
+{
 
 auto Parser::peek_tok(size_t lookahead) -> Token
 {

@@ -1,7 +1,8 @@
 #include "cci/ast/ast_context.hpp"
 #include "cci/ast/type.hpp"
 
-namespace cci::ast {
+namespace cci::ast
+{
 
 void ASTContext::init_builtin_types()
 {

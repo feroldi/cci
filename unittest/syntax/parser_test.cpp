@@ -19,7 +19,8 @@ using cci::syntax::Scanner;
 using cci::syntax::Sema;
 using cci::syntax::TokenKind;
 
-namespace {
+namespace
+{
 
 struct ParserTest : cci::test::CompilerFixture
 {
