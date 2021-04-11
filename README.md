@@ -9,7 +9,8 @@ The main purpose of this project is to teach me compiler data structures, langua
 
 ## Building
 
-Use `cmake` to build the project:
+Use `cmake` to build the project.
+The following sequence of commands builds the `cci` tool:
 
 ```
 mkdir build && cd build
@@ -17,7 +18,16 @@ cmake -DCMAKE_BUILD_TYPE=Release ..
 cmake --build . --target cci
 ```
 
+You may also specify a toolchain when generating build files by defining `CMAKE_TOOLCHAIN_FILE` to one of the supported toolchains in `cmake/toolchains/`.
 Both Clang and GCC are able to compile this project.
+
+```
+# For GCC:
+cmake -DCMAKE_BUILD_TYPE=Release -DCMAKE_TOOLCHAIN_FILE=../cmake/toolchains/gcc.cmake
+
+# For Clang:
+cmake -DCMAKE_BUILD_TYPE=Release -DCMAKE_TOOLCHAIN_FILE=../cmake/toolchains/clang.cmake
+```
 
 ## Usage
 
@@ -27,13 +37,16 @@ This is still a work in progress project. Usage is to be done.
 
 You'll need to install [GoogleTest](https://github.com/google/googletest), as CCI uses it for the unit tests.
 
-After installing GoogleTest, run unit tests with the following command:
-
-    ctest --output-on-failure
-
-If you don't want to run unit tests, you may disable them by specifying `BUILD_TESTING=NO` when generating the build files with CMake:
+After installing GoogleTest, run unit tests with the following command inside the build directory:
 
 ```
+ctest --output-on-failure
+```
+
+If you don't want to run unit tests, you may disable them by specifying `BUILD_TESTING=NO` when generating the build files with CMake like so:
+
+```
+mkdir build && cd build
 cmake -DBUILD_TESTING=NO -DCMAKE_BUILD_TYPE=Release ..
 ```
 
