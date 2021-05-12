@@ -78,8 +78,6 @@ project, so this section is intended to explain them.
 
 ### Meaning of "Infrastructure" in CCI
 
-TODO:
-
 CCI stands for *C11 Compiler Infrastructure*.  That means this is not
 just a tool you can use to compile C code.  CCI has an API, which you can
 use to manipulate C code.  The goal is for it to allow you to scan code,
