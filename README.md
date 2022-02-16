@@ -3,6 +3,8 @@
 [![Build Status](https://travis-ci.org/feroldi/cci.svg?branch=master)](https://travis-ci.org/feroldi/cci)
 [![Codecov](https://codecov.io/gh/feroldi/cci/branch/master/graph/badge.svg)](https://codecov.io/gh/feroldi/cci)
 
+⚠️ This project is discontinued, and is getting rewritten in Rust at [feroldi/atlas](https://github.com/feroldi/atlas). The reason for that is that I don't feel like writing C++ code as a hobby anymore.
+
 This is an experimental project of a C compiler written in C++20.
 The implementation follows the ISO/IEC 9899:2011 standard, i.e., C11.
 The main purpose of this project is to teach myself compiler data
